@@ -1,0 +1,74 @@
+# ==============================================================================
+# Focusite Launcher - Git Attributes Configuration
+# Consistent line endings, binary declarations, and Linguist definitions
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Default Handling & Line Endings
+# ------------------------------------------------------------------------------
+# Auto detect text files and normalize line endings to LF in repository
+* text=auto eol=lf
+
+# ------------------------------------------------------------------------------
+# 2. Source Code & Text Formats (Strict LF)
+# ------------------------------------------------------------------------------
+*.rs text eol=lf diff=rust
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.svg text eol=lf
+*.mcmeta text eol=lf
+
+# Shell scripts (must have LF on Unix-like environments)
+*.sh text eol=lf
+
+# Windows command scripts (must have CRLF on Windows)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# ------------------------------------------------------------------------------
+# 3. Binary Files (Never normalize or attempt diff)
+# ------------------------------------------------------------------------------
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+
+# Fonts
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+
+# Archives & Executables
+*.jar binary
+*.mrpack binary
+*.zip binary
+*.tar binary
+*.tar.gz binary
+*.tgz binary
+*.7z binary
+*.exe binary
+*.dll binary
+*.dylib binary
+*.so binary
+
+# ------------------------------------------------------------------------------
+# 4. GitHub Linguist Attributes
+# ------------------------------------------------------------------------------
+# Prevent generated lockfiles from dominating repository language statistics
+Cargo.lock linguist-generated=true
+pnpm-lock.yaml linguist-generated=true

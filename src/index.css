@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+
+  /* Focusite Brand Green Palette (#3C8527 / #52A43A) */
+  --primary: #3C8527;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1e293b;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #52A43A;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #3C8527;
+  --radius: 0.75rem;
+
+  /* Focusite Glassmorphism Variables */
+  --launcher-glass: rgba(255, 255, 255, 0.7);
+  --launcher-glass-border: rgba(255, 255, 255, 0.35);
+  --launcher-sidebar: rgba(248, 250, 252, 0.85);
+  --launcher-accent: #3C8527;
+}
+
+.dark {
+  --background: #090d16;
+  --foreground: #f8fafc;
+  --card: #0f172a;
+  --card-foreground: #f8fafc;
+
+  /* Focusite Brand Green in Dark Mode */
+  --primary: #52A43A;
+  --primary-foreground: #071304;
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --accent: #3C8527;
+  --accent-foreground: #f8fafc;
+  --destructive: #7f1d1d;
+  --destructive-foreground: #f8fafc;
+  --border: #1e293b;
+  --input: #1e293b;
+  --ring: #52A43A;
+
+  /* Focusite Glassmorphism Variables Dark */
+  --launcher-glass: rgba(15, 23, 42, 0.75);
+  --launcher-glass-border: rgba(255, 255, 255, 0.08);
+  --launcher-sidebar: rgba(9, 13, 22, 0.85);
+  --launcher-accent: #52A43A;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  user-select: none;
+  overflow: hidden;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+/* Zero Layout Shift Overlay Scrollbar */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+  width: 0px;
+  height: 0px;
+}
+
+.scrollbar-stable-overlay {
+  overflow-y: auto;
+  overflow-y: overlay;
+  scrollbar-gutter: stable;
+}
+
+.scrollbar-stable-overlay::-webkit-scrollbar {
+  width: 5px;
+}
+
+.scrollbar-stable-overlay::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-stable-overlay::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+
+.scrollbar-stable-overlay::-webkit-scrollbar-thumb:hover {
+  background: rgba(82, 164, 58, 0.5);
+}

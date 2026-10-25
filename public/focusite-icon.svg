@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Focusite Launcher - 扁平化極簡品牌圖示 (Flat, Minimalist & Consistent) -->
+  <!-- 核心主色：#3C8527 | 設計哲學：去除多餘細節，以純粹幾何方塊結合光學對焦框表達 Focusite -->
+
+  <!-- 1. 晶體方塊頂面 (Top Face - #52A43A 高光草綠) -->
+  <polygon points="256,72 416,164 256,256 96,164" fill="#52A43A"/>
+
+  <!-- 2. 晶體方塊左面 (Left Face - #3C8527 官方核心綠) -->
+  <polygon points="96,164 256,256 256,440 96,348" fill="#3C8527"/>
+
+  <!-- 3. 晶體方塊右面 (Right Face - #2E6B1D 深色陰影面) -->
+  <polygon points="256,256 416,164 416,348 256,440" fill="#2E6B1D"/>
+
+  <!-- 4. 中心光學焦距對焦標線 (Optical Focus Reticle - #FFFFFF) -->
+  <!-- 採用統一線寬 (16px) 與圓角端點，極具縮放性與視覺辨識度 -->
+  <g stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- 左上對焦角標 -->
+    <path d="M 216,216 L 216,196 L 236,196"/>
+    <!-- 右上對焦角標 -->
+    <path d="M 276,196 L 296,196 L 296,216"/>
+    <!-- 左下對焦角標 -->
+    <path d="M 216,296 L 216,316 L 236,316"/>
+    <!-- 右下對焦角標 -->
+    <path d="M 276,316 L 296,316 L 296,296"/>
+  </g>
+
+  <!-- 5. 核心聚焦點 (Focal Singularity - 純白菱形結晶) -->
+  <polygon points="256,238 274,256 256,274 238,256" fill="#FFFFFF"/>
+</svg>
