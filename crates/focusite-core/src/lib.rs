@@ -11,6 +11,9 @@ pub enum CoreError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("Network error: {0}")]
+    Network(#[from] reqwest::Error),
+
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 

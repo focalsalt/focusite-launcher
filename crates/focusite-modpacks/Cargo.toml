@@ -10,3 +10,11 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+sha1.workspace = true
+uuid.workspace = true
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+focusite-cas = { path = "../focusite-cas" }
+focusite-download = { path = "../focusite-download" }
+focusite-core = { path = "../focusite-core" }

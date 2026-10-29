@@ -3,6 +3,19 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagnosticResult {
+    #[serde(rename = "hasCrash")]
+    pub has_crash: bool,
+    #[serde(rename = "rootCauseType")]
+    pub root_cause_type: String,
+    pub summary: String,
+    pub details: Vec<String>,
+    pub suggestion: String,
+    #[serde(rename = "executionTimeMicros")]
+    pub execution_time_micros: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiagnosticReport {
     pub matched_rule: String,
     pub title: String,

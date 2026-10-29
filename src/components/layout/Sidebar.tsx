@@ -10,16 +10,38 @@ import {
   LayoutGrid,
   Boxes,
   Box,
-  Settings
+  Settings,
+  Plus,
+  FolderDown,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { AccountDropdown } from "./AccountDropdown";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { PlayerAvatar } from "@/components/ui/PlayerAvatar";
 import {
   MainView,
   MinecraftInstance,
+  RunningInstanceInfo,
   UserAccount,
 } from "@/types/navigation";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import {
+  preloadCreateInstanceDialog,
+  preloadImportModpackDialog,
+} from "@/lib/startupOrchestrator";
+
+const getIconSrc = (path?: string) => {
+  if (!path) return undefined;
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    try {
+      return convertFileSrc(path);
+    } catch {
+      return path;
+    }
+  }
+  return path;
+};
 
 interface SidebarProps {
   currentView: MainView;
@@ -33,6 +55,9 @@ interface SidebarProps {
   onAddAccount: () => void;
   onOpenSkinManager: () => void;
   onSignOut: (accountId: string) => void;
+  onCreateInstance?: () => void;
+  onImportInstance?: () => void;
+  runningInstances?: Record<string, RunningInstanceInfo>;
   isDark: boolean;
   onToggleTheme: () => void;
 }
@@ -49,6 +74,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onAddAccount,
   onOpenSkinManager,
   onSignOut,
+  onCreateInstance,
+  onImportInstance,
+  runningInstances = {},
 }) => {
   const asideRef = useRef<HTMLElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
@@ -187,9 +215,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Boxes className="h-4 w-4 text-[#52A43A]" />
           <span>實例列表</span>
         </div>
-        <span className="rounded bg-white/10 px-1.5 py-0.2 text-[10px] text-slate-400 font-mono font-medium">
-          {instances.length}
-        </span>
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onMouseEnter={preloadImportModpackDialog}
+                onClick={onImportInstance}
+                className="flex h-5 w-5 items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
+              >
+                <FolderDown className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">導入實例</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onMouseEnter={preloadCreateInstanceDialog}
+                onClick={onCreateInstance}
+                className="flex h-5 w-5 items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">建立全新實例</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       {/* 4. 僅實例列表可滾動的 ScrollArea：
@@ -202,47 +256,80 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onScroll={() => updateIndicator(true)}
         viewportClassName="space-y-0.5"
       >
-        {instances.map((inst) => {
-          const isSelected =
-            currentView === "instance-detail" &&
-            selectedInstanceId === inst.id;
+        {instances.length === 0 ? (
+          <div className="px-5 py-6 text-center space-y-1">
+            <p className="text-[11px] text-slate-500">尚未建立實例</p>
+          </div>
+        ) : (
+          instances.map((inst) => {
+            const isSelected =
+              currentView === "instance-detail" &&
+              selectedInstanceId === inst.id;
 
-          return (
-            <div
-              key={inst.id}
-              id={`nav-item-inst-${inst.id}`}
-              className="relative w-full px-2"
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectInstance(inst.id);
-                  onNavigate("instance-detail");
-                }}
-                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition-colors hover:bg-white/5 active:bg-white/10 ${isSelected
-                  ? "bg-white/10 text-slate-100 font-semibold"
-                  : "text-slate-400 hover:text-slate-200"
-                  }`}
+            const runningInfo = runningInstances[inst.id];
+
+            return (
+              <div
+                key={inst.id}
+                id={`nav-item-inst-${inst.id}`}
+                className="relative w-full px-2"
               >
-                <div className="flex items-center gap-2.5 truncate">
-                  <Box
-                    className={`h-3.5 w-3.5 shrink-0 transition-colors ${isSelected ? "text-[#52A43A]" : "text-slate-500"
-                      }`}
-                  />
-                  <span className="truncate">{inst.name}</span>
-                </div>
-                <span
-                  className={`text-[10px] rounded px-1.5 py-0.2 shrink-0 font-mono ${isSelected
-                    ? "bg-[#3C8527]/25 text-[#52A43A] font-medium"
-                    : "bg-white/5 text-slate-500"
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectInstance(inst.id);
+                    onNavigate("instance-detail");
+                  }}
+                  className={`flex h-[52px] w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-white/5 active:bg-white/10 ${isSelected
+                    ? "bg-white/10 text-slate-100 font-semibold"
+                    : "text-slate-400 hover:text-slate-200"
                     }`}
                 >
-                  {inst.version}
-                </span>
-              </button>
-            </div>
-          );
-        })}
+                  <div className="relative shrink-0">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 overflow-hidden text-[#52A43A]">
+                      {inst.hasIcon && inst.iconPath ? (
+                        <img
+                          src={getIconSrc(inst.iconPath)}
+                          alt={inst.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Box
+                          className={`h-4 w-4 shrink-0 transition-colors ${isSelected ? "text-[#52A43A]" : "text-slate-400"
+                            }`}
+                        />
+                      )}
+                    </div>
+                    {/* 運行中玩家頭像 (絕對定位於圖示右下角，Spring 平滑進入與淡出) */}
+                    <AnimatePresence>
+                      {runningInfo && (
+                        <motion.div
+                          key={`avatar-${inst.id}`}
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          exit={{ scale: 0, opacity: 0 }}
+                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                          className="absolute -bottom-1 -right-1 z-10 flex h-4 w-4 items-center justify-center rounded-md border border-slate-900 bg-slate-800 shadow-md overflow-hidden ring-1 ring-[#52A43A]"
+                          title={`正在運行：${runningInfo.accountName || "玩家"}`}
+                        >
+                          <PlayerAvatar username={runningInfo.accountName || "Steve"} size={16} className="rounded-none" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  <div className="flex flex-1 min-w-0 flex-col justify-center">
+                    <span className="truncate text-xs font-semibold text-slate-200 leading-snug">
+                      {inst.name}
+                    </span>
+                    <span className="truncate text-[10px] text-slate-400 font-mono mt-0.5">
+                      {inst.loader} · {inst.version}
+                    </span>
+                  </div>
+                </button>
+              </div>
+            );
+          })
+        )}
       </ScrollArea>
 
       {/* 5. 全域設定 (固定在 Sidebar 最下方，永遠不被擠出視窗外) */}

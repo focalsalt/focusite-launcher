@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-TW" class="dark" style="background-color: #0b0f17; margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/focusite-icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Focusite Launcher</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html, body {
+        background-color: #0b0f17;
+        color: #f8fafc;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      @keyframes splash-pulse {
+        0%, 100% {
+          transform: scale(0.97);
+          opacity: 0.88;
+          filter: drop-shadow(0 0 16px rgba(82, 164, 58, 0.28));
+        }
+        50% {
+          transform: scale(1.03);
+          opacity: 1;
+          filter: drop-shadow(0 0 36px rgba(82, 164, 58, 0.6));
+        }
+      }
+      @keyframes dot-blink {
+        0%, 100% { opacity: 0.4; }
+        50% { opacity: 1; }
+      }
+      #splash-container {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(circle at 50% 30%, rgba(60, 133, 39, 0.16) 0%, #0b0f17 72%);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 60px rgba(0, 0, 0, 0.7);
+        cursor: grab;
+      }
+      #splash-container:active {
+        cursor: grabbing;
+      }
+      .crystal-svg {
+        animation: splash-pulse 2.4s ease-in-out infinite;
+      }
+      .brand-title {
+        margin-top: 18px;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: #f8fafc;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+      }
+      .brand-subtitle-wrapper {
+        margin-top: 6px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: #52a43a;
+        box-shadow: 0 0 8px rgba(82, 164, 58, 0.8);
+        animation: dot-blink 1.8s ease-in-out infinite;
+      }
+      .brand-subtitle {
+        font-size: 12px;
+        color: #94a3b8;
+        letter-spacing: 0.02em;
+      }
+    </style>
+  </head>
+
+  <body data-tauri-drag-region>
+    <div id="splash-container" data-tauri-drag-region>
+      <div data-tauri-drag-region style="position: relative; display: flex; align-items: center; justify-content: center;">
+        <svg class="crystal-svg" width="64" height="64" viewBox="0 0 512 512" fill="none">
+          <polygon points="256,72 416,164 256,256 96,164" fill="#52A43A" />
+          <polygon points="96,164 256,256 256,440 96,348" fill="#3C8527" />
+          <polygon points="256,256 416,164 416,348 256,440" fill="#2E6B1D" />
+          <g stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M 216,216 L 216,196 L 236,196" />
+            <path d="M 276,196 L 296,196 L 296,216" />
+            <path d="M 216,296 L 216,316 L 236,316" />
+            <path d="M 276,316 L 296,316 L 296,296" />
+          </g>
+          <polygon points="256,238 274,256 256,274 238,256" fill="#FFFFFF" />
+        </svg>
+      </div>
+      <div data-tauri-drag-region style="text-align: center; display: flex; flex-direction: column; align-items: center;">
+        <div data-tauri-drag-region class="brand-title">Focusite Launcher</div>
+        <div data-tauri-drag-region class="brand-subtitle-wrapper">
+          <div class="status-dot"></div>
+          <div data-tauri-drag-region class="brand-subtitle">正在載入核心模組與驗證身分...</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        function triggerShow() {
+          requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+              try {
+                if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === "function") {
+                  window.__TAURI_INTERNALS__.invoke("show_splash_window");
+                }
+              } catch (e) {
+                console.warn("Failed to invoke show_splash_window:", e);
+              }
+            });
+          });
+        }
+        if (document.readyState === "complete" || document.readyState === "interactive") {
+          triggerShow();
+        } else {
+          window.addEventListener("DOMContentLoaded", triggerShow);
+        }
+      })();
+    </script>
+  </body>
+</html>

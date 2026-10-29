@@ -1,8 +1,14 @@
 //! Focusite Download: High-performance concurrent chunked downloader with official CDN priority and dynamic mirror fallback.
 
 pub mod chunked;
+pub mod downloader;
 pub mod mirror;
 pub mod validator;
+
+pub use chunked::{DownloadProgress, DownloadTask};
+pub use downloader::Downloader;
+pub use mirror::{MirrorManager, MirrorProvider};
+pub use validator::ChecksumValidator;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DownloadError {

@@ -4,6 +4,9 @@ pub mod curseforge;
 pub mod mrpack;
 pub mod prism;
 
+pub use curseforge::{CurseForgeManifest, MissingModItem, unpack_curseforge_pack, rescan_missing_mods};
+pub use mrpack::{ModrinthIndex, unpack_mrpack};
+
 #[derive(Debug, thiserror::Error)]
 pub enum ModpackError {
     #[error("I/O error: {0}")]

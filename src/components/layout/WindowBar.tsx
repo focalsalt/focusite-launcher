@@ -8,7 +8,11 @@ import {
   toggleMaximizeWindow,
 } from "@/lib/tauriWindow";
 
-export const WindowBar: React.FC = () => {
+interface WindowBarProps {
+  onClose?: () => void;
+}
+
+export const WindowBar: React.FC<WindowBarProps> = ({ onClose }) => {
   const [maximized, setMaximized] = useState<boolean>(false);
 
   useEffect(() => {
@@ -40,7 +44,7 @@ export const WindowBar: React.FC = () => {
       data-tauri-drag-region
       onMouseDown={handleDragMouseDown}
       onDoubleClick={handleToggleMaximize}
-      className="relative z-50 flex h-9 w-full select-none items-center justify-between border-b border-white/10 bg-slate-950 px-3 text-xs font-medium text-slate-300"
+      className="relative z-[100] flex h-9 w-full select-none items-center justify-between border-b border-white/10 bg-slate-950 px-3 text-xs font-medium text-slate-300"
     >
       {/* Left: App Brand & Enlarged Custom SVG Icon (24px / h-6 w-6) */}
       <div
@@ -106,7 +110,11 @@ export const WindowBar: React.FC = () => {
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            closeWindow();
+            if (onClose) {
+              onClose();
+            } else {
+              closeWindow();
+            }
           }}
           title="關閉"
           className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-rose-600 hover:text-white transition-colors"

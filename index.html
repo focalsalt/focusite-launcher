@@ -1,14 +1,171 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-TW" class="dark" style="background-color: #0a0f1d; margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/focusite-icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + React + Typescript</title>
+    <title>Focusite Launcher</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html, body, #root {
+        background-color: #0a0f1d;
+        color: #f8fafc;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      @keyframes main-pulse {
+        0%, 100% {
+          transform: scale(0.97);
+          opacity: 0.88;
+          filter: drop-shadow(0 0 18px rgba(82, 164, 58, 0.3));
+        }
+        50% {
+          transform: scale(1.03);
+          opacity: 1;
+          filter: drop-shadow(0 0 38px rgba(82, 164, 58, 0.65));
+        }
+      }
+      @keyframes dot-blink {
+        0%, 100% { opacity: 0.35; }
+        50% { opacity: 1; }
+      }
+      .inline-boot-shell {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        background-color: #0a0f1d;
+        overflow: hidden;
+      }
+      .inline-windowbar {
+        position: relative;
+        z-index: 100;
+        display: flex;
+        height: 36px;
+        width: 100%;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: #020617;
+        padding: 0 12px;
+        font-size: 12px;
+      }
+      .inline-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .inline-badge {
+        border-radius: 4px;
+        background-color: rgba(60, 133, 39, 0.2);
+        padding: 1px 6px;
+        font-size: 10px;
+        font-family: monospace;
+        color: #52a43a;
+        border: 1px solid rgba(82, 164, 58, 0.3);
+      }
+      .inline-controls {
+        display: flex;
+        align-items: center;
+        height: 100%;
+        margin-right: -12px;
+      }
+      .inline-control-btn {
+        display: flex;
+        height: 36px;
+        width: 44px;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+      }
+      .inline-boot-body {
+        position: relative;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at 50% 45%, rgba(60, 133, 39, 0.14) 0%, rgba(10, 15, 29, 0.98) 72%);
+      }
+      .inline-crystal-svg {
+        animation: main-pulse 2.2s ease-in-out infinite;
+      }
+      .inline-title {
+        margin-top: 20px;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: #f8fafc;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+      }
+      .inline-subtitle-wrapper {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .inline-status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background-color: #52a43a;
+        box-shadow: 0 0 10px rgba(82, 164, 58, 0.9);
+        animation: dot-blink 1.8s ease-in-out infinite;
+      }
+      .inline-subtitle {
+        font-size: 12px;
+        color: #94a3b8;
+        letter-spacing: 0.02em;
+      }
+    </style>
   </head>
 
-  <body>
-    <div id="root"></div>
+  <body data-tauri-drag-region class="bg-[#0a0f1d] text-slate-100 antialiased select-none overflow-hidden">
+    <div id="root" class="h-full w-full">
+      <div class="inline-boot-shell" data-tauri-drag-region>
+        <header class="inline-windowbar" data-tauri-drag-region>
+          <div class="inline-brand" data-tauri-drag-region>
+            <img src="/focusite-icon.svg" alt="Focusite" style="width: 24px; height: 24px;" />
+            <span style="font-weight: 700; color: #f8fafc;">Focusite Launcher</span>
+            <span class="inline-badge">v26.1.0</span>
+          </div>
+          <div style="flex: 1; height: 100%;" data-tauri-drag-region></div>
+          <div class="inline-controls">
+            <div class="inline-control-btn">—</div>
+            <div class="inline-control-btn">▢</div>
+            <div class="inline-control-btn">✕</div>
+          </div>
+        </header>
+        <div class="inline-boot-body" data-tauri-drag-region>
+          <svg class="inline-crystal-svg" width="68" height="68" viewBox="0 0 512 512" fill="none">
+            <polygon points="256,72 416,164 256,256 96,164" fill="#52A43A" />
+            <polygon points="96,164 256,256 256,440 96,348" fill="#3C8527" />
+            <polygon points="256,256 416,164 416,348 256,440" fill="#2E6B1D" />
+            <g stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M 216,216 L 216,196 L 236,196" />
+              <path d="M 276,196 L 296,196 L 296,216" />
+              <path d="M 216,296 L 216,316 L 236,316" />
+              <path d="M 276,316 L 296,316 L 296,296" />
+            </g>
+            <polygon points="256,238 274,256 256,274 238,256" fill="#FFFFFF" />
+          </svg>
+          <div class="inline-title" data-tauri-drag-region>Focusite Launcher</div>
+          <div class="inline-subtitle-wrapper" data-tauri-drag-region>
+            <div class="inline-status-dot"></div>
+            <div class="inline-subtitle" data-tauri-drag-region>正在準備工作區畫布...</div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

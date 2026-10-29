@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, Plus, FolderPlus } from "lucide-react";
+import { Search, Plus, FolderDown } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,8 @@ interface DynamicTitlebarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onCreateInstance: () => void;
-  onCreateGroup: () => void;
+  onImportInstance?: () => void;
+  onCreateGroup?: () => void;
 }
 
 export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
@@ -30,7 +31,7 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
   searchQuery,
   onSearchChange,
   onCreateInstance,
-  onCreateGroup,
+  onImportInstance,
 }) => {
   // 個別實例 (instance-detail) 依規格明確沒有 Titlebar!
   if (currentView === "instance-detail") {
@@ -117,11 +118,11 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
             <Button
               size="sm"
               variant="outline"
-              onClick={onCreateGroup}
+              onClick={onImportInstance}
               className="gap-1.5 text-xs h-8 rounded-lg border-white/10 bg-white/5 hover:bg-white/10"
             >
-              <FolderPlus className="h-3.5 w-3.5 text-[#52A43A]" />
-              <span>建立群組</span>
+              <FolderDown className="h-3.5 w-3.5 text-[#52A43A]" />
+              <span>導入實例</span>
             </Button>
             <Button
               size="sm"

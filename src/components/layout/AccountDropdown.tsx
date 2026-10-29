@@ -21,6 +21,9 @@ interface AccountDropdownProps {
   onSignOut: (accountId: string) => void;
 }
 
+import { PlayerAvatar } from "@/components/ui/PlayerAvatar";
+import { preloadSkinManagerView, preloadMicrosoftLoginModal } from "@/lib/startupOrchestrator";
+
 export const AccountDropdown: React.FC<AccountDropdownProps> = ({
   accounts,
   activeAccount,
@@ -55,8 +58,8 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
       >
         <div className="flex items-center gap-3 overflow-hidden">
           {/* Avatar / Head indicator in Focusite Green */}
-          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-[#3C8527] to-[#2E6B1D] text-xs font-bold text-white shadow-sm">
-            {activeAccount.username.slice(0, 2).toUpperCase()}
+          <div className="relative shrink-0">
+            <PlayerAvatar username={activeAccount.username} size={32} />
             <span
               className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-slate-900 ${
                 activeAccount.accountType === "microsoft"
@@ -132,9 +135,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2 truncate">
-                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] font-bold text-white">
-                        {acc.username.slice(0, 1).toUpperCase()}
-                      </div>
+                      <PlayerAvatar username={acc.username} size={20} className="rounded" />
                       <span className="truncate">{acc.username}</span>
                     </div>
                     {isSelected && (
@@ -151,6 +152,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
             <div className="space-y-0.5 text-xs">
               <button
                 type="button"
+                onMouseEnter={preloadMicrosoftLoginModal}
                 onClick={() => {
                   onAddAccount();
                   setIsOpen(false);
@@ -163,6 +165,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
 
               <button
                 type="button"
+                onMouseEnter={preloadSkinManagerView}
                 onClick={() => {
                   onOpenSkinManager();
                   setIsOpen(false);

@@ -93,6 +93,7 @@ crash-reports/
 # AI Agent
 .agent/*
 .agents/*
+.codegraph/*
 
 # VS Code (preserve extensions and recommended settings if needed)
 .vscode/*

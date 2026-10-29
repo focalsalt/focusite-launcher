@@ -3,6 +3,9 @@
 pub mod parser;
 pub mod rules;
 
+pub use parser::LogDiagnosticEngine;
+pub use rules::{DiagnosticReport, DiagnosticResult, DiagnosticSeverity};
+
 #[derive(Debug, thiserror::Error)]
 pub enum DiagnosticError {
     #[error("Regex error: {0}")]

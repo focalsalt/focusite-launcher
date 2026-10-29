@@ -6,12 +6,14 @@ import { cn } from "@/lib/utils";
 interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  preventBackdropClose?: boolean;
   children: React.ReactNode;
 }
 
 export const Dialog: React.FC<DialogProps> = ({
   open,
   onOpenChange,
+  preventBackdropClose = false,
   children,
 }) => {
   return (
@@ -20,16 +22,20 @@ export const Dialog: React.FC<DialogProps> = ({
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-x-0 bottom-0 top-9 z-50 flex items-center justify-center p-4"
         >
-          {/* Backdrop with Motion Fade */}
+          {/* Backdrop with Motion Fade (strictly below top-9 WindowBar) */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            onClick={() => onOpenChange(false)}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => {
+              if (!preventBackdropClose) {
+                onOpenChange(false);
+              }
+            }}
+            className="fixed inset-x-0 bottom-0 top-9 bg-black/60 backdrop-blur-sm"
           />
 
           {/* Modal Content with Motion Zoom & Spring */}

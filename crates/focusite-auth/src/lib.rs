@@ -1,5 +1,6 @@
 //! Focusite Auth: Microsoft OAuth 2.0 PKCE, Xbox Live token exchange, and offline entitlement gate.
 
+pub mod dpapi;
 pub mod keyring_store;
 pub mod oauth;
 pub mod offline_gate;
@@ -17,11 +18,17 @@ pub enum AuthError {
     #[error("Authentication failed: {0}")]
     AuthFailed(String),
 
+    #[error("Missing MICROSOFT_CLIENT_ID in .env or environment variables")]
+    MissingClientId,
+
     #[error("User does not own Minecraft Java Edition")]
     NoMinecraftEntitlement,
 
     #[error("Offline play forbidden: no cached valid Microsoft credentials found")]
     OfflineForbidden,
+
+    #[error("Keyring credential store error: {0}")]
+    KeyringError(String),
 }
 
 #[cfg(test)]
@@ -37,6 +44,12 @@ mod tests {
         assert_eq!(
             offline_err.to_string(),
             "Offline play forbidden: no cached valid Microsoft credentials found"
+        );
+
+        let keyring_err = AuthError::KeyringError("Access denied".into());
+        assert_eq!(
+            keyring_err.to_string(),
+            "Keyring credential store error: Access denied"
         );
     }
 }

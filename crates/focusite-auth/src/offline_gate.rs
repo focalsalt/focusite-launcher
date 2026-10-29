@@ -13,6 +13,19 @@ impl OfflineGate {
             _ => Err(AuthError::OfflineForbidden),
         }
     }
+
+    /// Verifies offline launch eligibility against entitlement flags and token existence in the secure store.
+    pub fn verify_offline_launch(
+        has_entitlement: bool,
+        is_offline_ready: bool,
+        has_stored_token: bool,
+    ) -> Result<(), AuthError> {
+        if has_entitlement && is_offline_ready && has_stored_token {
+            Ok(())
+        } else {
+            Err(AuthError::OfflineForbidden)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -51,5 +64,20 @@ mod tests {
             is_offline_ready: true,
         };
         assert!(OfflineGate::check_offline_permission(Some(&valid)).is_ok());
+    }
+
+    #[test]
+    fn test_verify_offline_launch_matrix() {
+        // Full valid entitlement and stored token
+        assert!(OfflineGate::verify_offline_launch(true, true, true).is_ok());
+
+        // Missing stored token in keyring
+        assert!(OfflineGate::verify_offline_launch(true, true, false).is_err());
+
+        // Account marked not offline ready
+        assert!(OfflineGate::verify_offline_launch(true, false, true).is_err());
+
+        // No ownership entitlement
+        assert!(OfflineGate::verify_offline_launch(false, true, true).is_err());
     }
 }

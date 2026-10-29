@@ -14,6 +14,33 @@ export default defineConfig(() => ({
       "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react-dom/client",
+      "motion/react",
+      "lucide-react",
+      "@tauri-apps/api/core",
+      "@tauri-apps/api/window",
+      "@tauri-apps/api/event",
+      "skinview3d",
+      "clsx",
+      "tailwind-merge",
+      "class-variance-authority",
+    ],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes("skinview3d") || id.includes("three")) {
+            return "vendor-3d";
+          }
+        },
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

@@ -15,6 +15,11 @@
    - 頂部操作列、標題列 (Titlebar) 與主要內容必須作為單一視圖實體封裝於 `<AnimatePresence>` 畫布中。
    - 嚴禁將 Titlebar 獨立懸浮於 `<main>` 之外，確保各視圖（包含頂部全寬貼合之 Hero Banner）切換時整體畫布同步過渡。
 
+3. **Portal 浮動層防裁切合約 (Portal Floating Layer Invariant)**：
+   - 任何具備浮動提示屬性之元件（如 `Tooltip`、`Popover`）嚴禁直接以 CSS 絕對定位內嵌於滾動容器或帶有 `overflow-hidden`、CSS `mask-image`（淡出漸層）之組件中。
+   - 浮動提示必須強制採用 `ReactDOM.createPortal(..., document.body)` 掛載至頂層 DOM 節點。
+   - 座標必須基於觸發目標之 `getBoundingClientRect()` 動態計算絕對像素位置，並內建邊界溢出自動翻轉（Auto-Flip）機制。
+
 ---
 
 ## 2. 空間動效與物理方向慣性 (Spatial Motion & Directional Physics)
@@ -33,6 +38,10 @@
 2. **Motion layoutId 作用域隔離 (LayoutId Scope Isolation)**：
    - `layoutId` 必須依功能範疇具名加綴（例如 `news-subnav-indicator`、`home-subnav-indicator`、`instance-detail-tab-pill`）。
    - 嚴禁在跨獨立業務頁面或無連貫空間關係之組件間共用全域單一識別鍵，杜絕非預期的跨頁面水平飛躍。
+
+3. **運鏡與肢體動態解耦合約 (Camera & Skeletal Motion Decoupling)**：
+   - 3D 視角自動旋轉（Auto Rotate）必須作為獨立控制原語，透過獨立之 `requestAnimationFrame` 步進，嚴禁與角色骨骼狀態機（走動/跑步）混合。
+   - 展示性道具切換（如鞘翅展示模式）嚴禁觸發或污染業務資料之 `isDirty` 表單變更狀態。
 
 ---
 
@@ -57,6 +66,14 @@
      - 高亮與發光：`#52A43A` (Highlight Green / Glow)
      - 深色背景/漸層：`#2E6B1D` (Dark Green / Shadow)
      - 嚴禁無授權採用通用藍色或未定義之雜色。
-   - **版本號合約**：
-     - 啟動器當前版本固定為 `26.1.0`。
-     - Rust Cargo Workspace、`tauri.conf.json`、`package.json` 以及 UI 標題列標籤一律嚴格對齊一致。
+   - **版本號格式與四端對齊合約 (Version Format Contract)**：
+     - 啟動器版本格式統一遵循 `Y.V.H`（`Y` 為年份後兩碼，例：2026 為 `26`；`V` 為主要更新序號；`H` 為熱修復序號）。
+     - 每次版本推進必須同時嚴格對齊四端：Rust Cargo Workspace 根設定 (`Cargo.toml`)、Tauri 應用設定 (`src-tauri/tauri.conf.json`)、前端 Node 封裝 (`package.json`) 與 UI 標題列標籤，杜絕版本號漂移。
+
+3. **單例離屏 WebGL 快照與 Context 治理 (Singleton WebGL Context Invariant)**：
+   - 列表與卡片中之 3D 模型縮圖一律禁止掛載即時 WebGL 畫布，強制由全域單例離屏渲染器產出 Base64 快照並快取，全頁常駐 WebGL 上下文嚴格收斂至 1 個。
+   - WebGL 畫布必須監聽 `webglcontextlost` 並呼叫 `e.preventDefault()`，以支援 `webglcontextrestored` 平滑重載。
+   - 3D 預覽容器必須使用 `flex-1 min-h-0 relative` 配合 `ResizeObserver` 調用 `viewer.setSize()`，視窗縮放時禁止溢出視窗底部。
+
+4. **整數 WBS 階段合約 (Integer Phase WBS Invariant)**：
+   - 系統設計規格書與原子化工作分解結構 (WBS) 強制採用整數序列（Phase 1 至 Phase 8），嚴禁使用小數點編號（如 1.5, 1.6），確保 CLI 指令調用與跨階段審查之一致性。

@@ -12,6 +12,19 @@
   "app": {
     "windows": [
       {
+        "label": "splash",
+        "title": "Focusite Launcher",
+        "url": "splash.html",
+        "width": 480,
+        "height": 320,
+        "center": true,
+        "decorations": false,
+        "resizable": false,
+        "visible": false,
+        "backgroundColor": "#0b0f17",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding"
+      },
+      {
         "label": "main",
         "title": "Focusite Launcher",
         "width": 1280,
@@ -20,7 +33,10 @@
         "minHeight": 720,
         "center": true,
         "decorations": false,
-        "resizable": true
+        "resizable": true,
+        "visible": false,
+        "backgroundColor": "#0a0f1d",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding"
       }
     ],
     "security": {
