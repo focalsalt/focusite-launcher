@@ -1,17 +1,18 @@
 //! Minecraft process launching, JRE resolution, and stdout/stderr event streaming.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use sha1::{Digest, Sha1};
+use std::path::PathBuf;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, LazyLock, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use focusite_core::args::{
     build_classpath, build_launch_arguments, build_legacy_pre16_forge_arguments, LaunchContext,
+    QuickPlayTarget,
 };
 use focusite_core::instance::{ModsTabMode, VersionCapabilities};
-use focusite_core::java::{
-    get_recommended_java_version, resolve_or_locate_java, scan_system_javas, JavaInstallation,
-};
+use focusite_core::java::{scan_system_javas, JavaInstallation};
 use focusite_core::manifest::VersionManifest;
 use focusite_core::process::{terminate_process_tree, ProcessLauncher};
 use super::instance::{get_instances_dir, validate_safe_id, InstanceDiskConfig};
@@ -27,8 +28,42 @@ pub struct RunningProcessInfo {
     pub account_name: Option<String>,
 }
 
-static RUNNING_PROCESSES: LazyLock<Arc<Mutex<HashMap<String, RunningProcessInfo>>>> =
+type RunningProcessMap = Arc<Mutex<HashMap<String, RunningProcessInfo>>>;
+type InstanceLogBufferMap = Arc<Mutex<HashMap<String, VecDeque<InstanceLogPayload>>>>;
+
+static RUNNING_PROCESSES: LazyLock<RunningProcessMap> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// Ring buffer storing up to 10,000 log events per instance.
+static LOG_BUFFERS: LazyLock<InstanceLogBufferMap> =
+    LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+pub fn append_instance_log(payload: InstanceLogPayload) {
+    if let Ok(mut buffers) = LOG_BUFFERS.lock() {
+        let deque = buffers
+            .entry(payload.instance_id.clone())
+            .or_insert_with(VecDeque::new);
+        if deque.len() >= 10000 {
+            deque.pop_front();
+        }
+        deque.push_back(payload);
+    }
+}
+
+/// Drops the buffered console output of an instance.
+pub fn clear_instance_log(instance_id: &str) {
+    if let Ok(mut buffers) = LOG_BUFFERS.lock() {
+        buffers.remove(instance_id);
+    }
+}
+
+/// Checks if a specific instance is currently running.
+pub fn is_instance_running(instance_id: &str) -> bool {
+    RUNNING_PROCESSES
+        .lock()
+        .map(|m| m.contains_key(instance_id))
+        .unwrap_or(false)
+}
 
 /// Checks if any game instance is currently running in the background.
 pub fn has_running_instances() -> bool {
@@ -89,32 +124,96 @@ pub fn get_running_instances() -> Result<Vec<RunningProcessInfo>, String> {
     Ok(map.values().cloned().collect())
 }
 
-/// Dynamically creates or reveals the detached log window when needed (game launch or crash).
-pub fn ensure_or_create_log_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
-    if let Some(existing) = app.get_webview_window("log-window") {
+pub fn get_instance_log_window_label(instance_id: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(instance_id.as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+    format!("log-window-{}", &hash[..12])
+}
+
+/// Dynamically creates or reveals the detached per-instance log window when needed (game launch, crash, or manual open).
+pub fn ensure_or_create_log_window(
+    app: &AppHandle,
+    instance_id: &str,
+    instance_name: &str,
+) -> Result<tauri::WebviewWindow, String> {
+    let win_label = get_instance_log_window_label(instance_id);
+    if let Some(existing) = app.get_webview_window(&win_label) {
         let _ = existing.show();
         let _ = existing.unminimize();
         let _ = existing.set_focus();
         return Ok(existing);
     }
 
-    let win = tauri::WebviewWindowBuilder::new(
+    let encoded_id =
+        url::form_urlencoded::byte_serialize(instance_id.as_bytes()).collect::<String>();
+    let url_str = format!("index.html#/log-window?instanceId={}", encoded_id);
+
+    let builder = tauri::WebviewWindowBuilder::new(
         app,
-        "log-window",
-        tauri::WebviewUrl::App("index.html#/log-window".into()),
+        &win_label,
+        tauri::WebviewUrl::App(url_str.into()),
     )
-    .title("Focusite 遊戲即時控制台")
+    .title(format!("Focusite 即時控制台 — {}", instance_name))
     .inner_size(860.0, 540.0)
     .min_inner_size(600.0, 380.0)
-    .decorations(true)
-    .resizable(true)
+    .decorations(false)
+    .resizable(true);
+
+    // Must match the main window exactly, otherwise WebView2 fails with HRESULT 0x8007139F.
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(crate::get_webview2_browser_arguments());
+
+    let win = builder
     .build()
-    .map_err(|e| e.to_string())?;
+    .map_err(super::ctx("無法開啟控制台視窗"))?;
 
     let _ = win.show();
     let _ = win.unminimize();
     let _ = win.set_focus();
     Ok(win)
+}
+
+/// Grants the asset protocol read access to one user-chosen image file.
+#[tauri::command]
+pub fn allow_asset_image(app_handle: AppHandle, path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    let ext_ok = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg" | "webp"))
+        .unwrap_or(false);
+    if !ext_ok || !p.is_file() {
+        return Err("僅允許既有的圖片檔案 (png/jpg/webp)".into());
+    }
+    app_handle
+        .asset_protocol_scope()
+        .allow_file(p)
+        .map_err(super::ctx("無法開啟控制台視窗"))
+}
+
+#[tauri::command]
+pub fn get_instance_log_buffer(instance_id: String) -> Result<Vec<InstanceLogPayload>, String> {
+    validate_safe_id(&instance_id)?;
+    if let Ok(buffers) = LOG_BUFFERS.lock() {
+        if let Some(deque) = buffers.get(&instance_id) {
+            return Ok(deque.iter().cloned().collect());
+        }
+    }
+    Ok(Vec::new())
+}
+
+#[tauri::command]
+pub async fn open_instance_log_window(app_handle: AppHandle, instance_id: String) -> Result<(), String> {
+    validate_safe_id(&instance_id)?;
+    let base_dir = get_instances_dir().join(&instance_id);
+    let name = if let Ok(cfg) = super::instance::read_instance_config(&base_dir) {
+        cfg.name
+    } else {
+        instance_id.clone()
+    };
+    ensure_or_create_log_window(&app_handle, &instance_id, &name)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -140,12 +239,12 @@ pub async fn kill_instance(instance_id: String) -> Result<(), String> {
     if let Some(pid) = pid_opt {
         terminate_process_tree(pid)
             .await
-            .map_err(|e| format!("Failed to terminate process {}: {}", pid, e))?;
+            .map_err(|e| format!("無法終止遊戲進程（PID {}）：{}", pid, e))?;
         let mut map = RUNNING_PROCESSES.lock().map_err(|e| e.to_string())?;
         map.remove(&instance_id);
         Ok(())
     } else {
-        Err(format!("Instance {} is not currently running", instance_id))
+        Err(format!("實例 '{}' 目前未在運行", instance_id))
     }
 }
 
@@ -155,6 +254,8 @@ pub async fn launch_instance(
     instance_id: String,
     account_id: Option<String>,
     account_name: Option<String>,
+    quick_play_type: Option<String>,
+    quick_play_target: Option<String>,
 ) -> Result<u32, String> {
     validate_safe_id(&instance_id)?;
 
@@ -162,29 +263,31 @@ pub async fn launch_instance(
     {
         let map = RUNNING_PROCESSES.lock().map_err(|e| e.to_string())?;
         if let Some(existing) = map.get(&instance_id) {
-            return Err(format!(
-                "實例 '{}' 已在運行中 (PID: {})，無法重複啟動",
-                instance_id, existing.pid
-            ));
+            let _ = existing;
+            return Err(format!("實例 '{}' 已在運行中，無法重複啟動", instance_id));
         }
     }
 
     // 2. Read instance configuration
     let base_dir = get_instances_dir().join(&instance_id);
-    let mut config_path = base_dir.join("instance.cfg");
-    if !config_path.is_file() {
-        let legacy_json = base_dir.join("instance.json");
-        if legacy_json.is_file() {
-            config_path = legacy_json;
-        } else {
-            return Err(format!("Instance configuration not found at {:?}", config_path));
-        }
-    }
+    let mut instance_config: InstanceDiskConfig = super::instance::read_instance_config(&base_dir)?;
 
-    let config_content = std::fs::read_to_string(&config_path)
-        .map_err(|e| format!("Failed to read instance config: {}", e))?;
-    let instance_config: InstanceDiskConfig = serde_json::from_str(&config_content)
-        .map_err(|e| format!("Invalid instance config JSON: {}", e))?;
+    // Update last_played_at timestamp
+    let played_at = chrono::Utc::now().timestamp_millis();
+    instance_config.last_played_at = Some(played_at);
+    let _ = super::instance::update_instance_config(&base_dir, |c| c.last_played_at = Some(played_at));
+
+    // A custom loader jar replaces the client jar. Everything else (libraries, assets, Java) comes from
+    // the Minecraft version the jar declares, so launch as a vanilla instance of that version.
+    // The change is made after the config was saved, so it never reaches disk.
+    let mut custom_client_jar: Option<PathBuf> = None;
+    if instance_config.loader.eq_ignore_ascii_case("custom") {
+        let (jar, mc_version) = super::instance::resolve_custom_jar(&base_dir, &instance_config)?;
+        custom_client_jar = Some(jar);
+        instance_config.version = mc_version;
+        instance_config.loader = "Vanilla".into();
+        instance_config.loader_version = None;
+    }
 
     let game_dir = base_dir.join("minecraft");
     if !game_dir.exists() {
@@ -193,27 +296,52 @@ pub async fn launch_instance(
             let _ = std::fs::rename(&legacy_dir, &game_dir);
         } else {
             std::fs::create_dir_all(&game_dir)
-                .map_err(|e| format!("Failed to create minecraft directory: {}", e))?;
+                .map_err(|e| format!("無法建立 minecraft 資料夾：{}", e))?;
         }
     }
 
-    // 3. Resolve Java
-    let required_major = get_recommended_java_version(&instance_config.version);
-    let java_path = if let Some(ref custom_java) = instance_config.java_path {
-        if !custom_java.trim().is_empty() && std::path::Path::new(custom_java).exists() {
-            std::path::PathBuf::from(custom_java)
-        } else {
-            resolve_or_locate_java(required_major, None)
-                .map_err(|e| format!("無法解析相容的 Java 環境 (需要 Java {}): {}", required_major, e))?
+    // Start each launch with a fresh console buffer.
+    clear_instance_log(&instance_id);
+
+    // 3. Ensure all instance assets, libraries, client core, and Java runtime are provisioned
+    let java_path = match super::provisioning::ensure_instance_provisioned(
+        &app_handle,
+        &instance_id,
+        &instance_config,
+    )
+    .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            // Terminal event so the install modal can close.
+            let _ = app_handle.emit(
+                "instance-install-progress",
+                super::provisioning::InstanceProvisionProgressPayload {
+                    instance_id: instance_id.clone(),
+                    step: "error".into(),
+                    message: e.clone(),
+                    current: 0,
+                    total: 0,
+                    percentage: 0.0,
+                    speed_bytes_per_sec: 0,
+                },
+            );
+            let _ = app_handle.emit(
+                "instance-status",
+                InstanceStatusPayload {
+                    instance_id: instance_id.clone(),
+                    status: "stopped".into(),
+                    exit_code: None,
+                    pid: None,
+                },
+            );
+            return Err(format!("準備遊戲檔案失敗：{}", e));
         }
-    } else {
-        resolve_or_locate_java(required_major, None)
-            .map_err(|e| format!("無法解析相容的 Java 環境 (需要 Java {}): {}", required_major, e))?
     };
 
     // 4. Show the detached log window ONLY if show_log_on_launch is true
     if instance_config.show_log_on_launch {
-        let _ = ensure_or_create_log_window(&app_handle);
+        let _ = ensure_or_create_log_window(&app_handle, &instance_id, &instance_config.name);
     }
 
     let _ = app_handle.emit(
@@ -244,7 +372,7 @@ pub async fn launch_instance(
         InstanceLogPayload {
             instance_id: instance_id.clone(),
             stream: "system".into(),
-            line: format!("[Focusite] 使用 Java: {:?}", java_path),
+            line: format!("[Focusite] 使用 Java：{}", java_path.display()),
             timestamp: chrono::Utc::now().timestamp_millis(),
         },
     );
@@ -254,7 +382,8 @@ pub async fn launch_instance(
     let app_data = super::get_app_data_dir();
     let assets_dir = app_data.join("assets");
     let libraries_dir = app_data.join("libraries");
-    let natives_dir = app_data.join("natives").join(&instance_config.version);
+    // Must match the directory provisioning extracts natives into.
+    let natives_dir = game_dir.join("bin").join("natives");
     let versions_dir = app_data.join("versions").join(&instance_config.version);
 
     if !assets_dir.exists() {
@@ -267,7 +396,9 @@ pub async fn launch_instance(
         let _ = std::fs::create_dir_all(&natives_dir);
     }
 
-    let client_jar = if versions_dir.join(format!("{}.jar", instance_config.version)).is_file() {
+    let client_jar = if let Some(jar) = custom_client_jar {
+        jar
+    } else if versions_dir.join(format!("{}.jar", instance_config.version)).is_file() {
         versions_dir.join(format!("{}.jar", instance_config.version))
     } else {
         game_dir
@@ -275,22 +406,46 @@ pub async fn launch_instance(
             .join(format!("{}.jar", instance_config.version))
     };
 
-    let player_name = account_name.clone().unwrap_or_else(|| "Player".into());
+    let (auth_player, auth_uuid_val, auth_token, auth_user_type) = if let Some(ref acc_id) = account_id {
+        super::auth::ensure_valid_minecraft_token(Some(acc_id))
+            .await
+            .map_err(|e| format!("微軟正版帳號驗證失敗: {}", e))?
+    } else {
+        match super::auth::ensure_valid_minecraft_token(None).await {
+            Ok(creds) => creds,
+            Err(_) => {
+                if let Some(ref name) = account_name {
+                    (name.clone(), uuid::Uuid::new_v4().to_string(), "0".into(), "legacy".into())
+                } else {
+                    return Err("尚未登入微軟帳號，也未指定離線玩家名稱".to_string());
+                }
+            }
+        }
+    };
+
+    let quick_play = match (quick_play_type.as_deref(), quick_play_target) {
+        (Some("singleplayer"), Some(world)) => Some(QuickPlayTarget::Singleplayer(world)),
+        (Some("multiplayer"), Some(server)) => Some(QuickPlayTarget::Multiplayer(server)),
+        _ => None,
+    };
+
     let context = LaunchContext {
-        auth_player_name: player_name,
+        auth_player_name: auth_player,
         version_name: instance_config.version.clone(),
         game_directory: game_dir.to_string_lossy().to_string(),
         assets_root: assets_dir.to_string_lossy().to_string(),
         assets_index_name: instance_config.version.clone(),
-        auth_uuid: uuid::Uuid::new_v4().to_string(),
-        auth_access_token: "0".into(),
-        user_type: "msa".into(),
+        auth_uuid: auth_uuid_val,
+        auth_access_token: auth_token,
+        user_type: auth_user_type,
         version_type: "release".into(),
         classpath: client_jar.to_string_lossy().to_string(),
         natives_directory: natives_dir.to_string_lossy().to_string(),
         launcher_name: "Focusite".into(),
         launcher_version: env!("CARGO_PKG_VERSION").into(),
         tweak_class: None,
+        quick_play,
+        custom_jvm_args: instance_config.custom_jvm_args.clone().unwrap_or_default(),
     };
 
     let min_memory = instance_config.min_memory_mb;
@@ -362,7 +517,15 @@ pub async fn launch_instance(
             None,
         )
     } else {
-        let manifest_path = versions_dir.join(format!("{}.json", instance_config.version));
+        let manifest_path = super::provisioning::loader_profile_id(&instance_config)
+            .map(|pid| {
+                app_data
+                    .join("versions")
+                    .join(&pid)
+                    .join(format!("{}.json", pid))
+            })
+            .filter(|p| p.is_file())
+            .unwrap_or_else(|| versions_dir.join(format!("{}.json", instance_config.version)));
         let default_manifest = || VersionManifest {
             id: instance_config.version.clone(),
             version_type: "release".into(),
@@ -415,10 +578,13 @@ pub async fn launch_instance(
             }
         }
 
-        let mut mod_context = context.clone();
-        if !allowed_libs.is_empty() {
-            mod_context.classpath = build_classpath(&allowed_libs, &client_jar);
-        }
+    let mut mod_context = context.clone();
+    if let Some(ref asset_idx) = manifest.asset_index {
+        mod_context.assets_index_name = asset_idx.id.clone();
+    }
+    if !allowed_libs.is_empty() {
+        mod_context.classpath = build_classpath(&allowed_libs, &client_jar);
+    }
 
         build_launch_arguments(
             &manifest,
@@ -432,8 +598,13 @@ pub async fn launch_instance(
     };
 
     // 6. Spawn child process
-    let mut child = ProcessLauncher::spawn_direct(&java_path, &game_dir, &args)
-        .map_err(|e| format!("子進程生成失敗: {}", e))?;
+    let mut child = ProcessLauncher::spawn_direct_with_env(
+        &java_path,
+        &game_dir,
+        &args,
+        instance_config.environment_vars.as_ref(),
+    )
+    .map_err(|e| format!("子進程生成失敗: {}", e))?;
 
     let pid = child.id().ok_or_else(|| "無法取得子進程 PID".to_string())?;
 
@@ -461,15 +632,18 @@ pub async fn launch_instance(
         },
     );
 
-    let _ = app_handle.emit(
-        "instance-log",
-        InstanceLogPayload {
-            instance_id: instance_id.clone(),
-            stream: "system".into(),
-            line: format!("[Focusite] 遊戲進程已成功啟動，PID: {}", pid),
-            timestamp: chrono::Utc::now().timestamp_millis(),
-        },
-    );
+    let sys_log = InstanceLogPayload {
+        instance_id: instance_id.clone(),
+        stream: "system".into(),
+        line: format!("[Focusite] 遊戲進程已成功啟動，PID: {}", pid),
+        timestamp: chrono::Utc::now().timestamp_millis(),
+    };
+    append_instance_log(sys_log.clone());
+    let _ = app_handle.emit("instance-log", sys_log);
+
+    if instance_config.show_log_on_launch {
+        let _ = ensure_or_create_log_window(&app_handle, &instance_id, &instance_config.name);
+    }
 
     // 7. Background log stream listener and process wait
     let stdout = child.stdout.take();
@@ -483,15 +657,14 @@ pub async fn launch_instance(
         tokio::spawn(async move {
             let mut reader = BufReader::new(out).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                let _ = app_handle_out.emit(
-                    "instance-log",
-                    InstanceLogPayload {
-                        instance_id: inst_id_out.clone(),
-                        stream: "stdout".into(),
-                        line,
-                        timestamp: chrono::Utc::now().timestamp_millis(),
-                    },
-                );
+                let payload = InstanceLogPayload {
+                    instance_id: inst_id_out.clone(),
+                    stream: "stdout".into(),
+                    line,
+                    timestamp: chrono::Utc::now().timestamp_millis(),
+                };
+                append_instance_log(payload.clone());
+                let _ = app_handle_out.emit("instance-log", payload);
             }
         });
     }
@@ -500,24 +673,35 @@ pub async fn launch_instance(
         tokio::spawn(async move {
             let mut reader = BufReader::new(err).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                let _ = app_handle_err.emit(
-                    "instance-log",
-                    InstanceLogPayload {
-                        instance_id: inst_id_err.clone(),
-                        stream: "stderr".into(),
-                        line,
-                        timestamp: chrono::Utc::now().timestamp_millis(),
-                    },
-                );
+                let payload = InstanceLogPayload {
+                    instance_id: inst_id_err.clone(),
+                    stream: "stderr".into(),
+                    line,
+                    timestamp: chrono::Utc::now().timestamp_millis(),
+                };
+                append_instance_log(payload.clone());
+                let _ = app_handle_err.emit("instance-log", payload);
             }
         });
     }
 
     let app_handle_wait = app_handle.clone();
     let inst_id_wait = instance_id.clone();
+    let inst_name_wait = instance_config.name.clone();
+    let inst_dir_wait = base_dir.clone();
+    let started_at = std::time::Instant::now();
 
     tokio::spawn(async move {
         let status = child.wait().await;
+
+        // Accumulate the session length into the instance's total play time.
+        let session_ms = started_at.elapsed().as_millis() as u64;
+        let _ = tokio::task::spawn_blocking(move || {
+            let _ = super::instance::update_instance_config(&inst_dir_wait, |cfg| {
+                cfg.total_play_time_ms = cfg.total_play_time_ms.saturating_add(session_ms);
+            });
+        })
+        .await;
         let exit_code = match status {
             Ok(s) => s.code(),
             Err(_) => Some(-1),
@@ -532,21 +716,20 @@ pub async fn launch_instance(
 
         // When game crashes (exit_code != 0), automatically pop up and focus log window
         if is_crash {
-            let _ = ensure_or_create_log_window(&app_handle_wait);
+            let _ = ensure_or_create_log_window(&app_handle_wait, &inst_id_wait, &inst_name_wait);
         }
 
-        let _ = app_handle_wait.emit(
-            "instance-log",
-            InstanceLogPayload {
-                instance_id: inst_id_wait.clone(),
-                stream: "system".into(),
-                line: format!(
-                    "[Focusite] 遊戲進程已終止，結束狀態碼 (Exit Code): {:?}",
-                    exit_code
-                ),
-                timestamp: chrono::Utc::now().timestamp_millis(),
+        let term_log = InstanceLogPayload {
+            instance_id: inst_id_wait.clone(),
+            stream: "system".into(),
+            line: match exit_code {
+                Some(code) => format!("[Focusite] 遊戲進程已終止，結束狀態碼：{}", code),
+                None => "[Focusite] 遊戲進程已終止（無結束狀態碼）".to_string(),
             },
-        );
+            timestamp: chrono::Utc::now().timestamp_millis(),
+        };
+        append_instance_log(term_log.clone());
+        let _ = app_handle_wait.emit("instance-log", term_log);
 
         let _ = app_handle_wait.emit(
             "instance-status",
@@ -569,7 +752,7 @@ mod tests {
     #[test]
     fn test_running_process_map_lifecycle() {
         {
-            let mut map = RUNNING_PROCESSES.lock().unwrap();
+            let mut map = RUNNING_PROCESSES.lock().unwrap_or_else(|e| e.into_inner());
             map.insert(
                 "test-instance".into(),
                 RunningProcessInfo {
@@ -586,7 +769,7 @@ mod tests {
         assert_eq!(running_instance_count(), 1);
 
         {
-            let mut map = RUNNING_PROCESSES.lock().unwrap();
+            let mut map = RUNNING_PROCESSES.lock().unwrap_or_else(|e| e.into_inner());
             map.remove("test-instance");
             assert!(map.get("test-instance").is_none());
         }

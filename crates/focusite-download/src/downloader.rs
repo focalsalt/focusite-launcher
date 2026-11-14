@@ -9,9 +9,14 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{info, warn};
 
-use crate::chunked::{DownloadProgress, DownloadTask};
+use crate::chunked::{
+    download_file_chunked, probe_range_support, DownloadProgress, DownloadTask,
+    CHUNK_THRESHOLD_BYTES,
+};
 use crate::mirror::{MirrorManager, MirrorProvider};
 use crate::DownloadError;
+
+const MAX_ATTEMPTS_PER_CANDIDATE: u32 = 3;
 
 #[derive(Debug, Clone)]
 pub struct Downloader {
@@ -92,6 +97,20 @@ impl Downloader {
         progress_tx: Option<mpsc::Sender<DownloadProgress>>,
         task_id: &str,
     ) -> Result<(), DownloadError> {
+        self.download_file_with_size(url, destination, expected_sha1, None, progress_tx, task_id)
+            .await
+    }
+
+    /// Downloads a single file with optional expected size to avoid HEAD probe for small files.
+    pub async fn download_file_with_size<P: AsRef<Path>>(
+        &self,
+        url: &str,
+        destination: P,
+        expected_sha1: Option<&str>,
+        expected_size: Option<u64>,
+        progress_tx: Option<mpsc::Sender<DownloadProgress>>,
+        task_id: &str,
+    ) -> Result<(), DownloadError> {
         let dest = destination.as_ref();
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).await?;
@@ -103,22 +122,37 @@ impl Downloader {
 
         for (candidate_url, timeout) in candidates {
             info!("Attempting download from {}", candidate_url);
-            match self
-                .stream_download(
-                    &candidate_url,
-                    &temp_dest,
-                    timeout,
-                    expected_sha1,
-                    progress_tx.as_ref(),
-                    task_id,
-                )
-                .await
-            {
+
+            // Retry transient failures on the same candidate before falling back to the next one.
+            let mut download_res = Err(DownloadError::AllSourcesFailed { url: url.to_string() });
+            for attempt in 0..MAX_ATTEMPTS_PER_CANDIDATE {
+                if attempt > 0 {
+                    tokio::time::sleep(Duration::from_millis(500 * (1 << attempt))).await;
+                }
+                download_res = self
+                    .attempt_download(
+                        &candidate_url,
+                        timeout,
+                        &temp_dest,
+                        expected_sha1,
+                        expected_size,
+                        progress_tx.as_ref(),
+                        task_id,
+                    )
+                    .await;
+                match &download_res {
+                    Ok(()) => break,
+                    // A checksum mismatch will not heal by retrying the same bytes.
+                    Err(DownloadError::ValidationFailed { .. }) => break,
+                    Err(e) => warn!("Attempt {} for {} failed: {}", attempt + 1, candidate_url, e),
+                }
+                let _ = fs::remove_file(&temp_dest).await;
+            }
+
+            match download_res {
                 Ok(()) => {
                     // Download and validation succeeded; atomically replace destination
-                    if dest.exists() {
-                        let _ = fs::remove_file(dest).await;
-                    }
+                    // rename replaces an existing file on Windows, so no remove-then-rename gap.
                     fs::rename(&temp_dest, dest).await?;
                     info!("Successfully downloaded to {:?}", dest);
                     return Ok(());
@@ -139,6 +173,83 @@ impl Downloader {
         Err(last_error.unwrap_or_else(|| DownloadError::AllSourcesFailed {
             url: url.to_string(),
         }))
+    }
+
+    /// One attempt against a single candidate URL (probe, then chunked or streamed download).
+    #[allow(clippy::too_many_arguments)]
+    async fn attempt_download(
+        &self,
+        candidate_url: &str,
+        timeout: Duration,
+        temp_dest: &Path,
+        expected_sha1: Option<&str>,
+        expected_size: Option<u64>,
+        progress_tx: Option<&mpsc::Sender<DownloadProgress>>,
+        task_id: &str,
+    ) -> Result<(), DownloadError> {
+        // Probe for Content-Length and Range support for files >= 4 MiB (skip probe if expected_size < threshold)
+        let maybe_size = if let Some(sz) = expected_size {
+            if sz < CHUNK_THRESHOLD_BYTES {
+                None
+            } else {
+                probe_range_support(&self.client, candidate_url, timeout)
+                    .await
+                    .ok()
+                    .flatten()
+            }
+        } else {
+            probe_range_support(&self.client, candidate_url, timeout)
+                .await
+                .ok()
+                .flatten()
+        };
+        let should_chunk = maybe_size
+            .map(|sz| sz >= CHUNK_THRESHOLD_BYTES)
+            .unwrap_or(false);
+
+        if should_chunk {
+            let total_sz = maybe_size.unwrap();
+            match download_file_chunked(
+                &self.client,
+                candidate_url,
+                temp_dest,
+                total_sz,
+                timeout,
+                expected_sha1,
+                progress_tx,
+                task_id,
+            )
+            .await
+            {
+                Ok(()) => Ok(()),
+                Err(DownloadError::RangeNotSupported { .. }) => {
+                    warn!(
+                        "Server rejected HTTP Range for {}, falling back to single-stream download",
+                        candidate_url
+                    );
+                    self.stream_download(
+                        candidate_url,
+                        temp_dest,
+                        timeout,
+                        expected_sha1,
+                        progress_tx,
+                        task_id,
+                    )
+                    .await
+                }
+                Err(e) => Err(e),
+            }
+        } else {
+            self.stream_download(
+                candidate_url,
+                temp_dest,
+                timeout,
+                expected_sha1,
+                progress_tx,
+                task_id,
+            )
+            .await
+        }
     }
 
     async fn stream_download(
@@ -163,6 +274,7 @@ impl Downloader {
         let mut hasher = Sha1::new();
         let mut downloaded_bytes: u64 = 0;
         let start_time = Instant::now();
+        let mut last_report = Instant::now();
 
         let mut stream_resp = resp;
         while let Some(chunk) = stream_resp.chunk().await? {
@@ -170,25 +282,35 @@ impl Downloader {
             file.write_all(&chunk).await?;
             downloaded_bytes += chunk.len() as u64;
 
-            if let Some(tx) = progress_tx {
+            // Throttle UI events to ~10/s; never block the download on a slow consumer.
+            if let Some(tx) = progress_tx.filter(|_| last_report.elapsed() >= Duration::from_millis(100)) {
+                last_report = Instant::now();
                 let elapsed = start_time.elapsed().as_secs_f64();
                 let speed = if elapsed > 0.0 {
                     (downloaded_bytes as f64 / elapsed) as u64
                 } else {
                     0
                 };
-                let _ = tx
-                    .send(DownloadProgress {
-                        task_id: task_id.to_string(),
-                        downloaded_bytes,
-                        total_bytes,
-                        speed_bytes_per_sec: speed,
-                    })
-                    .await;
+                let _ = tx.try_send(DownloadProgress {
+                    task_id: task_id.to_string(),
+                    downloaded_bytes,
+                    total_bytes,
+                    speed_bytes_per_sec: speed,
+                });
             }
         }
 
         file.flush().await?;
+
+        // Final event so consumers always see 100% despite throttling.
+        if let Some(tx) = progress_tx {
+            let _ = tx.try_send(DownloadProgress {
+                task_id: task_id.to_string(),
+                downloaded_bytes,
+                total_bytes,
+                speed_bytes_per_sec: 0,
+            });
+        }
 
         let calculated_sha1 = format!("{:x}", hasher.finalize());
         if let Some(exp) = expected_sha1 {
@@ -221,12 +343,16 @@ impl Downloader {
             let task_id = format!("task-{}", i);
 
             join_set.spawn(async move {
-                let _permit = sem.acquire().await.unwrap();
+                let _permit = sem
+                    .acquire()
+                    .await
+                    .map_err(|e| DownloadError::Io(std::io::Error::other(e.to_string())))?;
                 downloader
-                    .download_file(
+                    .download_file_with_size(
                         &task.url,
                         PathBuf::from(task.destination),
                         task.expected_sha1.as_deref(),
+                        task.expected_size,
                         p_tx,
                         &task_id,
                     )

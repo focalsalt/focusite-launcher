@@ -2,9 +2,18 @@
 
 pub mod args;
 pub mod instance;
+pub mod installer;
 pub mod java;
 pub mod manifest;
 pub mod process;
+pub mod server;
+pub mod slp;
+pub mod world;
+
+pub use args::{build_launch_arguments, LaunchContext, QuickPlayTarget};
+pub use server::{read_servers_dat, write_servers_dat, ServerEntry};
+pub use slp::{ping_minecraft_server, ServerPingResult};
+pub use world::{backup_world, delete_world, list_instance_worlds, parse_level_dat, rename_world, WorldSummary};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
@@ -19,6 +28,9 @@ pub enum CoreError {
 
     #[error("Invalid manifest: {0}")]
     InvalidManifest(String),
+
+    #[error("Resource not found: {0}")]
+    NotFound(String),
 
     #[error("Java runtime not found: {0}")]
     JavaNotFound(String),

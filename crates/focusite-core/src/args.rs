@@ -4,6 +4,13 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use crate::manifest::{eval_rules, ArgumentEntry, VersionManifest};
 
+/// Quick Play Direct Launch target
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QuickPlayTarget {
+    Singleplayer(String),
+    Multiplayer(String),
+}
+
 /// Parameters used to interpolate Minecraft and JVM launch arguments.
 #[derive(Debug, Clone)]
 pub struct LaunchContext {
@@ -21,6 +28,8 @@ pub struct LaunchContext {
     pub launcher_name: String,
     pub launcher_version: String,
     pub tweak_class: Option<String>,
+    pub quick_play: Option<QuickPlayTarget>,
+    pub custom_jvm_args: Vec<String>,
 }
 
 impl Default for LaunchContext {
@@ -40,6 +49,8 @@ impl Default for LaunchContext {
             launcher_name: "Focusite".into(),
             launcher_version: "26.1.0".into(),
             tweak_class: None,
+            quick_play: None,
+            custom_jvm_args: Vec::new(),
         }
     }
 }
@@ -111,6 +122,34 @@ pub fn build_launch_arguments(
         }
     }
 
+    // 2.1 JPMS module opens for Java 9+ (Minecraft 1.17+)
+    let is_modern_java = manifest
+        .java_version
+        .as_ref()
+        .map(|j| j.major_version >= 9)
+        .unwrap_or(true);
+
+    if is_modern_java {
+        let jpms_flags = [
+            "-Djava.net.preferIPv4Stack=true",
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+            "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+            "--add-opens=java.base/java.io=ALL-UNNAMED",
+            "--add-opens=java.base/java.net=ALL-UNNAMED",
+            "--add-opens=java.base/java.nio=ALL-UNNAMED",
+            "--add-opens=java.base/java.util=ALL-UNNAMED",
+            "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+            "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+            "--add-opens=java.base/sun.net.www.protocol.jar=ALL-UNNAMED",
+        ];
+        for flag in jpms_flags {
+            if !args.iter().any(|a| a == flag) {
+                args.push(flag.into());
+            }
+        }
+    }
+
     // 3. Manifest JVM arguments
     if let Some(ref launch_args) = manifest.arguments {
         for entry in &launch_args.jvm {
@@ -136,6 +175,13 @@ pub fn build_launch_arguments(
         args.push(context.classpath.clone());
     }
 
+    // 3.5 Custom user-defined JVM arguments
+    for custom in &context.custom_jvm_args {
+        if !custom.trim().is_empty() {
+            args.push(context.interpolate(custom.trim()));
+        }
+    }
+
     // 4. Main Class
     args.push(manifest.main_class.clone());
 
@@ -158,6 +204,20 @@ pub fn build_launch_arguments(
     } else if let Some(ref legacy) = manifest.legacy_arguments {
         for part in legacy.split_whitespace() {
             args.push(context.interpolate(part));
+        }
+    }
+
+    // 5.5 Quick Play Direct Launch (Minecraft 1.20+)
+    if let Some(ref qp) = context.quick_play {
+        match qp {
+            QuickPlayTarget::Singleplayer(world) => {
+                args.push("--quickPlaySingleplayer".into());
+                args.push(world.clone());
+            }
+            QuickPlayTarget::Multiplayer(server) => {
+                args.push("--quickPlayMultiplayer".into());
+                args.push(server.clone());
+            }
         }
     }
 

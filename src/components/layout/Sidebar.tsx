@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   Boxes,
   Box,
+  AlertTriangle,
   Settings,
   Plus,
   FolderDown,
@@ -25,23 +26,13 @@ import {
   RunningInstanceInfo,
   UserAccount,
 } from "@/types/navigation";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { toAssetSrc } from "@/lib/assetUrl";
 import {
   preloadCreateInstanceDialog,
   preloadImportModpackDialog,
 } from "@/lib/startupOrchestrator";
-
-const getIconSrc = (path?: string) => {
-  if (!path) return undefined;
-  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-    try {
-      return convertFileSrc(path);
-    } catch {
-      return path;
-    }
-  }
-  return path;
-};
+import { sortForSidebar } from "@/lib/instanceOrder";
+import { useI18n } from "@/i18n";
 
 interface SidebarProps {
   currentView: MainView;
@@ -78,6 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onImportInstance,
   runningInstances = {},
 }) => {
+  const { t } = useI18n();
   const asideRef = useRef<HTMLElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -156,7 +148,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     >
       {/* 全局無裁切膠囊指示器：座落於 aside 根層級，在頂部項目、實例列表與全域設定間切換時永不遭容器溢出裁切 */}
       <motion.div
-        className="absolute left-0 w-1 rounded-r-full bg-[#52A43A] shadow-[0_0_8px_rgba(82,164,58,0.7)] z-30 pointer-events-none"
+        className="absolute left-0 w-1 rounded-r-full bg-brand-light shadow-[0_0_8px_color-mix(in_srgb,var(--fc-highlight)_70%,transparent)] z-30 pointer-events-none"
         initial={false}
         animate={{
           top: indicator.top,
@@ -187,7 +179,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <SidebarNavItem
           id="nav-item-news"
           icon={<Newspaper className="h-4 w-4" />}
-          label="新聞快訊"
+          label={t.shell.newsFlash}
           active={currentView === "news"}
           onClick={() => onNavigate("news")}
         />
@@ -195,7 +187,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <SidebarNavItem
           id="nav-item-home"
           icon={<Home className="h-4 w-4" />}
-          label="首頁"
+          label={t.shell.home}
           active={currentView === "home"}
           onClick={() => onNavigate("home")}
         />
@@ -203,17 +195,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <SidebarNavItem
           id="nav-item-instances"
           icon={<LayoutGrid className="h-4 w-4" />}
-          label="實例總覽"
+          label={t.shell.instanceOverview}
           active={currentView === "instances"}
           onClick={() => onNavigate("instances")}
         />
       </div>
 
       {/* 3. 實例列表標籤 (純文字 Label，非按鈕，水平對齊 20px) */}
-      <div className="shrink-0 flex items-center justify-between px-5 pt-4 pb-1.5 text-xs font-bold text-slate-300">
+      <div id="nav-instance-list" className="shrink-0 flex items-center justify-between px-5 pt-4 pb-1.5 text-xs font-bold text-slate-300">
         <div className="flex items-center gap-2">
-          <Boxes className="h-4 w-4 text-[#52A43A]" />
-          <span>實例列表</span>
+          <Boxes className="h-4 w-4 text-brand-light" />
+          <span>{t.shell.instanceList}</span>
         </div>
         <div className="flex items-center gap-1">
           <Tooltip>
@@ -227,7 +219,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <FolderDown className="h-3.5 w-3.5" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top">導入實例</TooltipContent>
+            <TooltipContent side="top">{t.shell.importInstance}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -241,7 +233,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Plus className="h-3.5 w-3.5" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top">建立全新實例</TooltipContent>
+            <TooltipContent side="top">{t.shell.createNewInstance}</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -258,10 +250,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         {instances.length === 0 ? (
           <div className="px-5 py-6 text-center space-y-1">
-            <p className="text-[11px] text-slate-500">尚未建立實例</p>
+            <p className="text-[11px] text-slate-500">{t.shell.noInstances}</p>
           </div>
         ) : (
-          instances.map((inst) => {
+          sortForSidebar(instances).map((inst) => {
             const isSelected =
               currentView === "instance-detail" &&
               selectedInstanceId === inst.id;
@@ -286,16 +278,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }`}
                 >
                   <div className="relative shrink-0">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 overflow-hidden text-[#52A43A]">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 overflow-hidden text-brand-light">
                       {inst.hasIcon && inst.iconPath ? (
                         <img
-                          src={getIconSrc(inst.iconPath)}
+                          src={toAssetSrc(inst.iconPath, inst.iconUpdatedAt)}
                           alt={inst.name}
                           className="h-full w-full object-cover"
                         />
+                      ) : inst.needsSetup ? (
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
                       ) : (
                         <Box
-                          className={`h-4 w-4 shrink-0 transition-colors ${isSelected ? "text-[#52A43A]" : "text-slate-400"
+                          className={`h-4 w-4 shrink-0 transition-colors ${isSelected ? "text-brand-light" : "text-slate-400"
                             }`}
                         />
                       )}
@@ -309,10 +303,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           animate={{ scale: 1, opacity: 1 }}
                           exit={{ scale: 0, opacity: 0 }}
                           transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                          className="absolute -bottom-1 -right-1 z-10 flex h-4 w-4 items-center justify-center rounded-md border border-slate-900 bg-slate-800 shadow-md overflow-hidden ring-1 ring-[#52A43A]"
-                          title={`正在運行：${runningInfo.accountName || "玩家"}`}
+                          className="absolute -bottom-1 -right-1 z-10 flex h-4 w-4 items-center justify-center rounded-md border border-slate-900 bg-slate-800 shadow-md overflow-hidden ring-1 ring-brand-light"
+                          title={t.shell.runningAs(runningInfo.accountName || t.shell.player)}
                         >
-                          <PlayerAvatar username={runningInfo.accountName || "Steve"} size={16} className="rounded-none" />
+                          {runningInfo.accountName && (
+                            <PlayerAvatar username={runningInfo.accountName} size={16} className="rounded-none" />
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -322,7 +318,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       {inst.name}
                     </span>
                     <span className="truncate text-[10px] text-slate-400 font-mono mt-0.5">
-                      {inst.loader} · {inst.version}
+                      {inst.needsSetup ? t.common.unknown : `${inst.loader} · ${inst.version}`}
                     </span>
                   </div>
                 </button>
@@ -345,12 +341,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <span
               className={
-                currentView === "settings" ? "text-[#52A43A]" : "text-slate-400"
+                currentView === "settings" ? "text-brand-light" : "text-slate-400"
               }
             >
               <Settings className="h-4 w-4" />
             </span>
-            <span>全域設定</span>
+            <span>{t.shell.globalSettings}</span>
           </button>
         </div>
       </div>
@@ -379,7 +375,7 @@ function SidebarNavItem({
         className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs font-semibold transition-colors hover:bg-white/5 active:bg-white/10 ${active ? "bg-white/10 text-slate-100" : "text-slate-400 hover:text-slate-200"
           }`}
       >
-        <span className={active ? "text-[#52A43A]" : "text-slate-400"}>
+        <span className={active ? "text-brand-light" : "text-slate-400"}>
           {icon}
         </span>
         <span>{label}</span>

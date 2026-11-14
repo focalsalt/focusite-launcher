@@ -1,0 +1,64 @@
+/*
+ * Theme tokens.
+ *
+ * Every themable value in the launcher is a `--fc-*` custom property defined here. A theme pack
+ * (`%APPDATA%\focusite_launcher\themes\*.focusite-theme.json`) overrides any of them at runtime, so
+ * the defaults below are also the built-in "Minecraft" theme.
+ */
+:root {
+  /* Brand */
+  --fc-primary: #3c8527;
+  --fc-highlight: #52a43a;
+  /* Derived from the primary color unless a pack sets them */
+  --fc-primary-hover: color-mix(in srgb, var(--fc-primary) 82%, white);
+  --fc-primary-dark: color-mix(in srgb, var(--fc-primary) 70%, black);
+
+  /* Window background */
+  --fc-bg-canvas: #0a0f1d;
+
+  /* Neutral scale: backs every slate-* utility (surfaces, borders, text) */
+  --fc-neutral-50: oklch(98.4% 0.003 247.858);
+  --fc-neutral-100: oklch(96.8% 0.007 247.896);
+  --fc-neutral-200: oklch(92.9% 0.013 255.508);
+  --fc-neutral-300: oklch(86.9% 0.022 252.894);
+  --fc-neutral-400: oklch(70.4% 0.04 256.788);
+  --fc-neutral-500: oklch(55.4% 0.046 257.417);
+  --fc-neutral-600: oklch(44.6% 0.043 257.281);
+  --fc-neutral-700: oklch(37.2% 0.044 257.287);
+  --fc-neutral-800: oklch(27.9% 0.041 260.031);
+  --fc-neutral-900: oklch(20.8% 0.042 265.755);
+  --fc-neutral-950: oklch(12.9% 0.042 264.695);
+
+  /* Shape and type: --fc-radius is the size of `rounded-xl`; the other steps scale from it */
+  --fc-radius: 0.75rem;
+  --fc-font-sans: Inter, "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+
+/* Tailwind utilities backed by the tokens: bg-brand, text-brand-light, bg-slate-900, rounded-xl ... */
+@theme inline {
+  --color-brand: var(--fc-primary);
+  --color-brand-hover: var(--fc-primary-hover);
+  --color-brand-light: var(--fc-highlight);
+  --color-brand-dark: var(--fc-primary-dark);
+  --color-canvas: var(--fc-bg-canvas);
+
+  --color-slate-50: var(--fc-neutral-50);
+  --color-slate-100: var(--fc-neutral-100);
+  --color-slate-200: var(--fc-neutral-200);
+  --color-slate-300: var(--fc-neutral-300);
+  --color-slate-400: var(--fc-neutral-400);
+  --color-slate-500: var(--fc-neutral-500);
+  --color-slate-600: var(--fc-neutral-600);
+  --color-slate-700: var(--fc-neutral-700);
+  --color-slate-800: var(--fc-neutral-800);
+  --color-slate-900: var(--fc-neutral-900);
+  --color-slate-950: var(--fc-neutral-950);
+
+  --radius-md: calc(var(--fc-radius) * 0.5);
+  --radius-lg: calc(var(--fc-radius) * 0.667);
+  --radius-xl: var(--fc-radius);
+  --radius-2xl: calc(var(--fc-radius) * 1.333);
+  --radius-3xl: calc(var(--fc-radius) * 2);
+
+  --font-sans: var(--fc-font-sans);
+}

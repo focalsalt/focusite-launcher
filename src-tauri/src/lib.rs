@@ -130,7 +130,10 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            commands::settings::allow_asset_dirs(app.handle());
             let show_item = MenuItemBuilder::with_id("show", "顯示主視窗").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "結束 Focusite").build(app)?;
             let menu = MenuBuilder::new(app)
@@ -223,12 +226,8 @@ pub fn run() {
                         clean_shutdown(window.app_handle());
                     }
                 }
-            } else if window.label() == "log-window" {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    // Prevent destroying log window; simply hide it
-                    api.prevent_close();
-                    let _ = window.hide();
-                }
+            } else if window.label().starts_with("log-window-") || window.label().starts_with("workshop-") {
+                // Subwindows can close and destroy cleanly
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -241,6 +240,9 @@ pub fn run() {
             commands::manifest::get_loader_versions,
             commands::instance::list_instances,
             commands::instance::create_instance,
+            commands::instance::setup_instance,
+            commands::instance::list_custom_jars,
+            commands::instance::save_custom_jar,
             commands::instance::rename_instance,
             commands::instance::delete_instance,
             commands::instance::update_instance_settings,
@@ -256,6 +258,9 @@ pub fn run() {
             commands::instance::list_instance_screenshots,
             commands::instance::get_instance_log,
             commands::instance::set_instance_show_log,
+            commands::instance::set_instance_icon_from_file,
+            commands::instance::set_instance_preset_icon,
+            commands::instance::reset_instance_icon,
             commands::download::download_version_client,
             commands::auth::auth_check_client_id,
             commands::auth::auth_start_device_code,
@@ -269,25 +274,56 @@ pub fn run() {
             commands::skin::skin_list_local,
             commands::skin::skin_save_local,
             commands::skin::skin_delete_local,
+            commands::skin::skin_upload_to_mojang,
+            commands::skin::skin_set_active_cape,
+            commands::skin::skin_hide_active_cape,
             commands::settings::get_launcher_settings,
             commands::settings::update_launcher_settings,
+            commands::settings::get_instances_dir_path,
             commands::diagnostic::diagnose_log_content,
             commands::diagnostic::diagnose_instance_log,
             commands::p2p::start_p2p_host,
-            commands::p2p::join_p2p_room,
             commands::p2p::stop_p2p_session,
             commands::p2p::list_p2p_sessions,
             commands::p2p::p2p_verify_handshake,
-            commands::p2p::p2p_update_session_alias,
+            commands::p2p::p2p_create_offer,
+            commands::p2p::p2p_apply_answer,
+            commands::p2p::p2p_join_with_offer,
+            commands::p2p::p2p_firewall_status,
+            commands::p2p::p2p_firewall_setup,
             commands::modpack::import_modpack,
+            commands::modpack::import_modrinth_modpack,
             commands::modpack::rescan_instance_missing_mods,
             commands::modpack::open_external_urls,
+            commands::workshop::open_instance_workshop_window,
+            commands::workshop::workshop_search_projects,
+            commands::workshop::workshop_list_categories,
+            commands::workshop::workshop_get_project,
+            commands::workshop::workshop_list_versions,
+            commands::workshop::workshop_resolve_install_plan,
+            commands::workshop::workshop_execute_install_plan,
+            commands::workshop::instance_plan_stack_migration,
+            commands::workshop::instance_execute_stack_migration,
+            commands::world::list_instance_worlds_cmd,
+            commands::world::rename_instance_world_cmd,
+            commands::world::delete_instance_world_cmd,
+            commands::world::backup_instance_world_cmd,
+            commands::server::read_instance_servers_cmd,
+            commands::server::save_instance_servers_cmd,
+            commands::server::ping_server_cmd,
             commands::launch::list_system_javas,
             commands::launch::launch_instance,
             commands::launch::kill_instance,
             commands::launch::get_instance_running_status,
             commands::launch::get_running_instances,
+            commands::launch::get_instance_log_buffer,
+            commands::launch::allow_asset_image,
+            commands::launch::open_instance_log_window,
             commands::launch::exit_app,
+            commands::news::news_fetch_archive_page,
+            commands::theme::list_themes,
+            commands::theme::import_theme_pack,
+            commands::theme::open_themes_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Focusite launcher");
@@ -361,5 +397,40 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_quad_version_alignment() {
+        // 1. Cargo.toml workspace version
+        let cargo_toml = include_str!("../../Cargo.toml");
+        let cargo_version = cargo_toml
+            .lines()
+            .find(|line| line.starts_with("version = "))
+            .and_then(|line| line.split('"').nth(1))
+            .expect("workspace Cargo.toml must have version");
+
+        // 2. tauri.conf.json
+        let tauri_conf = include_str!("../tauri.conf.json");
+        let tauri_val: serde_json::Value =
+            serde_json::from_str(tauri_conf).expect("tauri.conf.json must be valid JSON");
+        let tauri_version = tauri_val["version"]
+            .as_str()
+            .expect("tauri.conf.json must contain version");
+
+        // 3. package.json
+        let package_json = include_str!("../../package.json");
+        let package_val: serde_json::Value =
+            serde_json::from_str(package_json).expect("package.json must be valid JSON");
+        let package_version = package_val["version"]
+            .as_str()
+            .expect("package.json must contain version");
+
+        // 4. Launcher runtime info (WindowBar & System)
+        let runtime_info = get_launcher_info();
+
+        assert_eq!(cargo_version, "26.1.0", "Cargo.toml version must be 26.1.0");
+        assert_eq!(tauri_version, "26.1.0", "tauri.conf.json version must be 26.1.0");
+        assert_eq!(package_version, "26.1.0", "package.json version must be 26.1.0");
+        assert_eq!(runtime_info.version, "26.1.0", "Runtime version must be 26.1.0");
     }
 }

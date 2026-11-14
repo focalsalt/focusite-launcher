@@ -31,30 +31,7 @@ pub struct AccountStoreFile {
 
 fn get_accounts_file_path() -> PathBuf {
     let base_dir = super::get_app_data_dir();
-    let target = base_dir.join("accounts.json");
-
-    // 平滑遷移舊帳號檔案 (若目標不存在，但舊目錄有 accounts.json 則自動複製保留)
-    if !target.exists() {
-        let legacy_candidates = vec![
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join("accounts.json"),
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join("src-tauri")
-                .join("accounts.json"),
-        ];
-        for candidate in legacy_candidates {
-            if candidate.is_file() {
-                if let Ok(content) = fs::read_to_string(&candidate) {
-                    let _ = fs::write(&target, content);
-                    break;
-                }
-            }
-        }
-    }
-
-    target
+    base_dir.join("accounts.json")
 }
 
 fn load_account_store() -> AccountStoreFile {
@@ -66,6 +43,12 @@ fn load_account_store() -> AccountStoreFile {
                     return store;
                 }
             }
+            // Unreadable store: keep a copy so the next save cannot silently wipe every account.
+            let backup = path.with_extension(format!(
+                "json.bad-{}",
+                chrono::Utc::now().timestamp()
+            ));
+            let _ = fs::write(&backup, &bytes);
         }
     }
     AccountStoreFile {
@@ -77,10 +60,11 @@ fn load_account_store() -> AccountStoreFile {
 fn save_account_store(store: &AccountStoreFile) -> Result<(), String> {
     let path = get_accounts_file_path();
     let json = serde_json::to_string_pretty(store)
-        .map_err(|e| format!("Failed to serialize accounts: {}", e))?;
+        .map_err(|e| format!("儲存帳號資料失敗（序列化）：{}", e))?;
     let encrypted = focusite_auth::dpapi::encrypt_account_data(&json)
-        .map_err(|e| format!("Failed to DPAPI encrypt accounts: {}", e))?;
-    fs::write(path, encrypted).map_err(|e| format!("Failed to write accounts.json: {}", e))?;
+        .map_err(|e| format!("儲存帳號資料失敗（加密）：{}", e))?;
+    super::atomic_write(&path, &encrypted)
+        .map_err(|e| format!("儲存帳號資料失敗（寫入）：{}", e))?;
     Ok(())
 }
 
@@ -147,7 +131,7 @@ pub async fn auth_poll_device_code(device_code: String) -> Result<DevicePollResu
         oauth::DeviceCodePollStatus::Success => {
             let token_resp = match maybe_token {
                 Some(t) => t,
-                None => return Err("Missing token in success response".into()),
+                None => return Err("登入回應缺少憑證，請重試".into()),
             };
 
             // Full Minecraft chain
@@ -230,7 +214,7 @@ pub async fn auth_list_accounts() -> Result<Vec<UserAccountDto>, String> {
         Ok(store.accounts)
     })
     .await
-    .map_err(|e| format!("Task execution error: {}", e))?
+    .map_err(|e| format!("背景工作執行失敗：{}", e))?
 }
 
 #[tauri::command]
@@ -402,6 +386,64 @@ pub fn auth_verify_offline_launch(id: String) -> Result<bool, String> {
     .map_err(|e| format!("離線遊玩權限校驗失敗: {}", e))?;
 
     Ok(true)
+}
+
+/// Ensures valid credentials exist for launching: auto-refreshes tokens if needed,
+/// returns (player_name, uuid, access_token, user_type).
+pub async fn ensure_valid_minecraft_token(
+    account_id: Option<&str>,
+) -> Result<(String, String, String, String), String> {
+    let store = load_account_store();
+    let target_acc = if let Some(id) = account_id {
+        store.accounts.iter().find(|a| a.id == id)
+    } else if let Some(ref active_id) = store.active_account_id {
+        store.accounts.iter().find(|a| &a.id == active_id)
+    } else {
+        store.accounts.first()
+    };
+
+    let acc = match target_acc {
+        Some(a) => a,
+        None => {
+            return Err("未配置有效的微軟帳號，請先登入帳號".into());
+        }
+    };
+
+    // Attempt token refresh and profile sync
+    let refreshed = auth_refresh_profile(acc.id.clone()).await;
+    match refreshed {
+        Ok(refreshed_acc) => {
+            // A stale keyring token must not be passed off as a valid session.
+            let token = if refreshed_acc.has_valid_token {
+                focusite_auth::keyring_store::CredentialStore::get_token(&refreshed_acc.id)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| "0".into())
+            } else {
+                "0".into()
+            };
+            let user_type = if token == "0" { "legacy" } else { "msa" };
+            Ok((
+                refreshed_acc.username,
+                refreshed_acc.id,
+                token,
+                user_type.to_string(),
+            ))
+        }
+        Err(_) => {
+            // Offline fallback: verified account is allowed offline play
+            if acc.is_ready {
+                Ok((
+                    acc.username.clone(),
+                    acc.id.clone(),
+                    "0".into(),
+                    "legacy".into(),
+                ))
+            } else {
+                Err("無法驗證微軟帳號，請檢查網路連線或重新登入".into())
+            }
+        }
+    }
 }
 
 #[cfg(test)]

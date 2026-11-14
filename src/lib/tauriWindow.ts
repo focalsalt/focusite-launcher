@@ -119,3 +119,16 @@ export async function startDragging(): Promise<void> {
     console.warn("Tauri window startDragging error:", err);
   }
 }
+
+/**
+ * Reveals the current window (created hidden) and focuses it.
+ */
+export async function revealCurrentWindow(): Promise<void> {
+  try {
+    const win = getCurrentWindow();
+    await win.show();
+    await win.setFocus();
+  } catch (err) {
+    console.warn("Tauri window reveal error:", err);
+  }
+}

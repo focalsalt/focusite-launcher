@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n";
 
 interface SelectContextType {
   value: string;
@@ -92,7 +93,7 @@ export const SelectTrigger = React.forwardRef<
       disabled={ctx.disabled}
       onClick={handleClick}
       className={cn(
-        "flex h-9 w-full items-center justify-between rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 shadow-sm transition-colors hover:border-white/20 focus-visible:outline-none focus-visible:border-[#52A43A]/60 focus-visible:ring-1 focus-visible:ring-[#52A43A] disabled:cursor-not-allowed disabled:opacity-50 select-none",
+        "flex h-9 w-full items-center justify-between rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 shadow-sm transition-colors hover:border-white/20 focus-visible:outline-none focus-visible:border-brand-light/60 focus-visible:ring-1 focus-visible:ring-brand-light disabled:cursor-not-allowed disabled:opacity-50 select-none",
         className
       )}
       {...props}
@@ -112,13 +113,16 @@ SelectTrigger.displayName = "SelectTrigger";
 export const SelectValue: React.FC<{
   placeholder?: string;
   className?: string;
-}> = ({ placeholder, className }) => {
+  /** Label shown for the current value; defaults to the raw value. */
+  children?: React.ReactNode;
+}> = ({ placeholder, className, children }) => {
+  const { t } = useI18n();
   const ctx = React.useContext(SelectContext);
   if (!ctx) throw new Error("SelectValue must be used within Select");
 
   return (
     <span className={cn(!ctx.value && "text-slate-500", className)}>
-      {ctx.value || placeholder || "請選擇..."}
+      {ctx.value ? (children ?? ctx.value) : placeholder || t.common.selectPlaceholder}
     </span>
   );
 };
@@ -136,40 +140,48 @@ export const SelectContent: React.FC<SelectContentProps> = ({
   if (!ctx) throw new Error("SelectContent must be used within Select");
 
   const [coords, setCoords] = React.useState<{
-    top: number;
+    top?: number;
+    bottom?: number;
     left: number;
     width: number;
+    maxHeight: number;
     flipped: boolean;
-  }>({
-    top: 0,
-    left: 0,
-    width: 0,
-    flipped: false,
-  });
+  }>({ left: 0, width: 0, maxHeight: 240, flipped: false });
 
   const contentRef = React.useRef<HTMLDivElement | null>(null);
 
-  // 計算座標與防溢出翻轉
+  // Position from the live trigger rect (not the click-time snapshot) so the list follows the
+  // trigger while a dialog or scroll area moves, and flip based on the real space available.
+  const place = React.useCallback(() => {
+    const trigger = ctx.triggerElement;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const margin = 8;
+    const gap = 4;
+    const contentHeight = contentRef.current?.scrollHeight ?? 0;
+    const desired = Math.min(240, contentHeight || 240);
+    const spaceBelow = window.innerHeight - rect.bottom - margin - gap;
+    const spaceAbove = rect.top - margin - gap;
+    const flipped = spaceBelow < desired && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(96, Math.min(240, flipped ? spaceAbove : spaceBelow));
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - rect.width - margin));
+    setCoords(
+      flipped
+        ? { bottom: window.innerHeight - rect.top + gap, left, width: rect.width, maxHeight, flipped }
+        : { top: rect.bottom + gap, left, width: rect.width, maxHeight, flipped }
+    );
+  }, [ctx.triggerElement]);
+
   React.useLayoutEffect(() => {
-    if (!ctx.open || !ctx.triggerRect) return;
-
-    const rect = ctx.triggerRect;
-    const estimatedHeight = 220;
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const shouldFlip = spaceBelow < estimatedHeight && rect.top > estimatedHeight;
-
-    const top = shouldFlip
-      ? Math.max(8, rect.top - estimatedHeight - 4)
-      : rect.bottom + 4;
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8));
-
-    setCoords({
-      top,
-      left,
-      width: rect.width,
-      flipped: shouldFlip,
-    });
-  }, [ctx.open, ctx.triggerRect]);
+    if (!ctx.open) return;
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [ctx.open, place, children]);
 
   // 監聽點擊外部與 Esc 鍵關閉
   React.useEffect(() => {
@@ -213,14 +225,17 @@ export const SelectContent: React.FC<SelectContentProps> = ({
           exit={{ opacity: 0, scale: 0.96, y: coords.flipped ? 4 : -4 }}
           transition={{ duration: 0.12 }}
           style={{
+            transformOrigin: coords.flipped ? "bottom" : "top",
             position: "fixed",
             top: coords.top,
+            bottom: coords.bottom,
             left: coords.left,
             width: coords.width,
+            maxHeight: coords.maxHeight,
             zIndex: 200,
           }}
           className={cn(
-            "max-h-60 overflow-y-auto rounded-xl border border-white/15 bg-slate-900/98 p-1.5 shadow-2xl backdrop-blur-2xl text-xs text-slate-100 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:none",
+            "overflow-y-auto rounded-xl border border-white/15 bg-slate-900/98 p-1.5 shadow-2xl backdrop-blur-2xl text-xs text-slate-100 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:none",
             className
           )}
         >
@@ -269,7 +284,7 @@ export const SelectItem: React.FC<SelectItemProps> = ({
       className={cn(
         "relative flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-left transition-colors select-none",
         isSelected
-          ? "bg-[#3C8527]/25 text-[#52A43A] font-semibold"
+          ? "bg-brand/25 text-brand-light font-semibold"
           : "text-slate-200 hover:bg-white/10 hover:text-white",
         disabled && "opacity-40 cursor-not-allowed pointer-events-none",
         className
@@ -277,7 +292,7 @@ export const SelectItem: React.FC<SelectItemProps> = ({
     >
       <div className="flex items-center gap-2 truncate">
         {isSelected ? (
-          <Check className="h-3.5 w-3.5 shrink-0 text-[#52A43A]" />
+          <Check className="h-3.5 w-3.5 shrink-0 text-brand-light" />
         ) : (
           <span className="w-3.5 shrink-0" />
         )}

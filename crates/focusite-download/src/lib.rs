@@ -21,6 +21,9 @@ pub enum DownloadError {
     #[error("All download sources failed for {url}")]
     AllSourcesFailed { url: String },
 
+    #[error("HTTP Range not supported by server for {url}")]
+    RangeNotSupported { url: String },
+
     #[error("SHA-1 validation failed for {path}: expected {expected}, got {actual}")]
     ValidationFailed {
         path: String,

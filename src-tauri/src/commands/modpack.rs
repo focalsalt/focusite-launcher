@@ -8,7 +8,7 @@ use focusite_modpacks::curseforge::{
 };
 use focusite_modpacks::mrpack::unpack_mrpack;
 use super::instance::{
-    default_jvm_args, default_max_memory, default_min_memory, get_instances_dir,
+    default_jvm_args, default_max_memory, default_min_memory, get_instances_dir, unique_folder_name,
     validate_safe_filename, validate_safe_id, write_instance_config, InstanceDiskConfig,
 };
 use super::settings::load_settings_from_disk;
@@ -43,10 +43,20 @@ pub async fn import_modpack(
     custom_name: Option<String>,
 ) -> Result<ModpackImportResult, String> {
     let path = PathBuf::from(&pack_path);
+    // A folder is another launcher's instance (Prism / PCL): copy it instead of unpacking an archive.
+    if path.is_dir() {
+        return super::launcher_import::import_instance_dir(path, custom_name).await;
+    }
     if !path.is_file() {
         return Err(format!("模組包檔案不存在: {}", pack_path));
     }
 
+    // The whole archive is held in memory, so refuse absurdly large files up front.
+    const MAX_PACK_BYTES: u64 = 1024 * 1024 * 1024;
+    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    if size > MAX_PACK_BYTES {
+        return Err("模組包檔案過大（上限 1 GiB）".into());
+    }
     let archive_bytes = std::fs::read(&path)
         .map_err(|e| format!("無法讀取模組包檔案: {}", e))?;
 
@@ -62,13 +72,108 @@ pub async fn import_modpack(
     }
 }
 
+#[derive(Deserialize)]
+struct ModrinthFile {
+    url: String,
+    #[serde(default)]
+    filename: String,
+    #[serde(default)]
+    primary: bool,
+    #[serde(default)]
+    hashes: std::collections::HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct ModrinthPackVersion {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    version_type: String,
+    #[serde(default)]
+    files: Vec<ModrinthFile>,
+}
+
+/// Downloads the newest `.mrpack` of a Modrinth modpack project and imports it as an instance.
+#[tauri::command]
+pub async fn import_modrinth_modpack(
+    project_id: String,
+    custom_name: Option<String>,
+    version_id: Option<String>,
+) -> Result<ModpackImportResult, String> {
+    if project_id.is_empty() || !project_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err("無效的模組包專案 ID".into());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .user_agent(concat!("Focusite-Launcher/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(super::ctx("無法建立網路連線"))?;
+
+    let url = format!(
+        "{}/project/{}/version",
+        focusite_modpacks::workshop::MODRINTH_API_BASE,
+        project_id
+    );
+    let versions: Vec<ModrinthPackVersion> = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(super::ctx("無法連線至 Modrinth"))?
+        .error_for_status()
+        .map_err(super::ctx("Modrinth 回應錯誤"))?
+        .json()
+        .await
+        .map_err(super::ctx("Modrinth 資料格式錯誤"))?;
+
+    // The API lists newest first: prefer the newest release, otherwise the newest of any type.
+    let has_pack = |v: &&ModrinthPackVersion| v.files.iter().any(|f| f.filename.ends_with(".mrpack"));
+    let chosen = match version_id.as_deref().filter(|v| !v.is_empty()) {
+        // The id is matched against this project's own version list, so it cannot point elsewhere.
+        Some(vid) => versions.iter().filter(has_pack).find(|v| v.id == vid),
+        None => versions
+            .iter()
+            .filter(has_pack)
+            .find(|v| v.version_type == "release")
+            .or_else(|| versions.iter().find(has_pack)),
+    }
+    .ok_or_else(|| "此模組包沒有可下載的 .mrpack 版本".to_string())?;
+    let file = chosen
+        .files
+        .iter()
+        .find(|f| f.primary && f.filename.ends_with(".mrpack"))
+        .or_else(|| chosen.files.iter().find(|f| f.filename.ends_with(".mrpack")))
+        .ok_or_else(|| "此模組包沒有可下載的 .mrpack 檔案".to_string())?;
+
+    super::workshop::validate_download_url(&file.url)?;
+
+    let temp = std::env::temp_dir().join(format!("fc_modpack_{}.mrpack", uuid::Uuid::new_v4()));
+    let downloader = focusite_download::Downloader::default();
+    downloader
+        .download_file(
+            &file.url,
+            &temp,
+            file.hashes.get("sha1").map(String::as_str),
+            None,
+            "modrinth-modpack",
+        )
+        .await
+        .map_err(super::ctx("下載模組包失敗"))?;
+
+    let bytes = tokio::fs::read(&temp).await;
+    let _ = tokio::fs::remove_file(&temp).await;
+    let bytes = bytes.map_err(super::ctx("無法讀取已下載的模組包"))?;
+
+    import_mrpack_internal(&bytes, custom_name).await
+}
+
 async fn import_mrpack_internal(
     archive_bytes: &[u8],
     custom_name: Option<String>,
 ) -> Result<ModpackImportResult, String> {
     let temp_dir = std::env::temp_dir().join(format!("focusite_mrpack_unpack_{}", uuid::Uuid::new_v4()));
     let temp_mc = temp_dir.join("minecraft");
-    std::fs::create_dir_all(&temp_mc).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&temp_mc).map_err(super::ctx("無法建立暫存資料夾"))?;
 
     let (index, _) = unpack_mrpack(archive_bytes, &temp_mc)
         .map_err(|e| format!("解壓 .mrpack 失敗: {}", e))?;
@@ -92,19 +197,47 @@ async fn import_mrpack_internal(
     };
 
     let name = custom_name.unwrap_or_else(|| index.name.clone());
-    let instance_id = name.trim().replace(['<', '>', ':', '"', '/', '\\', '|', '?', '*'], "_");
-    validate_safe_id(&instance_id)?;
+    // A pack never lands in an existing instance: the folder name is made unique.
+    let instance_id = unique_folder_name(&get_instances_dir(), &name)?;
 
     let inst_dir = get_instances_dir().join(&instance_id);
     let mc_dir = inst_dir.join("minecraft");
     std::fs::create_dir_all(&mc_dir)
         .map_err(|e| format!("無法建立實例目錄: {}", e))?;
 
-    // Move unpacked overrides from temp to inst_dir
-    let _ = unpack_mrpack(archive_bytes, &mc_dir);
+    let outcome: Result<ModpackImportResult, String> = async {
     let _ = std::fs::remove_dir_all(&temp_dir);
+    unpack_mrpack(archive_bytes, &mc_dir).map_err(|e| format!("解壓 .mrpack 失敗: {}", e))?;
 
-    // Write instance.cfg
+    // Extract modpack or Prism icon if present
+    let mut icon_source = None;
+    let mut icon_updated_at = None;
+    if let Ok(mut zip) = zip::ZipArchive::new(std::io::Cursor::new(archive_bytes)) {
+        for icon_name in &["icon.png", "logo.png", "modpack.png", "cover.png"] {
+            if let Ok(mut file) = zip.by_name(icon_name) {
+                let icon_target = inst_dir.join("icon.png");
+                if let Ok(mut out) = std::fs::File::create(&icon_target) {
+                    if std::io::copy(&mut file, &mut out).is_ok() {
+                        icon_source = Some("modpack".into());
+                        icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if icon_source.is_none() {
+        if let Ok((_, Some(prism_icon))) = focusite_modpacks::prism::extract_prism_metadata(archive_bytes) {
+            let icon_target = inst_dir.join("icon.png");
+            if std::fs::write(&icon_target, prism_icon).is_ok() {
+                icon_source = Some("prism".into());
+                icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
+            }
+        }
+    }
+
+    // Write the instance config
     let disk_cfg = InstanceDiskConfig {
         id: instance_id.clone(),
         name: name.clone(),
@@ -113,6 +246,8 @@ async fn import_mrpack_internal(
         loader_version,
         description: index.summary,
         is_favorite: false,
+        icon_source,
+        icon_updated_at,
         created_at: chrono::Utc::now().timestamp_millis(),
         last_played_at: None,
         show_log_on_launch: false,
@@ -120,6 +255,10 @@ async fn import_mrpack_internal(
         max_memory_mb: default_max_memory(),
         java_path: None,
         jvm_args: default_jvm_args(),
+        group: None,
+        custom_jvm_args: None,
+        environment_vars: None,
+        total_play_time_ms: 0,
     };
     write_instance_config(&inst_dir, &disk_cfg)?;
 
@@ -132,6 +271,7 @@ async fn import_mrpack_internal(
         .build()
         .map_err(|e| e.to_string())?;
 
+    let mut missing_mods: Vec<MissingModItem> = Vec::new();
     for file in index.files {
         if let Some(ref env) = file.env {
             if env.client.as_deref() == Some("unsupported") {
@@ -156,27 +296,68 @@ async fn import_mrpack_internal(
             let _ = std::fs::create_dir_all(parent);
         }
 
-        if !target_path.exists() {
-            if let Ok(resp) = http.get(&file.downloads[0]).send().await {
-                if let Ok(bytes) = resp.bytes().await {
-                    let expected_sha1 = file.hashes.get("sha1").map(|s| s.as_str());
-                    let cas_hash = cas
-                        .store_bytes(&bytes, expected_sha1)
-                        .map_err(|e| format!("寫入 CAS 失敗: {}", e))?;
-                    let _ = cas.link_to_instance(&cas_hash, &target_path);
-                }
-            }
+        if target_path.exists() {
+            continue;
+        }
+        let url = &file.downloads[0];
+        let sha1 = file.hashes.get("sha1").map(String::as_str);
+        if let Err(reason) = fetch_pack_file(&http, &cas, url, sha1, &target_path).await {
+            // The import goes on; the file is listed so the user can fetch it by hand.
+            tracing::warn!("模組包檔案 {} 下載失敗：{}", file.path, reason);
+            let file_name = rel_path_str.rsplit('/').next().unwrap_or(&rel_path_str).to_string();
+            missing_mods.push(MissingModItem {
+                project_id: 0,
+                file_id: 0,
+                name: file_name.clone(),
+                file_name,
+                // Only links the allowlist accepts are offered for opening in the browser.
+                web_url: if super::workshop::validate_download_url(url).is_ok() { url.clone() } else { String::new() },
+                rel_path: rel_path_str,
+            });
         }
     }
 
+    let is_completed = missing_mods.is_empty();
     Ok(ModpackImportResult {
-        instance_id,
+        instance_id: instance_id.clone(),
         instance_name: name,
         version: mc_version,
         loader,
-        missing_mods: Vec::new(),
-        is_completed: true,
+        missing_mods,
+        is_completed,
     })
+    }
+    .await;
+
+    if outcome.is_err() {
+        let _ = std::fs::remove_dir_all(&inst_dir);
+    }
+    outcome
+}
+
+/// Downloads one modpack file: allowlisted host, successful HTTP status and a SHA-1 that must match.
+async fn fetch_pack_file(
+    http: &reqwest::Client,
+    cas: &CasManager,
+    url: &str,
+    sha1: Option<&str>,
+    target: &Path,
+) -> Result<(), String> {
+    super::workshop::validate_download_url(url)?;
+    let sha1 = sha1.ok_or("缺少 SHA-1 雜湊，無法驗證檔案")?;
+    let bytes = http
+        .get(url)
+        .send()
+        .await
+        .map_err(super::ctx("連線失敗"))?
+        .error_for_status()
+        .map_err(super::ctx("伺服器回應錯誤"))?
+        .bytes()
+        .await
+        .map_err(super::ctx("下載中斷"))?;
+    let hash = cas.store_bytes(&bytes, Some(sha1)).map_err(super::ctx("雜湊驗證或快取寫入失敗"))?;
+    cas.link_to_instance(&hash, target).map_err(super::ctx("無法放入實例"))?;
+    Ok(())
 }
 
 async fn import_curseforge_internal(
@@ -185,7 +366,7 @@ async fn import_curseforge_internal(
 ) -> Result<ModpackImportResult, String> {
     let temp_dir = std::env::temp_dir().join(format!("focusite_cf_unpack_{}", uuid::Uuid::new_v4()));
     let temp_mc = temp_dir.join("minecraft");
-    std::fs::create_dir_all(&temp_mc).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&temp_mc).map_err(super::ctx("無法建立暫存資料夾"))?;
 
     let (manifest, modlist_map, _) = unpack_curseforge_pack(archive_bytes, &temp_mc)
         .map_err(|e| format!("解壓 CurseForge 模組包失敗: {}", e))?;
@@ -216,19 +397,47 @@ async fn import_curseforge_internal(
     };
 
     let name = custom_name.unwrap_or_else(|| manifest.name.clone());
-    let instance_id = name.trim().replace(['<', '>', ':', '"', '/', '\\', '|', '?', '*'], "_");
-    validate_safe_id(&instance_id)?;
+    let instance_id = unique_folder_name(&get_instances_dir(), &name)?;
 
     let inst_dir = get_instances_dir().join(&instance_id);
     let mc_dir = inst_dir.join("minecraft");
     let mods_dir = mc_dir.join("mods");
     std::fs::create_dir_all(&mods_dir)
         .map_err(|e| format!("無法建立實例 mods 目錄: {}", e))?;
+    let outcome: Result<ModpackImportResult, String> = async {
 
     // Unpack overrides into instance
-    let _ = unpack_curseforge_pack(archive_bytes, &mc_dir);
+    unpack_curseforge_pack(archive_bytes, &mc_dir).map_err(|e| format!("解壓 CurseForge 模組包失敗: {}", e))?;
 
-    // Write instance.cfg
+    // Extract modpack or Prism icon if present
+    let mut icon_source = None;
+    let mut icon_updated_at = None;
+    if let Ok(mut zip) = zip::ZipArchive::new(std::io::Cursor::new(archive_bytes)) {
+        for icon_name in &["icon.png", "logo.png", "modpack.png", "cover.png"] {
+            if let Ok(mut file) = zip.by_name(icon_name) {
+                let icon_target = inst_dir.join("icon.png");
+                if let Ok(mut out) = std::fs::File::create(&icon_target) {
+                    if std::io::copy(&mut file, &mut out).is_ok() {
+                        icon_source = Some("modpack".into());
+                        icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if icon_source.is_none() {
+        if let Ok((_, Some(prism_icon))) = focusite_modpacks::prism::extract_prism_metadata(archive_bytes) {
+            let icon_target = inst_dir.join("icon.png");
+            if std::fs::write(&icon_target, prism_icon).is_ok() {
+                icon_source = Some("prism".into());
+                icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
+            }
+        }
+    }
+
+    // Write the instance config
     let disk_cfg = InstanceDiskConfig {
         id: instance_id.clone(),
         name: name.clone(),
@@ -237,6 +446,8 @@ async fn import_curseforge_internal(
         loader_version,
         description: Some(format!("由 CurseForge 模組包「{}」導入", manifest.name)),
         is_favorite: false,
+        icon_source,
+        icon_updated_at,
         created_at: chrono::Utc::now().timestamp_millis(),
         last_played_at: None,
         show_log_on_launch: false,
@@ -244,6 +455,10 @@ async fn import_curseforge_internal(
         max_memory_mb: default_max_memory(),
         java_path: None,
         jvm_args: default_jvm_args(),
+        group: None,
+        custom_jvm_args: None,
+        environment_vars: None,
+        total_play_time_ms: 0,
     };
     write_instance_config(&inst_dir, &disk_cfg)?;
 
@@ -316,6 +531,7 @@ async fn import_curseforge_internal(
                 name: matched_name,
                 file_name: format!("{}-{}.jar", safe_mod_name.replace(' ', "-"), file_ref.file_id),
                 web_url,
+                rel_path: String::new(),
             });
         }
     }
@@ -323,13 +539,21 @@ async fn import_curseforge_internal(
     let is_completed = missing_mods.is_empty();
 
     Ok(ModpackImportResult {
-        instance_id,
+        instance_id: instance_id.clone(),
         instance_name: name,
         version: mc_version,
         loader,
         missing_mods,
         is_completed,
     })
+    }
+    .await;
+
+    // A failed import must not leave a half-made instance behind.
+    if outcome.is_err() {
+        let _ = std::fs::remove_dir_all(&inst_dir);
+    }
+    outcome
 }
 
 #[tauri::command]
@@ -364,19 +588,41 @@ pub fn open_external_urls(urls: Vec<String>) -> Result<(), String> {
     for url in urls {
         let trimmed = url.trim();
         if !trimmed.starts_with("https://") && !trimmed.starts_with("http://") {
-            return Err(format!("拒絕開啟非 HTTP/HTTPS 協議之外部 URL: {}", trimmed));
+            return Err(format!("只能開啟 HTTP 或 HTTPS 連結：{}", trimmed));
         }
 
         #[cfg(windows)]
-        {
-            let _ = std::process::Command::new("rundll32")
-                .args(["url.dll,FileProtocolHandler", trimmed])
-                .spawn();
-        }
+        let spawned = std::process::Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", trimmed])
+            .spawn();
         #[cfg(not(windows))]
-        {
-            let _ = std::process::Command::new("xdg-open").arg(trimmed).spawn();
-        }
+        let spawned = std::process::Command::new("xdg-open").arg(trimmed).spawn();
+        spawned.map_err(|e| format!("無法開啟連結 {}：{}", trimmed, e))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run<F: std::future::Future>(f: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+    }
+
+    #[test]
+    fn pack_file_from_untrusted_host_or_without_hash_is_not_fetched() {
+        let dir = std::env::temp_dir().join(format!("fc_fetch_{}", uuid::Uuid::new_v4()));
+        let cas = CasManager::new(dir.join("cas"));
+        let http = reqwest::Client::new();
+        let target = dir.join("mods").join("a.jar");
+
+        // Neither case reaches the network: the host check and the hash check come first.
+        let evil = run(fetch_pack_file(&http, &cas, "http://127.0.0.1/a.jar", Some("0".repeat(40).as_str()), &target));
+        assert!(evil.is_err());
+        let no_hash = run(fetch_pack_file(&http, &cas, "https://cdn.modrinth.com/a.jar", None, &target));
+        assert!(no_hash.unwrap_err().contains("SHA-1"));
+        assert!(!target.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

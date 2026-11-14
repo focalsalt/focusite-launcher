@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ImageOff } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { skinThumbnailService, ThumbnailOptions } from "@/services/skinThumbnailService";
+import { useI18n } from "@/i18n";
 
 export interface SkinThumbnailProps extends ThumbnailOptions {
   className?: string;
@@ -17,6 +18,7 @@ export const SkinThumbnail: React.FC<SkinThumbnailProps> = ({
   className = "",
   alt = "Minecraft Skin Preview",
 }) => {
+  const { t } = useI18n();
   const opts: ThumbnailOptions = {
     skinUrl,
     capeUrl,
@@ -72,7 +74,7 @@ export const SkinThumbnail: React.FC<SkinThumbnailProps> = ({
     return (
       <div
         className={`flex flex-col items-center justify-center w-full h-full rounded-lg bg-black/60 text-slate-500 border border-white/5 p-1 ${className}`}
-        title="貼圖載入失敗"
+        title={t.skin.textureLoadFailed}
       >
         <ImageOff className="h-4 w-4 text-slate-600 mb-0.5" />
         <span className="text-[8px] text-slate-600 font-mono">NO TEXTURE</span>

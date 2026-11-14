@@ -1,3 +1,5 @@
+import { sortForSidebar } from "@/lib/instanceOrder";
+import { scaleVariants, slideVariants } from "@/lib/motion";
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { WindowBar } from "@/components/layout/WindowBar";
@@ -6,7 +8,9 @@ import { DynamicTitlebar } from "@/components/layout/DynamicTitlebar";
 import { MainBootOverlay } from "@/components/layout/MainBootOverlay";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HomeView } from "@/views/HomeView";
+import { EMPTY_FILES, setCachedFiles } from "@/lib/instanceFilesCache";
 import { AuthScreen } from "@/components/auth/AuthScreen";
+import { OnboardingGuide, isOnboardingDone, markOnboardingDone, REPLAY_ONBOARDING_EVENT } from "@/components/onboarding/OnboardingGuide";
 import { ExitConfirmationDialog } from "@/components/layout/ExitConfirmationDialog";
 import {
   HomeSubNav,
@@ -25,6 +29,11 @@ import {
   runSequentialPrefetch,
   SECONDARY_2D_PREFETCH_TASKS,
 } from "@/lib/startupOrchestrator";
+import { useI18n } from "@/i18n";
+import { themeService } from "@/services/themeService";
+import { toUserMessage } from "@/lib/errorMessage";
+import { toast } from "@/lib/toast";
+import { Toaster } from "@/components/ui/Toaster";
 
 // 路由級延遲載入非首屏視圖，分離 Three.js 3D 引擎與次要頁面 Bundle
 const NewsView = lazy(() => import("@/views/NewsView").then((m) => ({ default: m.NewsView })));
@@ -33,9 +42,11 @@ const InstanceDetailView = lazy(() => import("@/views/InstanceDetailView").then(
 const SettingsView = lazy(() => import("@/views/SettingsView").then((m) => ({ default: m.SettingsView })));
 const SkinManagerView = lazy(() => import("@/views/SkinManagerView").then((m) => ({ default: m.SkinManagerView })));
 const LogWindow = lazy(() => import("@/views/LogWindow").then((m) => ({ default: m.LogWindow })));
+const WorkshopWindow = lazy(() => import("@/views/WorkshopWindow").then((m) => ({ default: m.WorkshopWindow })));
 const CreateInstanceDialog = lazy(() => import("@/components/instance/CreateInstanceDialog").then((m) => ({ default: m.CreateInstanceDialog })));
 const ImportModpackDialog = lazy(() => import("@/components/instance/ImportModpackDialog").then((m) => ({ default: m.ImportModpackDialog })));
 const MicrosoftLoginModal = lazy(() => import("@/components/auth/MicrosoftLoginModal").then((m) => ({ default: m.MicrosoftLoginModal })));
+const LaunchInstallModal = lazy(() => import("@/components/instance/LaunchInstallModal").then((m) => ({ default: m.LaunchInstallModal })));
 
 // 垂直頁面層級空間索引映射，用於雙向物理位移動畫
 const VIEW_INDEX: Record<MainView, number> = {
@@ -47,17 +58,42 @@ const VIEW_INDEX: Record<MainView, number> = {
   skins: 5,
 };
 
+/** +1 / -1 from the order of the views; 0 (a plain fade) when the skin manager is on either side. */
+const viewDirectionFor = (from: MainView, to: MainView): number =>
+  from === "skins" || to === "skins" ? 0 : VIEW_INDEX[to] > VIEW_INDEX[from] ? 1 : -1;
+
+const pageVariants = slideVariants("y", 24);
+
 export default function App() {
+  const { t } = useI18n();
+  useEffect(() => {
+    const cleanup = themeService.initListeners();
+    return cleanup;
+  }, []);
+
   const isLogWindow =
     typeof window !== "undefined" &&
-    (window.location.hash === "#/log-window" ||
+    (window.location.hash.startsWith("#/log-window") ||
       window.location.search.includes("window=log"));
 
   if (isLogWindow) {
     return (
-      <Suspense fallback={null}>
-        <LogWindow />
-      </Suspense>
+        <Suspense fallback={null}>
+          <LogWindow />
+        </Suspense>
+    );
+  }
+
+  const isWorkshopWindow =
+    typeof window !== "undefined" &&
+    (window.location.hash.startsWith("#/workshop") ||
+      window.location.search.includes("window=workshop"));
+
+  if (isWorkshopWindow) {
+    return (
+        <Suspense fallback={null}>
+          <WorkshopWindow />
+        </Suspense>
     );
   }
 
@@ -109,6 +145,13 @@ export default function App() {
 
   // Instance creation modal state
   const [isCreateInstanceOpen, setIsCreateInstanceOpen] = useState<boolean>(false);
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(() => !isOnboardingDone());
+
+  useEffect(() => {
+    const replay = () => setShowOnboarding(true);
+    window.addEventListener(REPLAY_ONBOARDING_EVENT, replay);
+    return () => window.removeEventListener(REPLAY_ONBOARDING_EVENT, replay);
+  }, []);
   const [isImportModpackOpen, setIsImportModpackOpen] = useState<boolean>(false);
 
   // Theme state
@@ -116,7 +159,7 @@ export default function App() {
 
   const fallbackAccount: UserAccount = {
     id: "guest",
-    username: "未登入帳號",
+    username: t.app.noAccount,
     accountType: "microsoft",
     isReady: false,
     isActive: true,
@@ -127,6 +170,9 @@ export default function App() {
 
   const activeInstance =
     instances.find((i) => i.id === selectedInstanceId) || instances[0] || null;
+  // QuickPlay never targets an instance that still needs setup.
+  const homeInstance =
+    (activeInstance && !activeInstance.needsSetup ? activeInstance : instances.find((i) => !i.needsSetup)) || null;
 
   const refreshInstances = async () => {
     try {
@@ -159,6 +205,9 @@ export default function App() {
 
           setAccounts(accList);
           if (accList.length > 0) {
+            // Someone who already has an account is not a first-time user: no guide on upgrade.
+            markOnboardingDone();
+            setShowOnboarding(false);
             const active = accList.find((a) => a.isActive) || accList[0];
             setActiveAccountId(active.id);
           }
@@ -251,7 +300,10 @@ export default function App() {
       refreshInstances();
     };
     window.addEventListener("focus", handleFocus);
-    const interval = setInterval(refreshInstances, 3000);
+    // Skip polling while the window is not focused; the focus handler catches up.
+    const interval = setInterval(() => {
+      if (document.hasFocus()) refreshInstances();
+    }, 3000);
     return () => {
       window.removeEventListener("focus", handleFocus);
       clearInterval(interval);
@@ -329,7 +381,11 @@ export default function App() {
     };
   }, [activeAccount?.id, activeAccount?.username]);
 
-  const handleLaunchGame = async (id?: string) => {
+  const handleLaunchGame = async (
+    id?: string,
+    quickPlayType?: "singleplayer" | "multiplayer",
+    quickPlayTarget?: string
+  ) => {
     const targetId = id || selectedInstanceId || activeInstance?.id;
     if (!targetId) return;
 
@@ -344,7 +400,9 @@ export default function App() {
       const pid = await instanceService.launchInstance(
         targetId,
         activeAccount?.id,
-        activeAccount?.username
+        activeAccount?.username,
+        quickPlayType,
+        quickPlayTarget
       );
       setRunningInstances((prev) => ({
         ...prev,
@@ -357,6 +415,7 @@ export default function App() {
       }));
     } catch (err) {
       console.error("Launch instance error:", err);
+      toast(t.errors.launchFailed(toUserMessage(err)), "error");
       setLaunchingInstanceIds((prev) => {
         const next = { ...prev };
         delete next[targetId];
@@ -400,16 +459,22 @@ export default function App() {
 
   const handleNavigate = (newView: MainView) => {
     if (newView === currentView) return;
-    const dir = VIEW_INDEX[newView] > VIEW_INDEX[currentView] ? 1 : -1;
+    const dir = viewDirectionFor(currentView, newView);
     setViewDirection(dir);
     setCurrentView(newView);
   };
 
   const handleSelectInstance = (instanceId: string) => {
+    // Moving between instance pages follows the list: a lower entry slides the page up, a higher one down.
+    if (currentView === "instance-detail" && instanceId !== selectedInstanceId) {
+      const order = sortForSidebar(instances).map((i) => i.id);
+      const from = order.indexOf(selectedInstanceId || activeInstance?.id || "");
+      const to = order.indexOf(instanceId);
+      if (from !== -1 && to !== -1) setViewDirection(to > from ? 1 : -1);
+    }
     setSelectedInstanceId(instanceId);
     if (currentView !== "instance-detail") {
-      const dir =
-        VIEW_INDEX["instance-detail"] > VIEW_INDEX[currentView] ? 1 : -1;
+      const dir = viewDirectionFor(currentView, "instance-detail");
       setViewDirection(dir);
       setCurrentView("instance-detail");
     }
@@ -456,15 +521,17 @@ export default function App() {
   const handleModpackImported = async (instanceId: string) => {
     await refreshInstances();
     setSelectedInstanceId(instanceId);
-    const dir = VIEW_INDEX["instance-detail"] > VIEW_INDEX[currentView] ? 1 : -1;
+    const dir = viewDirectionFor(currentView, "instance-detail");
     setViewDirection(dir);
     setCurrentView("instance-detail");
   };
 
   const handleInstanceCreated = (newInstance: MinecraftInstance) => {
+    // A brand-new instance has no files: open its pages straight into empty states, no skeleton.
+    setCachedFiles(newInstance.id, EMPTY_FILES);
     setInstances((prev) => [...prev, newInstance]);
     setSelectedInstanceId(newInstance.id);
-    const dir = VIEW_INDEX["instance-detail"] > VIEW_INDEX[currentView] ? 1 : -1;
+    const dir = viewDirectionFor(currentView, "instance-detail");
     setViewDirection(dir);
     setCurrentView("instance-detail");
   };
@@ -474,36 +541,13 @@ export default function App() {
   };
 
   // 主頁面雙向物理垂直運動變體
-  const pageVariants = {
-    initial: (dir: number) => ({
-      opacity: 0,
-      y: dir * 24,
-    }),
-    animate: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        type: "spring" as const,
-        stiffness: 450,
-        damping: 35,
-        mass: 0.8,
-      },
-    },
-    exit: (dir: number) => ({
-      opacity: 0,
-      y: -dir * 24,
-      transition: {
-        duration: 0.15,
-      },
-    }),
-  };
 
   return (
-    <div
-      className={`relative flex h-screen w-screen flex-col overflow-hidden select-none transition-colors duration-300 ${
-        isDark ? "dark bg-[#0a0f1d] text-slate-100" : "bg-[#f4f6fb] text-slate-900"
-      }`}
-    >
+      <div
+        className={`relative flex h-screen w-screen flex-col overflow-hidden select-none transition-colors duration-300 ${
+          isDark ? "dark bg-canvas text-slate-100" : "bg-[#f4f6fb] text-slate-900"
+        }`}
+      >
       {/* 1. Global WindowBar (Tauri Managed) */}
       <WindowBar onClose={handleWindowClose} />
 
@@ -530,8 +574,8 @@ export default function App() {
           >
         {/* Background Ambient Glow (Focusite Emerald & Grass Green) */}
         <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-          <div className="absolute -top-[15%] -left-[10%] h-[450px] w-[450px] rounded-full bg-[#3C8527]/15 blur-[130px]" />
-          <div className="absolute -bottom-[15%] -right-[10%] h-[450px] w-[450px] rounded-full bg-[#2E6B1D]/20 blur-[130px]" />
+          <div className="absolute -top-[15%] -left-[10%] h-[450px] w-[450px] rounded-full bg-brand/15 blur-[130px]" />
+          <div className="absolute -bottom-[15%] -right-[10%] h-[450px] w-[450px] rounded-full bg-brand-dark/20 blur-[130px]" />
         </div>
 
         {/* Sidebar */}
@@ -559,7 +603,7 @@ export default function App() {
         */}
         <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
           <main className="flex-1 min-h-0 overflow-hidden relative">
-            <AnimatePresence mode="wait" initial={false} custom={viewDirection}>
+            <AnimatePresence mode="popLayout" initial={false} custom={viewDirection}>
               {currentView === "news" && (
                 <motion.div
                   key="news"
@@ -622,18 +666,13 @@ export default function App() {
                     <HomeView
                       subNav={homeNav}
                       direction={homeNavDirection}
-                      activeInstance={activeInstance}
+                      activeInstance={homeInstance}
                       onCreateInstance={handleCreateInstance}
-                      onGoToInstanceDetail={(id) => {
-                        setSelectedInstanceId(id);
-                        handleNavigate("instance-detail");
-                      }}
-                      isLaunching={!!(activeInstance && launchingInstanceIds[activeInstance.id])}
-                      isRunning={!!(activeInstance && runningInstances[activeInstance.id])}
-                      runningPid={activeInstance ? runningInstances[activeInstance.id]?.pid ?? null : null}
-                      runningAccountName={activeInstance ? runningInstances[activeInstance.id]?.accountName ?? null : null}
-                      onLaunch={() => handleLaunchGame(activeInstance?.id)}
-                      onKill={() => activeInstance && handleKillGame(activeInstance.id)}
+                      onImportInstance={handleImportInstance}
+                      isLaunching={!!(homeInstance && launchingInstanceIds[homeInstance.id])}
+                      isRunning={!!(homeInstance && runningInstances[homeInstance.id])}
+                      runningAccountName={homeInstance ? runningInstances[homeInstance.id]?.accountName ?? null : null}
+                      onQuickPlay={(type, target) => handleLaunchGame(homeInstance?.id, type, target)}
                     />
                   </ScrollArea>
                 </motion.div>
@@ -670,9 +709,7 @@ export default function App() {
                         instances={instances}
                         searchQuery={searchQuery}
                         runningInstances={runningInstances}
-                        onCreateInstance={handleCreateInstance}
-                        onImportInstance={handleImportInstance}
-                        onCreateGroup={handleCreateGroup}
+                        onInstancesChanged={refreshInstances}
                         onInstanceDuplicated={refreshInstances}
                         onSelectInstance={(id) => {
                           setSelectedInstanceId(id);
@@ -761,8 +798,7 @@ export default function App() {
               {currentView === "skins" && (
                 <motion.div
                   key="skins"
-                  custom={viewDirection}
-                  variants={pageVariants}
+                  variants={scaleVariants}
                   initial="initial"
                   animate="animate"
                   exit="exit"
@@ -811,6 +847,15 @@ export default function App() {
         </Suspense>
       )}
 
+      {/* First-run guide: only once the user is logged in and the workspace is visible */}
+      {showOnboarding && accounts.length > 0 && bootStage === "ready" && (
+        <OnboardingGuide
+          onCreateInstance={handleCreateInstance}
+          onImportInstance={handleImportInstance}
+          onFinish={() => setShowOnboarding(false)}
+        />
+      )}
+
       {/* Create Instance Modal */}
       {isCreateInstanceOpen && (
         <Suspense fallback={null}>
@@ -832,6 +877,13 @@ export default function App() {
           />
         </Suspense>
       )}
+
+      <Toaster />
+
+      {/* Launch Install Progress Modal */}
+      <Suspense fallback={null}>
+        <LaunchInstallModal activeInstanceId={selectedInstanceId || activeInstance?.id || null} />
+      </Suspense>
 
       {/* Exit Confirmation Dialog */}
       <ExitConfirmationDialog

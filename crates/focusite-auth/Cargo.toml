@@ -11,12 +11,13 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["multipart"] }
 uuid.workspace = true
 chrono.workspace = true
 dotenvy.workspace = true
 keyring = { workspace = true }
 base64 = "0.22"
+aes-gcm = "0.10"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

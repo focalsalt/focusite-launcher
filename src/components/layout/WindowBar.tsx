@@ -7,13 +7,27 @@ import {
   startDragging,
   toggleMaximizeWindow,
 } from "@/lib/tauriWindow";
+import { useAppVersion } from "@/lib/useAppVersion";
+import { useI18n } from "@/i18n";
 
 interface WindowBarProps {
   onClose?: () => void;
+  title?: string;
+  badge?: string | null;
+  showIcon?: boolean;
 }
 
-export const WindowBar: React.FC<WindowBarProps> = ({ onClose }) => {
+export const WindowBar: React.FC<WindowBarProps> = ({
+  onClose,
+  title,
+  badge,
+  showIcon = true,
+}) => {
+  const { t } = useI18n();
   const [maximized, setMaximized] = useState<boolean>(false);
+  const appVersion = useAppVersion();
+  // `badge` undefined = show the running app version; `null` = hide the badge.
+  const shownBadge = badge === undefined ? (appVersion ? `v${appVersion}` : null) : badge;
 
   useEffect(() => {
     isWindowMaximized().then(setMaximized);
@@ -52,17 +66,21 @@ export const WindowBar: React.FC<WindowBarProps> = ({ onClose }) => {
         onMouseDown={handleDragMouseDown}
         className="flex items-center gap-2.5 cursor-default"
       >
-        <img
-          src="/focusite-icon.svg"
-          alt="Focusite"
-          className="h-6 w-6 shrink-0 object-contain drop-shadow"
-        />
-        <span className="font-bold tracking-wide text-slate-100">
-          Focusite Launcher
+        {showIcon && (
+          <img
+            src="/focusite-icon.svg"
+            alt="Focusite"
+            className="h-6 w-6 shrink-0 object-contain drop-shadow"
+          />
+        )}
+        <span className="font-bold tracking-wide text-slate-100 truncate max-w-md">
+          {title || "Focusite Launcher"}
         </span>
-        <span className="rounded bg-[#3C8527]/20 px-1.5 py-0.2 text-[10px] text-[#52A43A] border border-[#52A43A]/30 font-mono font-medium">
-          v26.1.0
-        </span>
+        {shownBadge && (
+          <span className="rounded bg-brand/20 px-1.5 py-0.2 text-[10px] text-brand-light border border-brand-light/30 font-mono font-medium shrink-0">
+            {shownBadge}
+          </span>
+        )}
       </div>
 
       {/* Center Drag Area */}
@@ -84,7 +102,7 @@ export const WindowBar: React.FC<WindowBarProps> = ({ onClose }) => {
             e.stopPropagation();
             minimizeWindow();
           }}
-          title="最小化"
+          title={t.windowBar.minimize}
           className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-white/10 hover:text-slate-100 transition-colors"
         >
           <Minus className="h-3.5 w-3.5" />
@@ -96,7 +114,7 @@ export const WindowBar: React.FC<WindowBarProps> = ({ onClose }) => {
             e.stopPropagation();
             handleToggleMaximize();
           }}
-          title={maximized ? "向下還原" : "最大化"}
+          title={maximized ? t.windowBar.restore : t.windowBar.maximize}
           className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-white/10 hover:text-slate-100 transition-colors"
         >
           {maximized ? (
@@ -116,7 +134,7 @@ export const WindowBar: React.FC<WindowBarProps> = ({ onClose }) => {
               closeWindow();
             }
           }}
-          title="關閉"
+          title={t.windowBar.close}
           className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-rose-600 hover:text-white transition-colors"
         >
           <X className="h-3.5 w-3.5" />

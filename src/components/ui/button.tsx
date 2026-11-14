@@ -4,12 +4,12 @@ import { motion, type HTMLMotionProps } from "motion/react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-xl text-xs font-semibold select-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52A43A] disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
+  "inline-flex items-center justify-center whitespace-nowrap rounded-xl text-xs font-semibold select-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-light disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
   {
     variants: {
       variant: {
         default:
-          "bg-[#3C8527] text-white shadow-md shadow-[#3C8527]/25 hover:bg-[#469C2D]",
+          "bg-brand text-white shadow-md shadow-brand/25 hover:bg-brand-hover",
         destructive:
           "bg-rose-600 text-white shadow-sm hover:bg-rose-500",
         outline:
@@ -19,7 +19,7 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-white/10 text-slate-300 hover:text-white",
         link:
-          "text-[#52A43A] underline-offset-4 hover:underline",
+          "text-brand-light underline-offset-4 hover:underline",
         glass:
           "bg-white/10 backdrop-blur-md border border-white/15 text-slate-100 hover:bg-white/15 shadow-sm",
       },

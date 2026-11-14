@@ -233,6 +233,12 @@ pub struct InstanceConfig {
     pub last_played_at: Option<i64>,
     #[serde(default)]
     pub show_log_on_launch: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_jvm_args: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_vars: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -271,6 +277,9 @@ impl InstanceConfig {
             created_at: chrono::Utc::now().timestamp_millis(),
             last_played_at: None,
             show_log_on_launch: false,
+            group: None,
+            custom_jvm_args: None,
+            environment_vars: None,
         }
     }
 

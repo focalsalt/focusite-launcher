@@ -123,14 +123,89 @@ mod win_dpapi {
     }
 }
 
-#[cfg(not(windows))]
-mod non_win_dpapi {
+#[cfg(any(not(windows), test))]
+pub(crate) mod non_win_dpapi {
     use super::*;
-    pub fn protect(data: &[u8]) -> Result<Vec<u8>, AuthError> {
-        Ok(data.iter().map(|b| b ^ 0xA5).collect())
+    use aes_gcm::aead::rand_core::RngCore;
+    use aes_gcm::aead::{Aead, KeyInit, OsRng};
+    use aes_gcm::{Aes256Gcm, Nonce};
+    use base64::prelude::*;
+    use keyring::Entry;
+
+    const MASTER_KEY_ACCOUNT: &str = "__focusite_master_key__";
+    pub const FORMAT_VERSION_AES_GCM: u8 = 0x01;
+
+    fn get_or_create_master_key() -> Result<[u8; 32], AuthError> {
+        let entry = Entry::new(crate::keyring_store::SERVICE_NAME, MASTER_KEY_ACCOUNT)
+            .map_err(|e| AuthError::KeyringError(format!("Failed to create keyring entry: {}", e)))?;
+        match entry.get_password() {
+            Ok(b64) => {
+                if let Ok(bytes) = BASE64_STANDARD.decode(&b64) {
+                    if bytes.len() == 32 {
+                        let mut key = [0u8; 32];
+                        key.copy_from_slice(&bytes);
+                        return Ok(key);
+                    }
+                }
+                Err(AuthError::KeyringError("Corrupted master key in keyring".into()))
+            }
+            Err(keyring::Error::NoEntry) => {
+                let key = Aes256Gcm::generate_key(OsRng);
+                let b64 = BASE64_STANDARD.encode(key);
+                entry.set_password(&b64).map_err(|e| {
+                    AuthError::KeyringError(format!("Failed to save master key to keyring: {}", e))
+                })?;
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&key);
+                Ok(arr)
+            }
+            Err(e) => Err(AuthError::KeyringError(format!(
+                "Failed to read master key from keyring: {}",
+                e
+            ))),
+        }
     }
+
+    pub fn protect(data: &[u8]) -> Result<Vec<u8>, AuthError> {
+        let key = get_or_create_master_key()?;
+        let cipher = Aes256Gcm::new_from_slice(&key)
+            .map_err(|e| AuthError::AuthFailed(format!("Invalid key: {}", e)))?;
+        let mut nonce_bytes = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        let encrypted = cipher
+            .encrypt(nonce, data)
+            .map_err(|e| AuthError::AuthFailed(format!("AES-GCM encryption failed: {}", e)))?;
+        let mut out = Vec::with_capacity(1 + 12 + encrypted.len());
+        out.push(FORMAT_VERSION_AES_GCM);
+        out.extend_from_slice(&nonce_bytes);
+        out.extend_from_slice(&encrypted);
+        Ok(out)
+    }
+
     pub fn unprotect(data: &[u8]) -> Result<Vec<u8>, AuthError> {
-        Ok(data.iter().map(|b| b ^ 0xA5).collect())
+        if let Some(&first_byte) = data.first() {
+            if first_byte == FORMAT_VERSION_AES_GCM && data.len() > 12 {
+                let key = get_or_create_master_key()?;
+                let cipher = Aes256Gcm::new_from_slice(&key)
+                    .map_err(|e| AuthError::AuthFailed(format!("Invalid key: {}", e)))?;
+                let (nonce_bytes, ciphertext) = data[1..].split_at(12);
+                let nonce = Nonce::from_slice(nonce_bytes);
+                return cipher
+                    .decrypt(nonce, ciphertext)
+                    .map_err(|e| AuthError::AuthFailed(format!("AES-GCM decryption failed: {}", e)));
+            }
+        }
+
+        // Fallback migration: support legacy 0xA5 XOR format
+        let xored: Vec<u8> = data.iter().map(|b| b ^ 0xA5).collect();
+        if let Ok(text) = std::str::from_utf8(&xored) {
+            if text.trim().starts_with('{') {
+                return Ok(xored);
+            }
+        }
+
+        Err(AuthError::AuthFailed("Unknown encryption format or decryption failed".into()))
     }
 }
 
@@ -198,5 +273,27 @@ mod tests {
         // 未加密之舊檔案應無縫解讀
         let decrypted = decrypt_account_data(plain.as_bytes()).unwrap();
         assert_eq!(decrypted, plain);
+    }
+
+    #[test]
+    fn test_dpapi_legacy_xored_fallback() {
+        let plain = r#"{"accounts":[],"active_account_id":"acc-1"}"#;
+        let xored: Vec<u8> = plain.as_bytes().iter().map(|b| b ^ 0xA5).collect();
+        let unprot = non_win_dpapi::unprotect(&xored).expect("legacy XOR must be decrypted");
+        assert_eq!(String::from_utf8(unprot).unwrap(), plain);
+    }
+
+    #[test]
+    fn test_non_win_dpapi_aes_gcm_roundtrip() {
+        let plain = b"{\"secret\":\"linux_macos_aes_gcm_test\"}";
+        let protected = non_win_dpapi::protect(plain).expect("non_win protect should succeed");
+        assert_eq!(protected[0], non_win_dpapi::FORMAT_VERSION_AES_GCM);
+        let unprotected = non_win_dpapi::unprotect(&protected).expect("non_win unprotect should succeed");
+        assert_eq!(&unprotected, plain);
+
+        // Corrupt ciphertext should fail gracefully
+        let mut corrupted = protected.clone();
+        corrupted[14] ^= 0xFF;
+        assert!(non_win_dpapi::unprotect(&corrupted).is_err());
     }
 }

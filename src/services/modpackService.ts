@@ -8,6 +8,8 @@ export interface MissingModItem {
   name: string;
   fileName: string;
   webUrl: string;
+  /** Exact path inside the minecraft folder (set for .mrpack files). */
+  relPath?: string;
 }
 
 export interface ModpackImportResult {
@@ -32,15 +34,19 @@ export const modpackService = {
       });
     }
 
-    console.warn("[Browser Mock] importModpack called for:", packPath);
-    return {
-      instanceId: "mock-imported-pack",
-      instanceName: customName || "Mock Modpack",
-      version: "1.20.1",
-      loader: "Forge",
-      missingMods: [],
-      isCompleted: true,
-    };
+    throw new Error("Modpack import is only available in the desktop app");
+  },
+
+  /** Downloads the newest release of a Modrinth modpack project and imports it. */
+  async importModrinthModpack(projectId: string, customName?: string, versionId?: string): Promise<ModpackImportResult> {
+    if (isTauri()) {
+      return await invoke<ModpackImportResult>("import_modrinth_modpack", {
+        projectId,
+        customName: customName || null,
+        versionId: versionId || null,
+      });
+    }
+    throw new Error("Online modpack import is only available in the desktop app");
   },
 
   async rescanMissingMods(

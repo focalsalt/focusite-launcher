@@ -2,7 +2,8 @@
 //! Broadcasts `[MOTD]{motd}[/MOTD][AD]{port}[/AD]` so local vanilla/modded
 //! Minecraft clients automatically discover Focusite P2P rooms in "Multiplayer -> LAN Worlds".
 
-use std::net::SocketAddr;
+use std::collections::HashMap;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::sync::watch;
@@ -35,74 +36,78 @@ pub fn parse_lan_packet(raw: &str) -> Option<(String, u16)> {
 }
 
 pub struct LanBroadcaster {
-    motd_tx: watch::Sender<String>,
     stop_tx: Option<watch::Sender<bool>>,
     task_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
+/// IPv4 address of every usable local adapter with its directed broadcast address.
+fn local_adapters() -> Vec<(Ipv4Addr, Option<Ipv4Addr>)> {
+    if_addrs::get_if_addrs()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|iface| !iface.is_loopback())
+        .filter_map(|iface| match iface.addr {
+            if_addrs::IfAddr::V4(v4) if !v4.ip.is_link_local() && !v4.ip.is_unspecified() => Some((v4.ip, v4.broadcast)),
+            _ => None,
+        })
+        .collect()
+}
+
 impl LanBroadcaster {
-    /// Spawns a background task broadcasting LAN discovery packets every 1.5 seconds.
+    /// Spawns a background task announcing the world every 1.5 seconds on every local adapter.
+    ///
+    /// One socket is bound per adapter address, so the announcement leaves through each network
+    /// (Wi-Fi, Ethernet) instead of only the default route, which a VPN or virtual switch may own.
     pub async fn start(motd: String, port: u16) -> Result<Self, std::io::Error> {
-        // Bind to any ephemeral local UDP port
-        let socket = UdpSocket::bind("0.0.0.0:0").await?;
-        let _ = socket.set_broadcast(true);
+        // Fail early when nothing can be bound at all.
+        let fallback = UdpSocket::bind("0.0.0.0:0").await?;
+        let _ = fallback.set_broadcast(true);
 
         let (stop_tx, mut stop_rx) = watch::channel(false);
-        let (motd_tx, mut motd_rx) = watch::channel(motd.clone());
-
         let task_handle = tokio::spawn(async move {
             info!("LAN Broadcaster started for port {}, motd: {}", port, motd);
-            let multicast_addr: SocketAddr = MC_LAN_MULTICAST_ADDR.parse().unwrap();
-            let broadcast_addr: SocketAddr = MC_LAN_BROADCAST_ADDR.parse().unwrap();
-
-            let mut current_payload_bytes = format_lan_packet(&motd, port).into_bytes();
+            let payload = format_lan_packet(&motd, port).into_bytes();
+            let multicast_addr: SocketAddr = MC_LAN_MULTICAST_ADDR.parse().expect("valid constant");
+            let broadcast_addr: SocketAddr = MC_LAN_BROADCAST_ADDR.parse().expect("valid constant");
+            let mut sockets: HashMap<Ipv4Addr, (UdpSocket, Option<Ipv4Addr>)> = HashMap::new();
 
             loop {
-                // Check if stop requested
-                if *stop_rx.borrow() {
-                    debug!("LAN Broadcaster stop signal received");
-                    break;
+                // Follow adapters coming and going (VPN connects, Wi-Fi roams).
+                let adapters = local_adapters();
+                sockets.retain(|ip, _| adapters.iter().any(|(a, _)| a == ip));
+                for (ip, broadcast) in &adapters {
+                    if sockets.contains_key(ip) {
+                        continue;
+                    }
+                    if let Ok(socket) = UdpSocket::bind((*ip, 0)).await {
+                        let _ = socket.set_broadcast(true);
+                        sockets.insert(*ip, (socket, *broadcast));
+                    }
                 }
 
-                if motd_rx.has_changed().unwrap_or(false) {
-                    let updated_motd = motd_rx.borrow_and_update().clone();
-                    current_payload_bytes = format_lan_packet(&updated_motd, port).into_bytes();
+                if sockets.is_empty() {
+                    let _ = fallback.send_to(&payload, multicast_addr).await;
+                    let _ = fallback.send_to(&payload, broadcast_addr).await;
                 }
-
-                // Send to both multicast and broadcast addresses for maximum compatibility
-                if let Err(e) = socket.send_to(&current_payload_bytes, multicast_addr).await {
-                    debug!("LAN multicast send warning: {}", e);
-                }
-                if let Err(e) = socket.send_to(&current_payload_bytes, broadcast_addr).await {
-                    debug!("LAN broadcast send warning: {}", e);
+                for (socket, directed) in sockets.values() {
+                    if let Err(e) = socket.send_to(&payload, multicast_addr).await {
+                        debug!("LAN multicast send warning: {}", e);
+                    }
+                    let target = directed.map_or(broadcast_addr, |ip| SocketAddr::from((ip, 4445)));
+                    if let Err(e) = socket.send_to(&payload, target).await {
+                        debug!("LAN broadcast send warning: {}", e);
+                    }
                 }
 
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_millis(1500)) => {},
-                    _ = stop_rx.changed() => {
-                        if *stop_rx.borrow() {
-                            break;
-                        }
-                    }
-                    _ = motd_rx.changed() => {
-                        let updated_motd = motd_rx.borrow_and_update().clone();
-                        current_payload_bytes = format_lan_packet(&updated_motd, port).into_bytes();
-                    }
+                    _ = stop_rx.changed() => break,
                 }
             }
             debug!("LAN Broadcaster stopped");
         });
 
-        Ok(Self {
-            motd_tx,
-            stop_tx: Some(stop_tx),
-            task_handle: Some(task_handle),
-        })
-    }
-
-    /// Dynamically updates the MOTD announced in LAN packets.
-    pub async fn update_motd(&self, new_motd: String) {
-        let _ = self.motd_tx.send(new_motd);
+        Ok(Self { stop_tx: Some(stop_tx), task_handle: Some(task_handle) })
     }
 
     /// Stops the broadcaster background task.

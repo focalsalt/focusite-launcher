@@ -5,14 +5,16 @@ import { LoaderType, MinecraftInstance, PackFileInfo } from "@/types/navigation"
 
 export interface ModFileInfo {
   filename: string;
-  size_bytes: number;
+  sizeBytes: number;
+  size_bytes?: number;
   enabled: boolean;
 }
 
 export interface ScreenshotFileInfo {
   name: string;
   path: string;
-  created_at: string;
+  createdAt: string;
+  created_at?: string;
 }
 
 export interface CreateInstanceParams {
@@ -47,6 +49,33 @@ export interface InstanceStatusEvent {
   status: "launching" | "running" | "stopped" | "crashed";
   exit_code?: number | null;
   pid?: number | null;
+}
+
+export interface WorldSummary {
+  folder_name: string;
+  name: string;
+  seed: string;
+  game_mode: number;
+  is_hardcore: boolean;
+  last_played: number;
+  version_name: string;
+  icon_base64?: string;
+}
+
+export interface ServerEntry {
+  name: string;
+  ip: string;
+  icon_base64?: string;
+}
+
+export interface ServerPingResult {
+  motd: string;
+  online_players: number;
+  max_players: number;
+  version_name: string;
+  protocol_version: number;
+  latency_ms: number;
+  favicon_base64?: string;
 }
 
 const isTauri = (): boolean => {
@@ -84,6 +113,33 @@ export const instanceService = {
   /**
    * Creates a real instance on disk with optional icon, loader version, description, and custom loader jar.
    */
+  /** Jar file names stored in the instance's `custom_jar` folder. */
+  async listCustomJars(instanceId: string): Promise<string[]> {
+    return await invoke<string[]>("list_custom_jars", { instanceId });
+  },
+
+  /** Saves a custom loader jar into the instance's `custom_jar` folder; returns the stored name. */
+  async saveCustomJar(instanceId: string, name: string, bytes: number[]): Promise<string> {
+    return await invoke<string>("save_custom_jar", { instanceId, name, bytes });
+  },
+
+  /** First-time setup of a folder that has no config of ours. */
+  async setupInstance(params: {
+    instanceId: string;
+    name: string;
+    version: string;
+    loader: LoaderType;
+    loaderVersion?: string;
+  }): Promise<MinecraftInstance> {
+    return await invoke<MinecraftInstance>("setup_instance", {
+      instanceId: params.instanceId,
+      name: params.name,
+      version: params.version,
+      loader: params.loader,
+      loaderVersion: params.loaderVersion || null,
+    });
+  },
+
   async createInstance(params: CreateInstanceParams): Promise<MinecraftInstance> {
     const {
       name,
@@ -176,8 +232,6 @@ export const instanceService = {
       } catch (err) {
         console.error("Tauri open_instance_directory failed:", err);
       }
-    } else {
-      console.log(`[Browser Mock] Open directory for ${instanceId}: ${target}`);
     }
   },
 
@@ -296,17 +350,22 @@ export const instanceService = {
 
   /**
    * Launches Minecraft for the specified instance ID, returning process PID.
+   * Supports Quick Play singleplayer/multiplayer direct launch.
    */
   async launchInstance(
     instanceId: string,
     accountId?: string,
-    accountName?: string
+    accountName?: string,
+    quickPlayType?: "singleplayer" | "multiplayer",
+    quickPlayTarget?: string
   ): Promise<number> {
     if (isTauri()) {
       return await invoke<number>("launch_instance", {
         instanceId,
         accountId: accountId || null,
         accountName: accountName || null,
+        quickPlayType: quickPlayType || null,
+        quickPlayTarget: quickPlayTarget || null,
       });
     }
     console.warn("Simulating launch in browser development mode");
@@ -357,7 +416,7 @@ export const instanceService = {
   },
 
   /**
-   * Updates an instance's settings and immediately persists to instance.cfg.
+   * Updates an instance's settings and immediately persists to focusite-instance.json.
    */
   async updateInstanceSettings(
     instanceId: string,
@@ -367,6 +426,9 @@ export const instanceService = {
       javaPath?: string | null;
       jvmArgs?: string[];
       showLogOnLaunch?: boolean;
+      group?: string;
+      customJvmArgs?: string[];
+      environmentVars?: Record<string, string>;
     }
   ): Promise<MinecraftInstance> {
     if (isTauri()) {
@@ -377,6 +439,9 @@ export const instanceService = {
         javaPath: settings.javaPath !== undefined ? (settings.javaPath === null ? "" : settings.javaPath) : null,
         jvmArgs: settings.jvmArgs ?? null,
         showLogOnLaunch: settings.showLogOnLaunch ?? null,
+        group: settings.group !== undefined ? settings.group : null,
+        customJvmArgs: settings.customJvmArgs ?? null,
+        environmentVars: settings.environmentVars ?? null,
       });
     }
 
@@ -390,6 +455,9 @@ export const instanceService = {
       javaPath: settings.javaPath !== undefined ? (settings.javaPath ?? undefined) : target.javaPath,
       jvmArgs: settings.jvmArgs ?? target.jvmArgs,
       showLogOnLaunch: settings.showLogOnLaunch ?? target.showLogOnLaunch,
+      group: settings.group !== undefined ? settings.group : target.group,
+      customJvmArgs: settings.customJvmArgs ?? target.customJvmArgs,
+      environmentVars: settings.environmentVars ?? target.environmentVars,
     };
     const nextList = current.map((it) => (it.id === instanceId ? updated : it));
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(nextList));
@@ -484,5 +552,135 @@ export const instanceService = {
         console.error("Tauri set_instance_show_log failed:", err);
       }
     }
+  },
+
+  /**
+   * Fetches the in-memory buffered logs for a specific instance.
+   */
+  async getInstanceLogBuffer(instanceId: string): Promise<InstanceLogEvent[]> {
+    if (isTauri()) {
+      try {
+        return await invoke<InstanceLogEvent[]>("get_instance_log_buffer", { instanceId });
+      } catch (err) {
+        console.error("Tauri get_instance_log_buffer failed:", err);
+      }
+    }
+    return [];
+  },
+
+  /**
+   * Opens or reveals the dedicated log window for a specific instance.
+   */
+  async openInstanceLogWindow(instanceId: string): Promise<void> {
+    if (isTauri()) {
+      try {
+        await invoke("open_instance_log_window", { instanceId });
+      } catch (err) {
+        console.error("Tauri open_instance_log_window failed:", err);
+      }
+    }
+  },
+
+  /**
+   * Sets instance icon from a local image file (PNG/JPG/WebP/ICO/GIF).
+   */
+  async setInstanceIconFromFile(instanceId: string, sourceImagePath: string): Promise<MinecraftInstance> {
+    return await invoke<MinecraftInstance>("set_instance_icon_from_file", {
+      instanceId,
+      sourceImagePath,
+    });
+  },
+
+  /**
+   * Sets instance icon from a built-in curated preset key.
+   */
+  async setInstancePresetIcon(instanceId: string, presetKey: string): Promise<MinecraftInstance> {
+    return await invoke<MinecraftInstance>("set_instance_preset_icon", {
+      instanceId,
+      presetKey,
+    });
+  },
+
+  /**
+   * Resets instance icon back to default.
+   */
+  async resetInstanceIcon(instanceId: string): Promise<MinecraftInstance> {
+    return await invoke<MinecraftInstance>("reset_instance_icon", {
+      instanceId,
+    });
+  },
+
+  /**
+   * Retrieves a specific instance by its ID.
+   */
+  async getInstance(instanceId: string): Promise<MinecraftInstance | null> {
+    const instances = await this.listInstances();
+    return instances.find((i) => i.id === instanceId) ?? null;
+  },
+
+  /**
+   * Lists worlds parsed from level.dat in saves/ directory.
+   */
+  async listInstanceWorlds(instanceId: string): Promise<WorldSummary[]> {
+    if (isTauri()) {
+      return await invoke<WorldSummary[]>("list_instance_worlds_cmd", { instanceId });
+    }
+    return [];
+  },
+
+  /**
+   * Renames a Minecraft world level name.
+   */
+  async renameInstanceWorld(instanceId: string, folderName: string, newName: string): Promise<void> {
+    if (isTauri()) {
+      await invoke("rename_instance_world_cmd", { instanceId, folderName, newName });
+    }
+  },
+
+  /**
+   * Deletes a world save folder.
+   */
+  async deleteInstanceWorld(instanceId: string, folderName: string): Promise<void> {
+    if (isTauri()) {
+      await invoke("delete_instance_world_cmd", { instanceId, folderName });
+    }
+  },
+
+  /**
+   * Backs up a world into a zip file.
+   */
+  async backupInstanceWorld(instanceId: string, folderName: string, targetZipPath: string): Promise<void> {
+    if (isTauri()) {
+      await invoke("backup_instance_world_cmd", { instanceId, folderName, targetZipPath });
+    }
+  },
+
+  /**
+   * Reads the server entries from servers.dat.
+   */
+  async readInstanceServers(instanceId: string): Promise<ServerEntry[]> {
+    if (isTauri()) {
+      return await invoke<ServerEntry[]>("read_instance_servers_cmd", { instanceId });
+    }
+    return [];
+  },
+
+  /**
+   * Saves the server entries back to servers.dat.
+   */
+  async saveInstanceServers(instanceId: string, servers: ServerEntry[]): Promise<void> {
+    if (isTauri()) {
+      await invoke("save_instance_servers_cmd", { instanceId, servers });
+    }
+  },
+
+  /**
+   * Pings a Minecraft server using TCP SLP protocol.
+   */
+  async pingServer(host: string, port?: number): Promise<ServerPingResult> {
+    if (isTauri()) {
+      return await invoke<ServerPingResult>("ping_server_cmd", { host, port: port || null });
+    }
+    throw new Error("pingServer is only available in desktop environment");
   },
 };

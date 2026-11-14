@@ -8,6 +8,7 @@ import {
   MainView,
   NewsSubNav,
 } from "@/types/navigation";
+import { useI18n } from "@/i18n";
 
 interface DynamicTitlebarProps {
   currentView: MainView;
@@ -33,6 +34,7 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
   onCreateInstance,
   onImportInstance,
 }) => {
+  const { t } = useI18n();
   // 個別實例 (instance-detail) 依規格明確沒有 Titlebar!
   if (currentView === "instance-detail") {
     return null;
@@ -44,7 +46,7 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
       {currentView === "news" && (
         <>
           <h2 className="text-lg font-bold tracking-tight text-slate-100">
-            新聞快訊
+            {t.shell.newsFlash}
           </h2>
           <div className="flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
             <TitlebarTabButton
@@ -52,21 +54,21 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
               layoutId="news-subnav-indicator"
               onClick={() => onNewsNavChange("official")}
             >
-              官方新聞
+              {t.shell.officialNews}
             </TitlebarTabButton>
             <TitlebarTabButton
               active={newsNav === "changelog"}
               layoutId="news-subnav-indicator"
               onClick={() => onNewsNavChange("changelog")}
             >
-              Java版更改日誌
+              {t.shell.javaChangelog}
             </TitlebarTabButton>
             <TitlebarTabButton
               active={newsNav === "announcements"}
               layoutId="news-subnav-indicator"
               onClick={() => onNewsNavChange("announcements")}
             >
-              啟動器快訊
+              {t.shell.launcherAnnouncements}
             </TitlebarTabButton>
           </div>
         </>
@@ -81,14 +83,14 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
               layoutId="home-subnav-indicator"
               onClick={() => onHomeNavChange("overview")}
             >
-              主頁總覽
+              {t.shell.homeOverview}
             </TitlebarTabButton>
             <TitlebarTabButton
               active={homeNav === "p2p"}
               layoutId="home-subnav-indicator"
               onClick={() => onHomeNavChange("p2p")}
             >
-              P2P好友共遊
+              {t.shell.p2p}
             </TitlebarTabButton>
           </div>
         </div>
@@ -98,7 +100,7 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
       {currentView === "instances" && (
         <>
           <h2 className="text-lg font-bold tracking-tight text-slate-100 shrink-0">
-            實例總覽
+            {t.shell.instanceOverview}
           </h2>
 
           <div className="flex flex-1 items-center justify-center px-6 max-w-md mx-auto">
@@ -108,7 +110,7 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="搜尋實例名稱、版本或加載器..."
+                placeholder={t.shell.searchInstances}
                 className="pl-9 h-8 rounded-xl"
               />
             </div>
@@ -121,16 +123,16 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
               onClick={onImportInstance}
               className="gap-1.5 text-xs h-8 rounded-lg border-white/10 bg-white/5 hover:bg-white/10"
             >
-              <FolderDown className="h-3.5 w-3.5 text-[#52A43A]" />
-              <span>導入實例</span>
+              <FolderDown className="h-3.5 w-3.5 text-brand-light" />
+              <span>{t.shell.importInstance}</span>
             </Button>
             <Button
               size="sm"
               onClick={onCreateInstance}
-              className="gap-1.5 text-xs h-8 rounded-lg bg-[#3C8527] hover:bg-[#469C2D] text-white shadow-sm shadow-[#3C8527]/25"
+              className="gap-1.5 text-xs h-8 rounded-lg bg-brand hover:bg-brand-hover text-white shadow-sm shadow-brand/25"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>建立實例</span>
+              <span>{t.shell.createInstance}</span>
             </Button>
           </div>
         </>
@@ -139,7 +141,7 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
       {/* 5. 全域設定：Title(靠左) */}
       {currentView === "settings" && (
         <h2 className="text-lg font-bold tracking-tight text-slate-100">
-          全域設定
+          {t.shell.globalSettings}
         </h2>
       )}
     </div>
@@ -168,7 +170,7 @@ function TitlebarTabButton({
       {active && (
         <motion.div
           layoutId={layoutId}
-          className="absolute inset-0 rounded-lg bg-[#3C8527] shadow-sm shadow-[#3C8527]/30"
+          className="absolute inset-0 rounded-lg bg-brand shadow-sm shadow-brand/30"
           transition={{ type: "spring", stiffness: 500, damping: 35 }}
         />
       )}

@@ -11,6 +11,8 @@ interface ScrollAreaProps extends React.HTMLAttributes<HTMLDivElement> {
   className?: string;
   viewportClassName?: string;
   viewportRef?: React.RefObject<HTMLDivElement | null>;
+  /** Fade the top/bottom edges while more content lies beyond them. Defaults to true. */
+  fadeEdges?: boolean;
   onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
 }
 
@@ -21,6 +23,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       className,
       viewportClassName,
       viewportRef: externalViewportRef,
+      fadeEdges = true,
       onScroll,
       ...props
     },
@@ -32,6 +35,8 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
     const [thumbHeight, setThumbHeight] = useState<number>(0);
     const [thumbTop, setThumbTop] = useState<number>(0);
     const [isScrollable, setIsScrollable] = useState<boolean>(false);
+    const [fadeTop, setFadeTop] = useState<boolean>(false);
+    const [fadeBottom, setFadeBottom] = useState<boolean>(false);
     const [isScrolling, setIsScrolling] = useState<boolean>(false);
     const [isHovered, setIsHovered] = useState<boolean>(false);
     const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -48,6 +53,8 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       const { clientHeight, scrollHeight, scrollTop } = el;
       const canScroll = scrollHeight > clientHeight + 2;
       setIsScrollable(canScroll);
+      setFadeTop(canScroll && scrollTop > 2);
+      setFadeBottom(canScroll && scrollTop + clientHeight < scrollHeight - 2);
 
       if (!canScroll) {
         setThumbHeight(0);
@@ -162,6 +169,14 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
     const showThumb =
       isScrollable && (isDragging || isScrolling || isHovered);
 
+    // Soft fade where content continues beyond the viewport edge.
+    const FADE_PX = 28;
+    const edgeMask = `linear-gradient(to bottom, ${
+      fadeTop ? "transparent 0" : "black 0"
+    }, black ${fadeTop ? FADE_PX : 0}px, black calc(100% - ${
+      fadeBottom ? FADE_PX : 0
+    }px), ${fadeBottom ? "transparent 100%" : "black 100%"})`;
+
     return (
       <div
         ref={ref}
@@ -181,6 +196,12 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
           style={{
             scrollbarWidth: "none",
             msOverflowStyle: "none",
+            ...(fadeEdges && (fadeTop || fadeBottom)
+              ? {
+                  maskImage: edgeMask,
+                  WebkitMaskImage: edgeMask,
+                }
+              : null),
           }}
         >
           {children}
@@ -202,9 +223,9 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
                 "absolute right-1 w-1 rounded-full cursor-pointer transition-colors duration-150",
                 showThumb ? "opacity-100" : "opacity-0",
                 isDragging
-                  ? "bg-[#52A43A] shadow-[0_0_8px_rgba(82,164,58,0.8)]"
+                  ? "bg-brand-light shadow-[0_0_8px_color-mix(in_srgb,var(--fc-highlight)_80%,transparent)]"
                   : isHovered
-                  ? "bg-white/30 hover:bg-[#52A43A]/80"
+                  ? "bg-white/30 hover:bg-brand-light/80"
                   : "bg-white/15"
               )}
             />

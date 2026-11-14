@@ -1,11 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main", "splash"],
+  "description": "Capability for the main window and subwindows",
+  "windows": ["main", "splash", "log-window-*", "workshop-*"],
   "permissions": [
     "core:default",
     "opener:default",
+    "dialog:default",
+    "updater:default",
     "core:window:default",
     "core:window:allow-minimize",
     "core:window:allow-maximize",

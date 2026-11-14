@@ -1,10 +1,16 @@
+import { slideVariants } from "@/lib/motion";
 import React, { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ExternalLink, Calendar, Image as ImageIcon, Megaphone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NewsSubNav } from "@/types/navigation";
+import { openExternal } from "@/lib/openExternal";
+import { PatchNoteDialog } from "@/components/news/PatchNoteDialog";
 import { newsService, LauncherNewsItem, LauncherPatchNoteItem } from "@/services/newsService";
+import { toUserMessage } from "@/lib/errorMessage";
+import { toast } from "@/lib/toast";
+import { useI18n } from "@/i18n";
 
 const NEWS_SUB_NAV_ORDER: Record<NewsSubNav, number> = {
   official: 0,
@@ -12,29 +18,31 @@ const NEWS_SUB_NAV_ORDER: Record<NewsSubNav, number> = {
   announcements: 2,
 };
 
-const subTabVariants = {
-  initial: (dir: number) => ({
-    opacity: 0,
-    x: dir * 32,
-  }),
-  animate: {
-    opacity: 1,
-    x: 0,
-    transition: {
-      type: "spring" as const,
-      stiffness: 450,
-      damping: 35,
-      mass: 0.8,
-    },
-  },
-  exit: (dir: number) => ({
-    opacity: 0,
-    x: -dir * 32,
-    transition: {
-      duration: 0.14,
-    },
-  }),
+const PAGE_SIZE = 20;
+
+/** Calls onVisible whenever the sentinel scrolls into view (used for infinite scroll). */
+const LoadMoreSentinel: React.FC<{ onVisible: () => void }> = ({ onVisible }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const cb = useRef(onVisible);
+  cb.current = onVisible;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) cb.current();
+      },
+      { rootMargin: "200px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  return <div ref={ref} className="h-8 w-full" aria-hidden />;
 };
+
+const subTabVariants = slideVariants("x", 32);
 
 interface NewsViewProps {
   subNav: NewsSubNav;
@@ -42,6 +50,7 @@ interface NewsViewProps {
 }
 
 export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: directionProp }) => {
+  const { t } = useI18n();
   const prevNavRef = useRef<NewsSubNav>(subNav);
   const direction =
     directionProp ??
@@ -55,22 +64,38 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
 
   const [patchNotes, setPatchNotes] = useState<LauncherPatchNoteItem[]>([]);
   const [isLoadingPatchNotes, setIsLoadingPatchNotes] = useState<boolean>(true);
+  const [selectedPatch, setSelectedPatch] = useState<LauncherPatchNoteItem | null>(null);
+  const [reloadKey, setReloadKey] = useState<number>(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [newsPage, setNewsPage] = useState<number>(1);
+  const [newsHasMore, setNewsHasMore] = useState<boolean>(true);
+  const loadingMoreNews = useRef<boolean>(false);
+  const [patchVisible, setPatchVisible] = useState<number>(PAGE_SIZE);
 
   useEffect(() => {
     let isMounted = true;
+    setLoadError(null);
     if (subNav === "official") {
       setIsLoadingNews(true);
+      loadingMoreNews.current = true;
       newsService
-        .getNews()
-        .then((items) => {
+        .getNewsArchivePage(1)
+        .then((res) => {
           if (isMounted) {
-            setNews(items);
+            setNews(res.items);
+            setNewsPage(1);
+            setNewsHasMore(res.hasMore);
             setIsLoadingNews(false);
           }
+          loadingMoreNews.current = false;
         })
         .catch((err) => {
           console.error("Failed to load news:", err);
-          if (isMounted) setIsLoadingNews(false);
+          loadingMoreNews.current = false;
+          if (isMounted) {
+            setLoadError(toUserMessage(err, t.news.loadNewsFailed));
+            setIsLoadingNews(false);
+          }
         });
     } else if (subNav === "changelog") {
       setIsLoadingPatchNotes(true);
@@ -84,17 +109,44 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
         })
         .catch((err) => {
           console.error("Failed to load patch notes:", err);
-          if (isMounted) setIsLoadingPatchNotes(false);
+          if (isMounted) {
+            setLoadError(toUserMessage(err, t.news.loadPatchFailed));
+            setIsLoadingPatchNotes(false);
+          }
         });
     }
 
     return () => {
       isMounted = false;
     };
-  }, [subNav]);
+  }, [subNav, reloadKey]);
+
+  // Pulls the next server page when the user reaches the bottom.
+  const loadMoreNews = () => {
+    if (loadingMoreNews.current || !newsHasMore) return;
+    loadingMoreNews.current = true;
+    const next = newsPage + 1;
+    newsService
+      .getNewsArchivePage(next)
+      .then((res) => {
+        setNews((prev) => {
+          const seen = new Set(prev.map((n) => n.id));
+          return [...prev, ...res.items.filter((n) => !seen.has(n.id))];
+        });
+        setNewsPage(next);
+        setNewsHasMore(res.hasMore);
+      })
+      .catch((err) => {
+        console.error("Failed to load more news:", err);
+        toast(t.errors.loadMoreNewsFailed(toUserMessage(err)), "error");
+      })
+      .finally(() => {
+        loadingMoreNews.current = false;
+      });
+  };
 
   return (
-    <AnimatePresence mode="wait" custom={direction}>
+    <AnimatePresence mode="popLayout" custom={direction}>
       <motion.div
         key={subNav}
         custom={direction}
@@ -135,8 +187,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                   key={item.id}
                   whileHover={{ y: -4 }}
                   transition={{ duration: 0.15 }}
-                  onClick={() => window.open(item.readMoreLink, "_blank", "noopener,noreferrer")}
-                  className="group cursor-pointer flex flex-col rounded-2xl border border-white/10 bg-slate-900/60 hover:border-[#52A43A]/50 hover:bg-slate-900/90 transition-all duration-200 overflow-hidden shadow-xl"
+                  onClick={() => void openExternal(item.readMoreLink)}
+                  className="group cursor-pointer flex flex-col rounded-2xl border border-white/10 bg-slate-900/60 hover:border-brand-light/50 hover:bg-slate-900/90 transition-all duration-200 overflow-hidden shadow-xl"
                 >
                   {/* Hero 橫幅大圖 */}
                   <div className="relative aspect-video w-full overflow-hidden bg-slate-950 shrink-0">
@@ -148,7 +200,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2E6B1D]/30 to-slate-900">
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-dark/30 to-slate-900">
                         <ImageIcon className="h-8 w-8 text-white/20" />
                       </div>
                     )}
@@ -166,7 +218,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                   <div className="p-3.5 flex flex-col flex-1 justify-between space-y-2">
                     <div className="space-y-1.5">
                       <h3
-                        className="font-bold text-xs text-slate-100 line-clamp-2 leading-snug group-hover:text-[#52A43A] transition-colors"
+                        className="font-bold text-xs text-slate-100 line-clamp-2 leading-snug group-hover:text-brand-light transition-colors"
                         title={item.title}
                       >
                         {item.title}
@@ -182,8 +234,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                         <Calendar className="h-3 w-3" />
                         {item.date}
                       </span>
-                      <span className="inline-flex items-center gap-1 text-[#52A43A] group-hover:underline">
-                        閱讀完整公告
+                      <span className="inline-flex items-center gap-1 text-brand-light group-hover:underline">
+                        {t.news.readFull}
                         <ExternalLink className="h-2.5 w-2.5" />
                       </span>
                     </div>
@@ -191,6 +243,9 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                 </motion.article>
               ))}
         </div>
+      )}
+      {subNav === "official" && !isLoadingNews && newsHasMore && (
+        <LoadMoreSentinel key={newsPage} onVisible={loadMoreNews} />
       )}
 
       {/* 更改日誌 (Minecraft Java 官方更新歷史，依寬度自適應最少 3 欄) */}
@@ -219,19 +274,13 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                   </div>
                 </div>
               ))
-            : patchNotes.map((patch) => (
+            : patchNotes.slice(0, patchVisible).map((patch) => (
                 <motion.article
                   key={patch.id}
                   whileHover={{ y: -4 }}
                   transition={{ duration: 0.15 }}
-                  onClick={() =>
-                    window.open(
-                      `https://www.minecraft.net/zh-hant/article`,
-                      "_blank",
-                      "noopener,noreferrer"
-                    )
-                  }
-                  className="group cursor-pointer flex flex-col rounded-2xl border border-white/10 bg-slate-900/60 hover:border-[#52A43A]/50 hover:bg-slate-900/90 transition-all duration-200 overflow-hidden shadow-xl"
+                  onClick={() => setSelectedPatch(patch)}
+                  className="group cursor-pointer flex flex-col rounded-2xl border border-white/10 bg-slate-900/60 hover:border-brand-light/50 hover:bg-slate-900/90 transition-all duration-200 overflow-hidden shadow-xl"
                 >
                   {/* Hero 橫幅大圖 */}
                   <div className="relative aspect-video w-full overflow-hidden bg-slate-950 shrink-0">
@@ -243,7 +292,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#2E6B1D]/30 to-slate-900">
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-dark/30 to-slate-900">
                         <ImageIcon className="h-8 w-8 text-white/20" />
                       </div>
                     )}
@@ -252,11 +301,11 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                         variant="outline"
                         className={
                           patch.type === "release"
-                            ? "border-[#52A43A]/50 bg-[#3C8527]/85 backdrop-blur-md text-[10px] text-white px-2 py-0.5"
+                            ? "border-brand-light/50 bg-brand/85 backdrop-blur-md text-[10px] text-white px-2 py-0.5"
                             : "border-white/20 bg-black/75 backdrop-blur-md text-[10px] text-slate-300 px-2 py-0.5"
                         }
                       >
-                        {patch.type === "release" ? "正式版" : "快照版"}
+                        {patch.type === "release" ? t.common.release : t.common.snapshot}
                       </Badge>
                     </div>
                   </div>
@@ -265,7 +314,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                   <div className="p-3.5 flex flex-col flex-1 justify-between space-y-2">
                     <div className="space-y-1.5">
                       <h3
-                        className="font-bold text-xs text-slate-100 line-clamp-2 leading-snug group-hover:text-[#52A43A] transition-colors"
+                        className="font-bold text-xs text-slate-100 line-clamp-2 leading-snug group-hover:text-brand-light transition-colors"
                         title={patch.title}
                       >
                         {patch.title}
@@ -276,7 +325,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                         </p>
                       ) : (
                         <p className="text-[11px] text-slate-500 italic">
-                          點擊查閱此版本之詳細更新說明與修復清單。
+                          {t.news.patchHint}
                         </p>
                       )}
                     </div>
@@ -286,8 +335,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                       <span className="font-mono text-slate-400">
                         MC {patch.version}
                       </span>
-                      <span className="inline-flex items-center gap-1 text-[#52A43A] group-hover:underline">
-                        詳細內容
+                      <span className="inline-flex items-center gap-1 text-brand-light group-hover:underline">
+                        {t.news.viewNotes}
                         <ExternalLink className="h-2.5 w-2.5" />
                       </span>
                     </div>
@@ -296,24 +345,48 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
               ))}
         </div>
       )}
+      {subNav === "changelog" && !isLoadingPatchNotes && patchVisible < patchNotes.length && (
+        <LoadMoreSentinel onVisible={() => setPatchVisible((v) => v + PAGE_SIZE)} />
+      )}
+
+      {(subNav === "official" || subNav === "changelog") &&
+        !(subNav === "official" ? isLoadingNews : isLoadingPatchNotes) &&
+        (subNav === "official" ? news.length === 0 : patchNotes.length === 0) && (
+          <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
+            <p className="text-sm font-semibold text-slate-200">
+              {loadError ? t.news.loadFailedTitle : t.news.emptyTitle}
+            </p>
+            <p className="text-xs text-slate-400 max-w-sm">
+              {loadError ?? t.news.emptyHint}
+            </p>
+            <button
+              type="button"
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10"
+            >
+              {t.common.retry}
+            </button>
+          </div>
+        )}
 
       {/* 啟動器快訊 (純淨空狀態，無假資料) */}
       {subNav === "announcements" && (
         <div className="flex flex-col items-center justify-center py-24 text-center select-none space-y-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-[#52A43A] shadow-inner">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-brand-light shadow-inner">
             <Megaphone className="h-7 w-7" />
           </div>
           <div className="space-y-1.5 max-w-sm">
             <h3 className="text-sm font-bold text-slate-200">
-              目前尚無啟動器快訊
+              {t.news.noAnnouncements}
             </h3>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Focusite Launcher 官方更新與公告將於此處即時發布。
+              {t.news.announcementsHint}
             </p>
           </div>
         </div>
       )}
       </motion.div>
+      <PatchNoteDialog patch={selectedPatch} onClose={() => setSelectedPatch(null)} />
     </AnimatePresence>
   );
 };

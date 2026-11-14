@@ -182,4 +182,47 @@ export const authService = {
     );
     localStorage.setItem(LOCAL_STORAGE_ACCOUNTS_KEY, JSON.stringify(updated));
   },
+
+  /**
+   * Uploads custom skin PNG to Mojang official API.
+   */
+  async uploadSkinToMojang(
+    accountId: string,
+    skinBytes: number[],
+    variant: "classic" | "slim"
+  ): Promise<UserAccount> {
+    if (isTauri()) {
+      return await invoke<UserAccount>("skin_upload_to_mojang", {
+        accountId,
+        skinBytes,
+        variant,
+      });
+    }
+    throw new Error("非 Tauri 環境無法上傳皮膚至 Mojang 官方 API");
+  },
+
+  /**
+   * Equips a cape from player's inventory.
+   */
+  async setActiveCape(accountId: string, capeId: string): Promise<UserAccount> {
+    if (isTauri()) {
+      return await invoke<UserAccount>("skin_set_active_cape", {
+        accountId,
+        capeId,
+      });
+    }
+    throw new Error("非 Tauri 環境無法切換披風");
+  },
+
+  /**
+   * Unequips active cape.
+   */
+  async hideActiveCape(accountId: string): Promise<UserAccount> {
+    if (isTauri()) {
+      return await invoke<UserAccount>("skin_hide_active_cape", {
+        accountId,
+      });
+    }
+    throw new Error("非 Tauri 環境無法卸下披風");
+  },
 };

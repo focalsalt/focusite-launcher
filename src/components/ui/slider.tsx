@@ -26,7 +26,7 @@ export const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
       >
         <div className="relative h-2 w-full grow overflow-hidden rounded-full bg-white/10">
           <div
-            className="h-full bg-gradient-to-r from-[#3C8527] to-[#52A43A] transition-all duration-75"
+            className="h-full bg-gradient-to-r from-brand to-brand-light transition-all duration-75"
             style={{ width: `${percentage}%` }}
           />
         </div>
@@ -41,7 +41,7 @@ export const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
           className="absolute inset-0 h-full w-full opacity-0 cursor-pointer"
         />
         <div
-          className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 rounded-full border-2 border-white bg-[#52A43A] shadow-md shadow-[#3C8527]/50 transition-all duration-75"
+          className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 rounded-full border-2 border-white bg-brand-light shadow-md shadow-brand/50 transition-all duration-75"
           style={{ left: `${percentage}%` }}
         />
       </div>

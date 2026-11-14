@@ -276,6 +276,83 @@ pub async fn fetch_public_session_profile(
     })
 }
 
+/// Uploads a custom skin to Mojang's official player profile API.
+pub async fn upload_minecraft_skin(
+    client: &reqwest::Client,
+    mc_access_token: &str,
+    skin_bytes: &[u8],
+    variant: &str, // "classic" or "slim"
+) -> Result<MinecraftProfileResponse, AuthError> {
+    let part = reqwest::multipart::Part::bytes(skin_bytes.to_vec())
+        .file_name("skin.png")
+        .mime_str("image/png")
+        .map_err(|e| AuthError::AuthFailed(e.to_string()))?;
+
+    let form = reqwest::multipart::Form::new()
+        .text("variant", variant.to_string())
+        .part("file", part);
+
+    let resp = client
+        .post("https://api.minecraftservices.com/minecraft/profile/skins")
+        .bearer_auth(mc_access_token)
+        .multipart(form)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let err_text = resp.text().await.unwrap_or_default();
+        return Err(AuthError::AuthFailed(format!("上傳 Minecraft 外觀失敗: {}", err_text)));
+    }
+
+    let profile: MinecraftProfileResponse = resp.json().await?;
+    Ok(profile)
+}
+
+/// Equips a cape from the user's Mojang account inventory.
+pub async fn set_active_cape(
+    client: &reqwest::Client,
+    mc_access_token: &str,
+    cape_id: &str,
+) -> Result<MinecraftProfileResponse, AuthError> {
+    let payload = serde_json::json!({
+        "capeId": cape_id
+    });
+
+    let resp = client
+        .put("https://api.minecraftservices.com/minecraft/profile/capes/active")
+        .bearer_auth(mc_access_token)
+        .json(&payload)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let err_text = resp.text().await.unwrap_or_default();
+        return Err(AuthError::AuthFailed(format!("設置活躍披風失敗: {}", err_text)));
+    }
+
+    let profile: MinecraftProfileResponse = resp.json().await?;
+    Ok(profile)
+}
+
+/// Unequips any currently active cape.
+pub async fn hide_active_cape(
+    client: &reqwest::Client,
+    mc_access_token: &str,
+) -> Result<(), AuthError> {
+    let resp = client
+        .delete("https://api.minecraftservices.com/minecraft/profile/capes/active")
+        .bearer_auth(mc_access_token)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let err_text = resp.text().await.unwrap_or_default();
+        return Err(AuthError::AuthFailed(format!("隱藏披風失敗: {}", err_text)));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

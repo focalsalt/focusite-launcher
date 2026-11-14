@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronDown,
@@ -11,6 +12,11 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { UserAccount } from "@/types/navigation";
+import { PlayerAvatar } from "@/components/ui/PlayerAvatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { preloadSkinManagerView, preloadMicrosoftLoginModal } from "@/lib/startupOrchestrator";
+import { authService } from "@/services/authService";
+import { useI18n } from "@/i18n";
 
 interface AccountDropdownProps {
   accounts: UserAccount[];
@@ -21,9 +27,6 @@ interface AccountDropdownProps {
   onSignOut: (accountId: string) => void;
 }
 
-import { PlayerAvatar } from "@/components/ui/PlayerAvatar";
-import { preloadSkinManagerView, preloadMicrosoftLoginModal } from "@/lib/startupOrchestrator";
-
 export const AccountDropdown: React.FC<AccountDropdownProps> = ({
   accounts,
   activeAccount,
@@ -32,28 +35,79 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
   onOpenSkinManager,
   onSignOut,
 }) => {
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ left: number; top: number; width: number } | null>(null);
+
+  const updatePosition = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const menuHeight = 280;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const shouldFlip = spaceBelow < menuHeight && rect.top > menuHeight;
+
+      setCoords({
+        left: rect.left + 8,
+        width: Math.max(rect.width - 16, 240),
+        top: shouldFlip ? rect.top - menuHeight - 4 : rect.bottom + 4,
+      });
+    }
+  }, []);
+
+  const handleToggle = () => {
+    if (!isOpen) {
+      updatePosition();
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const handleRefreshCredentials = async () => {
+    if (isRefreshing || activeAccount.accountType !== "microsoft") return;
+    setIsRefreshing(true);
+    try {
+      await authService.refreshProfile(activeAccount.id);
+    } catch (e) {
+      console.error("Failed to refresh credentials:", e);
+    } finally {
+      setIsRefreshing(false);
+      setIsOpen(false);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
       if (
         containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
+        !containerRef.current.contains(target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target)
       ) {
         setIsOpen(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+
+    if (isOpen) {
+      window.addEventListener("resize", updatePosition);
+      window.addEventListener("scroll", updatePosition, true);
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen, updatePosition]);
 
   return (
     <div ref={containerRef} className="relative h-14 w-full">
       {/* Trigger Button: Fills the entire h-14 header and aligns with Titlebar */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
         className="flex h-14 w-full select-none items-center justify-between px-4 transition-colors hover:bg-white/5 active:bg-white/10"
       >
         <div className="flex items-center gap-3 overflow-hidden">
@@ -79,14 +133,14 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
                 <>
                   <ShieldCheck className="h-3 w-3 text-emerald-400 shrink-0" />
                   <span className="text-emerald-400 font-medium truncate">
-                    微軟正版已就緒
+                    {t.account.premiumReady}
                   </span>
                 </>
               ) : (
                 <>
                   <ShieldAlert className="h-3 w-3 text-amber-400 shrink-0" />
                   <span className="text-amber-400 font-medium truncate">
-                    離線模式
+                    {t.account.offlineMode}
                   </span>
                 </>
               )}
@@ -96,110 +150,124 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
 
         <ChevronDown
           className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${
-            isOpen ? "rotate-180 text-[#52A43A]" : ""
+            isOpen ? "rotate-180 text-brand-light" : ""
           }`}
         />
       </button>
 
-      {/* Dropdown Menu Panel */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.98 }}
-            transition={{ duration: 0.15 }}
-            className="absolute left-2 right-2 top-[calc(100%+4px)] z-50 overflow-hidden rounded-xl border border-white/15 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-2xl"
-          >
-            {/* Account List Header */}
-            <div className="px-2 py-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
-              已登入帳號清單
-            </div>
+      {/* Dropdown Menu Panel via Portal */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {isOpen && coords && (
+              <motion.div
+                ref={dropdownRef}
+                style={{
+                  position: "fixed",
+                  left: coords.left,
+                  top: coords.top,
+                  width: coords.width,
+                }}
+                initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                transition={{ duration: 0.15 }}
+                className="z-[9999] overflow-hidden rounded-xl border border-white/15 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-2xl select-none"
+              >
+                {/* Account List Header */}
+                <div className="px-2 py-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+                  {t.account.signedInList}
+                </div>
 
-            {/* List of Accounts */}
-            <div className="max-h-40 space-y-0.5 overflow-y-auto pr-1">
-              {accounts.map((acc) => {
-                const isSelected = acc.id === activeAccount.id;
-                return (
+                {/* List of Accounts inside custom ScrollArea */}
+                <ScrollArea className="max-h-40 pr-1">
+                  <div className="space-y-0.5">
+                    {accounts.map((acc) => {
+                      const isSelected = acc.id === activeAccount.id;
+                      return (
+                        <button
+                          key={acc.id}
+                          type="button"
+                          onClick={() => {
+                            onSelectAccount(acc.id);
+                            setIsOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs transition-colors ${
+                            isSelected
+                              ? "bg-brand/20 text-brand-light font-medium"
+                              : "text-slate-300 hover:bg-white/10"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <PlayerAvatar username={acc.username} size={20} className="rounded" />
+                            <span className="truncate">{acc.username}</span>
+                          </div>
+                          {isSelected && (
+                            <Check className="h-3.5 w-3.5 text-brand-light shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+
+                <div className="my-1.5 h-px bg-white/10" />
+
+                {/* Action Items */}
+                <div className="space-y-0.5 text-xs">
                   <button
-                    key={acc.id}
                     type="button"
+                    onMouseEnter={preloadMicrosoftLoginModal}
                     onClick={() => {
-                      onSelectAccount(acc.id);
+                      onAddAccount();
                       setIsOpen(false);
                     }}
-                    className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs transition-colors ${
-                      isSelected
-                        ? "bg-[#3C8527]/20 text-[#52A43A] font-medium"
-                        : "text-slate-300 hover:bg-white/10"
-                    }`}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
                   >
-                    <div className="flex items-center gap-2 truncate">
-                      <PlayerAvatar username={acc.username} size={20} className="rounded" />
-                      <span className="truncate">{acc.username}</span>
-                    </div>
-                    {isSelected && (
-                      <Check className="h-3.5 w-3.5 text-[#52A43A] shrink-0" />
-                    )}
+                    <UserPlus className="h-3.5 w-3.5 text-brand-light shrink-0" />
+                    <span>{t.account.addMicrosoft}</span>
                   </button>
-                );
-              })}
-            </div>
 
-            <div className="my-1.5 h-px bg-white/10" />
+                  <button
+                    type="button"
+                    onMouseEnter={preloadSkinManagerView}
+                    onClick={() => {
+                      onOpenSkinManager();
+                      setIsOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
+                  >
+                    <Shirt className="h-3.5 w-3.5 text-brand-light shrink-0" />
+                    <span>{t.account.skinManager}</span>
+                  </button>
 
-            {/* Action Items */}
-            <div className="space-y-0.5 text-xs">
-              <button
-                type="button"
-                onMouseEnter={preloadMicrosoftLoginModal}
-                onClick={() => {
-                  onAddAccount();
-                  setIsOpen(false);
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
-              >
-                <UserPlus className="h-3.5 w-3.5 text-[#52A43A] shrink-0" />
-                <span>新增微軟正版帳號</span>
-              </button>
+                  <button
+                    type="button"
+                    disabled={isRefreshing}
+                    onClick={handleRefreshCredentials}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 text-brand-light shrink-0 ${isRefreshing ? "animate-spin" : ""}`} />
+                    <span>{isRefreshing ? t.account.reverifying : t.account.reverify}</span>
+                  </button>
 
-              <button
-                type="button"
-                onMouseEnter={preloadSkinManagerView}
-                onClick={() => {
-                  onOpenSkinManager();
-                  setIsOpen(false);
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
-              >
-                <Shirt className="h-3.5 w-3.5 text-purple-400 shrink-0" />
-                <span>外觀與披風管理</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
-              >
-                <RefreshCw className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                <span>重新驗證憑證</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  onSignOut(activeAccount.id);
-                  setIsOpen(false);
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-rose-400 hover:bg-rose-500/10 transition-colors"
-              >
-                <LogOut className="h-3.5 w-3.5 shrink-0" />
-                <span>登出此帳號</span>
-              </button>
-            </div>
-          </motion.div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSignOut(activeAccount.id);
+                      setIsOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-rose-400 hover:bg-rose-500/10 transition-colors"
+                  >
+                    <LogOut className="h-3.5 w-3.5 shrink-0" />
+                    <span>{t.account.signOut}</span>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
     </div>
   );
 };

@@ -19,16 +19,16 @@ pub struct ProgressPayload {
 /// Validates that a version ID contains only safe characters.
 pub fn validate_version_id(id: &str) -> Result<(), String> {
     if id.is_empty() {
-        return Err("Version ID cannot be empty".into());
+        return Err("版本 ID 不可為空".into());
     }
     if id.contains('/') || id.contains('\\') || id.contains("..") {
-        return Err("Invalid version ID: path traversal characters detected".into());
+        return Err("版本 ID 含有路徑穿越字元".into());
     }
     if !id
         .chars()
         .all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_')
     {
-        return Err("Invalid version ID: illegal characters".into());
+        return Err("版本 ID 含有不允許的字元".into());
     }
     Ok(())
 }
@@ -41,13 +41,13 @@ pub async fn download_version_client(
 ) -> Result<String, String> {
     validate_version_id(&version_id)?;
 
-    let settings = super::settings::load_settings_from_disk();
+    let mirror_enabled = super::settings::is_bmclapi_mirror_enabled();
     let provider = match mirror.as_deref() {
         Some("bmclapi") => MirrorProvider::Bmclapi,
         Some("mcbbs") => MirrorProvider::Mcbbs,
         Some("official") => MirrorProvider::Official,
         _ => {
-            if settings.enable_bmclapi_mirror {
+            if mirror_enabled {
                 MirrorProvider::Bmclapi
             } else {
                 MirrorProvider::Official
@@ -62,23 +62,23 @@ pub async fn download_version_client(
 
     let v2 = VersionManifestV2::fetch_remote(&manifest_url)
         .await
-        .map_err(|e| format!("Failed to fetch version manifest root: {}", e))?;
+        .map_err(|e| format!("無法取得版本清單：{}", e))?;
 
     let version_summary = v2
         .versions
         .into_iter()
         .find(|v| v.id == version_id)
-        .ok_or_else(|| format!("Version {} not found in manifest", version_id))?;
+        .ok_or_else(|| format!("在版本清單中找不到版本 {}", version_id))?;
 
     let detail_url = MirrorManager::rewrite_url(&version_summary.url, provider);
     let detail = VersionManifest::fetch_remote(&detail_url)
         .await
-        .map_err(|e| format!("Failed to fetch version details for {}: {}", version_id, e))?;
+        .map_err(|e| format!("無法取得版本 {} 的詳細資料：{}", version_id, e))?;
 
     let client_download = detail
         .downloads
         .map(|d| d.client)
-        .ok_or_else(|| format!("Version {} has no client download artifact", version_id))?;
+        .ok_or_else(|| format!("版本 {} 沒有可下載的客戶端檔案", version_id))?;
 
     let cas_dir = super::get_app_data_dir().join("cas");
     let cas = CasManager::new(&cas_dir);
@@ -95,7 +95,7 @@ pub async fn download_version_client(
             },
         );
         let _ = app.emit("download-finished", &version_id);
-        return Ok(format!("Version {} client already cached in CAS", version_id));
+        return Ok(format!("版本 {} 的客戶端已在本機快取中", version_id));
     }
 
     let temp_download_dir = std::env::temp_dir().join("focusite_downloads");
@@ -127,19 +127,20 @@ pub async fn download_version_client(
         16,
     );
     downloader
-        .download_file(
+        .download_file_with_size(
             &client_download.url,
             &temp_file,
             Some(&client_download.sha1),
+            Some(client_download.size),
             Some(tx),
             &version_id,
         )
         .await
-        .map_err(|e| format!("Download failed: {}", e))?;
+        .map_err(|e| format!("下載失敗：{}", e))?;
 
     // Store downloaded client jar into CAS
     cas.store_file(&temp_file, Some(&client_download.sha1))
-        .map_err(|e| format!("CAS store failed: {}", e))?;
+        .map_err(|e| format!("寫入本機快取失敗：{}", e))?;
 
     let _ = tokio::fs::remove_file(&temp_file).await;
     let _ = app.emit("download-finished", &version_id);

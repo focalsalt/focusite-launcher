@@ -10,6 +10,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n";
 
 interface ExitConfirmationDialogProps {
   open: boolean;
@@ -26,9 +27,10 @@ export const ExitConfirmationDialog: React.FC<ExitConfirmationDialogProps> = ({
   onHideToTray,
   onForceQuit,
 }) => {
+  const { t } = useI18n();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md border-white/10 bg-[#101725] text-slate-100 shadow-2xl">
+      <DialogContent className="max-w-md border-white/10 bg-slate-900 text-slate-100 shadow-2xl">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400 shadow-[0_0_16px_rgba(245,158,11,0.2)]">
@@ -36,10 +38,10 @@ export const ExitConfirmationDialog: React.FC<ExitConfirmationDialogProps> = ({
             </div>
             <div>
               <DialogTitle className="text-base font-semibold text-slate-100">
-                確認結束 Focusite Launcher
+                {t.exit.title}
               </DialogTitle>
               <DialogDescription className="mt-1 text-xs text-slate-400">
-                目前尚有 {runningCount} 個 Minecraft 實例正在背景運行中。
+                {t.exit.running(runningCount)}
               </DialogDescription>
             </div>
           </div>
@@ -47,7 +49,7 @@ export const ExitConfirmationDialog: React.FC<ExitConfirmationDialogProps> = ({
 
         <div className="my-2 rounded-xl border border-white/5 bg-slate-900/60 p-3.5 text-xs text-slate-300">
           <p className="leading-relaxed">
-            若直接結束應用程式，將會強制終止所有運行中的遊戲進程，未儲存的遊戲世界資料可能會遺失。建議將視窗縮小至系統匣保持遊戲運行。
+            {t.exit.warning}
           </p>
         </div>
 
@@ -61,7 +63,7 @@ export const ExitConfirmationDialog: React.FC<ExitConfirmationDialogProps> = ({
               className="w-full border-white/10 bg-transparent text-xs text-slate-300 hover:bg-white/5 sm:w-auto"
             >
               <X className="mr-1.5 h-3.5 w-3.5" />
-              取消
+              {t.exit.cancel}
             </Button>
           </motion.div>
 
@@ -70,10 +72,10 @@ export const ExitConfirmationDialog: React.FC<ExitConfirmationDialogProps> = ({
               type="button"
               size="sm"
               onClick={onHideToTray}
-              className="w-full bg-[#3C8527] text-xs font-medium text-white shadow-[0_0_16px_rgba(60,133,39,0.35)] hover:bg-[#52A43A] sm:w-auto"
+              className="w-full bg-brand text-xs font-medium text-white shadow-[0_0_16px_color-mix(in_srgb,var(--fc-primary)_35%,transparent)] hover:bg-brand-light sm:w-auto"
             >
               <Minimize2 className="mr-1.5 h-3.5 w-3.5" />
-              縮小至系統匣
+              {t.exit.minimizeToTray}
             </Button>
           </motion.div>
 
@@ -86,7 +88,7 @@ export const ExitConfirmationDialog: React.FC<ExitConfirmationDialogProps> = ({
               className="w-full border border-red-500/30 bg-red-500/15 text-xs text-red-400 hover:bg-red-500/25 sm:w-auto"
             >
               <Power className="mr-1.5 h-3.5 w-3.5" />
-              強制退出程序
+              {t.exit.forceQuit}
             </Button>
           </motion.div>
         </DialogFooter>

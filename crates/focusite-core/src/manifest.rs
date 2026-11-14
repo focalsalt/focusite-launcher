@@ -246,6 +246,17 @@ pub struct AssetIndexReference {
     pub url: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssetIndexFile {
+    pub objects: HashMap<String, AssetObject>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssetObject {
+    pub hash: String,
+    pub size: u64,
+}
+
 /// Returns the current operating system identifier used by Mojang manifests.
 pub fn get_current_os() -> &'static str {
     if cfg!(target_os = "windows") {

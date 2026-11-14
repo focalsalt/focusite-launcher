@@ -62,65 +62,6 @@ pub fn write_varint(mut value: i32, out: &mut Vec<u8>) {
     }
 }
 
-/// Minecraft Handshake packet structure (Packet ID = 0x00).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct McHandshake {
-    pub protocol_version: i32,
-    pub server_address: String,
-    pub server_port: u16,
-    pub next_state: i32, // 1 for Status (Server List Ping), 2 for Login
-}
-
-/// Parses a Minecraft Handshake packet from raw bytes.
-pub fn parse_handshake_packet(buf: &[u8]) -> Result<McHandshake, McProtocolError> {
-    let mut cursor = 0;
-
-    let (packet_length, len_bytes) = read_varint(&buf[cursor..])?;
-    cursor += len_bytes;
-
-    if buf.len() < cursor + packet_length as usize {
-        return Err(McProtocolError::IncompletePayload);
-    }
-
-    let (packet_id, id_bytes) = read_varint(&buf[cursor..])?;
-    cursor += id_bytes;
-
-    if packet_id != 0x00 {
-        return Err(McProtocolError::UnexpectedPacketId(packet_id as u8, 0x00));
-    }
-
-    let (protocol_version, proto_bytes) = read_varint(&buf[cursor..])?;
-    cursor += proto_bytes;
-
-    let (str_len, str_len_bytes) = read_varint(&buf[cursor..])?;
-    cursor += str_len_bytes;
-
-    let str_len = str_len as usize;
-    if buf.len() < cursor + str_len {
-        return Err(McProtocolError::IncompletePayload);
-    }
-
-    let server_address = std::str::from_utf8(&buf[cursor..cursor + str_len])
-        .map_err(|_| McProtocolError::MalformedString)?
-        .to_string();
-    cursor += str_len;
-
-    if buf.len() < cursor + 2 {
-        return Err(McProtocolError::IncompletePayload);
-    }
-    let server_port = u16::from_be_bytes([buf[cursor], buf[cursor + 1]]);
-    cursor += 2;
-
-    let (next_state, _) = read_varint(&buf[cursor..])?;
-
-    Ok(McHandshake {
-        protocol_version,
-        server_address,
-        server_port,
-        next_state,
-    })
-}
-
 /// Creates a raw Minecraft Handshake packet.
 pub fn create_handshake_packet(
     protocol_version: i32,
@@ -169,53 +110,6 @@ pub struct ServerStatusResponse {
     pub version: ServerStatusVersion,
     pub players: ServerStatusPlayers,
     pub description: ServerStatusDescription,
-}
-
-/// Builds a Server List Ping status JSON response packet.
-pub fn build_status_response_packet(
-    protocol_version: i32,
-    version_name: &str,
-    motd: &str,
-    online_players: i32,
-    max_players: i32,
-) -> Vec<u8> {
-    let status = ServerStatusResponse {
-        version: ServerStatusVersion {
-            name: version_name.to_string(),
-            protocol: protocol_version,
-        },
-        players: ServerStatusPlayers {
-            max: max_players,
-            online: online_players,
-            sample: Vec::new(),
-        },
-        description: ServerStatusDescription {
-            text: motd.to_string(),
-        },
-    };
-
-    let json_bytes = serde_json::to_vec(&status).unwrap_or_default();
-    let mut payload = Vec::new();
-    write_varint(0x00, &mut payload); // Packet ID 0x00 (Status Response)
-    write_varint(json_bytes.len() as i32, &mut payload);
-    payload.extend_from_slice(&json_bytes);
-
-    let mut packet = Vec::new();
-    write_varint(payload.len() as i32, &mut packet);
-    packet.extend(payload);
-    packet
-}
-
-/// Builds a Pong response packet for status ping.
-pub fn build_pong_response_packet(payload: i64) -> Vec<u8> {
-    let mut body = Vec::new();
-    write_varint(0x01, &mut body); // Packet ID 0x01 (Pong Response)
-    body.extend_from_slice(&payload.to_be_bytes());
-
-    let mut packet = Vec::new();
-    write_varint(body.len() as i32, &mut packet);
-    packet.extend(body);
-    packet
 }
 
 /// Creates a raw Minecraft Status Request packet (Packet Length = 1, Packet ID = 0x00).
@@ -271,41 +165,31 @@ mod tests {
     }
 
     #[test]
-    fn test_handshake_packet_roundtrip() {
+    fn test_handshake_packet_layout() {
         let raw = create_handshake_packet(765, "127.0.0.1", 25565, 1);
-        let parsed = parse_handshake_packet(&raw).expect("failed to parse handshake");
-
-        assert_eq!(parsed.protocol_version, 765);
-        assert_eq!(parsed.server_address, "127.0.0.1");
-        assert_eq!(parsed.server_port, 25565);
-        assert_eq!(parsed.next_state, 1);
+        let (len, len_bytes) = read_varint(&raw).unwrap();
+        assert_eq!(raw.len(), len as usize + len_bytes);
+        let body = &raw[len_bytes..];
+        assert_eq!(body[0], 0x00); // packet id
+        assert_eq!(read_varint(&body[1..]).unwrap().0, 765);
+        assert!(body.ends_with(&[0x63, 0xDD, 0x01])); // port 25565 big endian, next state 1
     }
 
     #[test]
-    fn test_status_response_packet() {
-        let packet = build_status_response_packet(
-            765,
-            "Focusite 1.20.4",
-            "[Focusite · Alice] MyWorld",
-            1,
-            10,
-        );
-        assert!(!packet.is_empty());
+    fn test_parse_status_response_packet() {
+        let json = r#"{"version":{"name":"1.20.4","protocol":765},"players":{"max":10,"online":1,"sample":[]},"description":{"text":"[Focusite] MyWorld"}}"#;
+        let mut payload = Vec::new();
+        write_varint(0x00, &mut payload);
+        write_varint(json.len() as i32, &mut payload);
+        payload.extend_from_slice(json.as_bytes());
+        let mut packet = Vec::new();
+        write_varint(payload.len() as i32, &mut packet);
+        packet.extend(payload);
 
-        let (len, len_bytes) = read_varint(&packet).unwrap();
-        assert_eq!(packet.len(), len as usize + len_bytes);
-
-        let parsed = parse_status_response_packet(&packet).expect("解析 status response 失敗");
-        assert_eq!(parsed.version.name, "Focusite 1.20.4");
-        assert_eq!(parsed.description.text, "[Focusite · Alice] MyWorld");
+        let parsed = parse_status_response_packet(&packet).expect("failed to parse status response");
+        assert_eq!(parsed.version.name, "1.20.4");
+        assert_eq!(parsed.description.text, "[Focusite] MyWorld");
         assert_eq!(parsed.players.online, 1);
         assert_eq!(parsed.players.max, 10);
-    }
-
-    #[test]
-    fn test_pong_packet() {
-        let ping_time = 1234567890123456789i64;
-        let packet = build_pong_response_packet(ping_time);
-        assert_eq!(packet.len(), 1 + 1 + 8); // length varint (9) + id varint (0x01) + 8 bytes payload
     }
 }

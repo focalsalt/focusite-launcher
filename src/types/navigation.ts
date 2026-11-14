@@ -53,14 +53,25 @@ export interface MinecraftInstance {
   description?: string;
   hasIcon?: boolean;
   iconPath?: string;
+  iconSource?: string;
+  iconUpdatedAt?: number;
   modCount: number;
+  /** The folder has no config of ours yet; the user must pick version and loader first. */
+  needsSetup?: boolean;
   lastPlayed: string;
+  /** Unix epoch milliseconds of the last launch. */
+  lastPlayedAt?: number;
+  /** Accumulated game process run time in milliseconds. */
+  totalPlayTimeMs?: number;
   isFavorite?: boolean;
   showLogOnLaunch?: boolean;
   minMemoryMb?: number;
   maxMemoryMb?: number;
   javaPath?: string;
   jvmArgs?: string[];
+  group?: string;
+  customJvmArgs?: string[];
+  environmentVars?: Record<string, string>;
   capabilities?: VersionCapabilities;
 }
 

@@ -89,17 +89,50 @@ export const TooltipTrigger = React.forwardRef<
     }, ctx.delayDuration);
   };
 
-  const close = () => {
+  const close = React.useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     ctx.setOpen(false);
-  };
+  }, [ctx]);
+
+  // mouseleave is not delivered when the trigger moves, re-renders or is covered, so while the
+  // tooltip is open we also watch the pointer globally and close as soon as it is outside.
+  React.useEffect(() => {
+    if (!ctx.open) return;
+    const onMove = (e: PointerEvent) => {
+      const node = internalRef.current;
+      if (!node || !node.isConnected || !node.contains(e.target as Node)) close();
+    };
+    const onAny = () => close();
+    document.addEventListener("pointermove", onMove, true);
+    document.addEventListener("pointerdown", onAny, true);
+    document.addEventListener("scroll", onAny, true);
+    window.addEventListener("blur", onAny);
+    document.addEventListener("keydown", onAny, true);
+    return () => {
+      document.removeEventListener("pointermove", onMove, true);
+      document.removeEventListener("pointerdown", onAny, true);
+      document.removeEventListener("scroll", onAny, true);
+      window.removeEventListener("blur", onAny);
+      document.removeEventListener("keydown", onAny, true);
+    };
+  }, [ctx.open, close]);
+
+  React.useEffect(
+    () => () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    },
+    []
+  );
 
   return (
     <div
       ref={setRefs}
       onMouseEnter={updateRectAndOpen}
       onMouseLeave={close}
-      onFocus={updateRectAndOpen}
+      onFocus={(e) => {
+        // Only keyboard focus opens the tooltip; a click-focused button must not re-open it.
+        if ((e.target as HTMLElement).matches?.(":focus-visible")) updateRectAndOpen();
+      }}
       onBlur={close}
       className={cn("inline-flex", className)}
       {...props}

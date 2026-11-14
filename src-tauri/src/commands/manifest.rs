@@ -5,14 +5,14 @@ use focusite_download::mirror::{MirrorManager, MirrorProvider};
 
 #[tauri::command]
 pub async fn get_version_manifest(mirror: Option<String>) -> Result<VersionManifestV2, String> {
-    let settings = super::settings::load_settings_from_disk();
+    let mirror_enabled = super::settings::is_bmclapi_mirror_enabled();
     let base_url = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
     let provider = match mirror.as_deref() {
         Some("bmclapi") => MirrorProvider::Bmclapi,
         Some("mcbbs") => MirrorProvider::Mcbbs,
         Some("official") => MirrorProvider::Official,
         _ => {
-            if settings.enable_bmclapi_mirror {
+            if mirror_enabled {
                 MirrorProvider::Bmclapi
             } else {
                 MirrorProvider::Official
@@ -23,7 +23,7 @@ pub async fn get_version_manifest(mirror: Option<String>) -> Result<VersionManif
 
     match VersionManifestV2::fetch_remote(&target_url).await {
         Ok(v2) => Ok(v2),
-        Err(e) => Err(format!("Failed to fetch version manifest: {}", e)),
+        Err(e) => Err(format!("無法取得版本清單：{}", e)),
     }
 }
 
@@ -32,13 +32,13 @@ pub async fn get_version_detail(
     version_url: String,
     mirror: Option<String>,
 ) -> Result<VersionManifest, String> {
-    let settings = super::settings::load_settings_from_disk();
+    let mirror_enabled = super::settings::is_bmclapi_mirror_enabled();
     let provider = match mirror.as_deref() {
         Some("bmclapi") => MirrorProvider::Bmclapi,
         Some("mcbbs") => MirrorProvider::Mcbbs,
         Some("official") => MirrorProvider::Official,
         _ => {
-            if settings.enable_bmclapi_mirror {
+            if mirror_enabled {
                 MirrorProvider::Bmclapi
             } else {
                 MirrorProvider::Official
@@ -49,7 +49,7 @@ pub async fn get_version_detail(
 
     match VersionManifest::fetch_remote(&target_url).await {
         Ok(m) => Ok(m),
-        Err(e) => Err(format!("Failed to fetch version details: {}", e)),
+        Err(e) => Err(format!("無法取得版本詳細資料：{}", e)),
     }
 }
 
@@ -68,5 +68,5 @@ pub async fn get_loader_versions(
 
     LoaderVersionInfo::fetch_remote_loaders(kind, &mc_version)
         .await
-        .map_err(|e| format!("Failed to fetch {} versions for MC {}: {}", loader, mc_version, e))
+        .map_err(|e| format!("無法取得 Minecraft {1} 的 {0} 版本清單：{2}", loader, mc_version, e))
 }

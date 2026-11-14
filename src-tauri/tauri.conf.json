@@ -35,12 +35,19 @@
         "decorations": false,
         "resizable": true,
         "visible": false,
+        "dragDropEnabled": false,
         "backgroundColor": "#0a0f1d",
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding"
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https: data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https: wss:; font-src 'self' data:; media-src 'self' asset: http://asset.localhost data: blob:;",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$DATA/focusite_launcher/**"
+        ]
+      }
     }
   },
   "bundle": {
@@ -53,5 +60,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE2OEVGOUVGMTcwQzU5RDcKUldSZm1nUGY4M3hUaWdOUk9Oa0lQd3FkOG8wL3pLM0hSOW1rSW9vVnZ5OD0K",
+      "endpoints": [
+        "https://github.com/focusite/focusite-launcher/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

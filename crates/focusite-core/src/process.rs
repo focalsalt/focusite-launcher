@@ -45,8 +45,23 @@ impl ProcessLauncher {
         working_dir: &Path,
         arguments: &[String],
     ) -> Result<tokio::process::Child, std::io::Error> {
+        Self::spawn_direct_with_env(java_path, working_dir, arguments, None)
+    }
+
+    /// Spawns a child process with a flat list of arguments and custom environment variables.
+    pub fn spawn_direct_with_env(
+        java_path: &Path,
+        working_dir: &Path,
+        arguments: &[String],
+        env_vars: Option<&std::collections::HashMap<String, String>>,
+    ) -> Result<tokio::process::Child, std::io::Error> {
         let mut cmd = Command::new(java_path);
         cmd.current_dir(working_dir);
+        if let Some(envs) = env_vars {
+            for (k, v) in envs {
+                cmd.env(k, v);
+            }
+        }
         cmd.args(arguments);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());

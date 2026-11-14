@@ -1,5 +1,10 @@
 //! WebRTC session models, room signaling specifications, and binary DataChannel framing.
 
+use std::io::{Read, Write};
+use base64::prelude::*;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use serde::{Deserialize, Serialize};
 use crate::P2pError;
 
@@ -94,20 +99,92 @@ impl DataChannelFrame {
     }
 }
 
+/// Offline manual signaling envelope for Track B zero-dependency P2P tunneling.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignalEnvelope {
+    pub version: u8,
+    pub sdp_type: String, // "offer" or "answer"
+    pub sdp: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_port: Option<u16>,
+}
+
+/// STUN and TURN ICE Server Configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RoomSession {
-    pub room_code: String,
-    pub host_port: u16,
-    pub is_host: bool,
-    pub created_at: i64,
+pub struct StunTurnConfig {
+    pub stun_servers: Vec<String>,
+    pub turn_servers: Vec<TurnServerEntry>,
+}
+
+impl Default for StunTurnConfig {
+    fn default() -> Self {
+        Self {
+            stun_servers: vec![
+                "stun:stun.l.google.com:19302".into(),
+                "stun:stun1.l.google.com:19302".into(),
+                "stun:stun.cloudflare.com:3478".into(),
+                "stun:stun.syncthing.net:3478".into(),
+            ],
+            turn_servers: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SignalPayload {
-    pub room_code: String,
-    pub sdp_type: String, // "offer" or "answer"
-    pub sdp: String,
-    pub candidate: Option<String>,
+pub struct TurnServerEntry {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential: Option<String>,
+}
+
+const SIGNAL_PREFIX: &str = "focusite://p2p/";
+
+/// Compresses a SignalEnvelope with Gzip and encodes to a URL-safe Base64 invite string.
+pub fn encode_offline_signal(envelope: &SignalEnvelope) -> Result<String, P2pError> {
+    let json_bytes = serde_json::to_vec(envelope)
+        .map_err(|e| P2pError::SignalingFailed(format!("信令序列化失敗: {}", e)))?;
+
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(&json_bytes)
+        .map_err(|e| P2pError::SignalingFailed(format!("Gzip 壓縮失敗: {}", e)))?;
+    let compressed = encoder
+        .finish()
+        .map_err(|e| P2pError::SignalingFailed(format!("Gzip 結束失敗: {}", e)))?;
+
+    let b64 = BASE64_STANDARD.encode(&compressed);
+    Ok(format!("{}{}", SIGNAL_PREFIX, b64))
+}
+
+pub const MAX_DECOMPRESSED_SIGNAL_SIZE: u64 = 64 * 1024; // 64 KiB limit
+
+/// Decodes an invite string back into a SignalEnvelope with gzip decompression limit.
+pub fn decode_offline_signal(raw_str: &str) -> Result<SignalEnvelope, P2pError> {
+    let stripped = raw_str.trim().strip_prefix(SIGNAL_PREFIX).unwrap_or(raw_str.trim());
+    let compressed = BASE64_STANDARD
+        .decode(stripped.as_bytes())
+        .map_err(|e| P2pError::SignalingFailed(format!("Base64 解碼失敗: {}", e)))?;
+
+    let mut decoder = GzDecoder::new(&compressed[..]).take(MAX_DECOMPRESSED_SIGNAL_SIZE + 1);
+    let mut decompressed = Vec::new();
+    decoder
+        .read_to_end(&mut decompressed)
+        .map_err(|e| P2pError::SignalingFailed(format!("Gzip 解壓縮失敗: {}", e)))?;
+
+    if decompressed.len() as u64 > MAX_DECOMPRESSED_SIGNAL_SIZE {
+        return Err(P2pError::SignalingFailed(
+            "信令資料解壓縮後超過安全上限 (64KB)".into(),
+        ));
+    }
+
+    let envelope: SignalEnvelope = serde_json::from_slice(&decompressed)
+        .map_err(|e| P2pError::SignalingFailed(format!("信令反序列化失敗: {}", e)))?;
+
+    Ok(envelope)
 }
 
 #[cfg(test)]
@@ -152,6 +229,36 @@ mod tests {
         let mut raw = vec![0u8; 11];
         raw[2] = 0xFF; // 無效 frame type
         let res = DataChannelFrame::decode(&raw);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_offline_signal_roundtrip() {
+        let env = SignalEnvelope {
+            version: 1,
+            sdp_type: "offer".into(),
+            sdp: "v=0\r\no=- 12345 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n".into(),
+            alias: Some("Steve's Survival".into()),
+            host_port: Some(25565),
+        };
+
+        let encoded = encode_offline_signal(&env).expect("編碼失敗");
+        assert!(encoded.starts_with("focusite://p2p/"));
+
+        let decoded = decode_offline_signal(&encoded).expect("解碼失敗");
+        assert_eq!(decoded, env);
+    }
+
+    #[test]
+    fn test_offline_signal_bomb_rejection() {
+        let big_data = vec![0u8; 100 * 1024];
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::best());
+        encoder.write_all(&big_data).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let b64 = BASE64_STANDARD.encode(&compressed);
+        let signal = format!("{}{}", SIGNAL_PREFIX, b64);
+
+        let res = decode_offline_signal(&signal);
         assert!(res.is_err());
     }
 }

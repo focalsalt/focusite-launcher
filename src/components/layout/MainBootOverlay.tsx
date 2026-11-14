@@ -1,5 +1,6 @@
 import React from "react";
 import { motion } from "motion/react";
+import { useI18n } from "@/i18n";
 
 /**
  * MainBootOverlay seamlessly bridges the visual gap between splash dismissal
@@ -7,6 +8,7 @@ import { motion } from "motion/react";
  * Positioned right below the draggable WindowBar (top-9 / 36px) with z-50.
  */
 export const MainBootOverlay: React.FC = () => {
+  const { t } = useI18n();
   return (
     <motion.div
       key="main-boot-overlay"
@@ -17,7 +19,7 @@ export const MainBootOverlay: React.FC = () => {
         scale: 1.012,
         transition: { duration: 0.22, ease: "easeOut" },
       }}
-      className="absolute inset-0 top-9 z-50 flex flex-col items-center justify-center bg-[#0a0f1d] select-none overflow-hidden"
+      className="absolute inset-0 top-9 z-50 flex flex-col items-center justify-center bg-canvas select-none overflow-hidden"
       style={{
         background:
           "radial-gradient(circle at 50% 45%, rgba(60, 133, 39, 0.18) 0%, rgba(10, 15, 29, 0.98) 72%)",
@@ -33,14 +35,14 @@ export const MainBootOverlay: React.FC = () => {
           className="relative flex items-center justify-center animate-pulse duration-1000"
         >
           <svg
-            className="drop-shadow-[0_0_24px_rgba(82,164,58,0.45)]"
+            className="drop-shadow-[0_0_24px_color-mix(in_srgb,var(--fc-highlight)_45%,transparent)]"
             width="68"
             height="68"
             viewBox="0 0 512 512"
             fill="none"
           >
-            <polygon points="256,72 416,164 256,256 96,164" fill="#52A43A" />
-            <polygon points="96,164 256,256 256,440 96,348" fill="#3C8527" />
+            <polygon points="256,72 416,164 256,256 96,164" fill="var(--fc-highlight)" />
+            <polygon points="96,164 256,256 256,440 96,348" fill="var(--fc-primary)" />
             <polygon points="256,256 416,164 416,348 256,440" fill="#2E6B1D" />
             <g
               stroke="#FFFFFF"
@@ -72,12 +74,12 @@ export const MainBootOverlay: React.FC = () => {
             data-tauri-drag-region
             className="mt-2 flex items-center gap-2"
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-[#52A43A] shadow-[0_0_8px_rgba(82,164,58,0.9)] animate-ping" />
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-light shadow-[0_0_8px_color-mix(in_srgb,var(--fc-highlight)_90%,transparent)] animate-ping" />
             <span
               data-tauri-drag-region
               className="text-xs text-slate-400 tracking-wide"
             >
-              正在準備工作區畫布...
+              {t.app.preparingWorkspace}
             </span>
           </div>
         </div>

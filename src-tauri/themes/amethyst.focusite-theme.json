@@ -1,0 +1,22 @@
+{
+  "name": "Amethyst",
+  "author": "Focusite Team",
+  "description": "Purple theme with violet-tinted neutrals.",
+  "tokens": {
+    "--fc-primary": "#7E22CE",
+    "--fc-highlight": "#C084FC",
+    "--fc-bg-canvas": "#0f0716",
+    "--fc-neutral-50": "#faf8fc",
+    "--fc-neutral-100": "#f3eff8",
+    "--fc-neutral-200": "#e6dff0",
+    "--fc-neutral-300": "#d3c8e3",
+    "--fc-neutral-400": "#a597bd",
+    "--fc-neutral-500": "#7c6d97",
+    "--fc-neutral-600": "#5d4f78",
+    "--fc-neutral-700": "#43385a",
+    "--fc-neutral-800": "#2c2340",
+    "--fc-neutral-900": "#1c162b",
+    "--fc-neutral-950": "#0f0a1a",
+    "--fc-radius": "0.75rem"
+  }
+}

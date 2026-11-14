@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{watch, RwLock};
-use tracing::{debug, info};
+use tokio::sync::RwLock;
+use tracing::info;
 use crate::lan_broadcast::LanBroadcaster;
-use crate::mc_protocol::{build_status_response_packet, parse_handshake_packet};
-use crate::tcp_proxy::LocalTcpProxy;
+use crate::tunnel::Tunnel;
+use crate::webrtc::StunTurnConfig;
 use crate::P2pError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -29,7 +29,6 @@ pub struct P2pHandshakeResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct P2pSessionInfo {
     pub session_id: String,
-    pub room_code: String,
     pub role: P2pRole,
     pub alias: String,
     pub instance_id: Option<String>,
@@ -45,9 +44,22 @@ pub struct P2pSessionInfo {
 pub struct P2pSessionHandle {
     pub info: P2pSessionInfo,
     pub broadcaster: Option<LanBroadcaster>,
-    pub motd_tx: Option<watch::Sender<String>>,
-    pub stop_tx: watch::Sender<bool>,
-    pub proxy_handle: Option<tokio::task::JoinHandle<()>>,
+    /// Present for WebRTC sessions; supplies the live status, latency and byte counters.
+    pub tunnel: Option<Tunnel>,
+}
+
+impl P2pSessionHandle {
+    fn snapshot(&self) -> P2pSessionInfo {
+        let mut info = self.info.clone();
+        if let Some(tunnel) = &self.tunnel {
+            let stats = tunnel.stats();
+            info.status = stats.status;
+            info.latency_ms = stats.latency_ms;
+            info.bytes_sent = stats.bytes_sent;
+            info.bytes_received = stats.bytes_received;
+        }
+        info
+    }
 }
 
 #[derive(Clone, Default)]
@@ -62,12 +74,6 @@ impl P2pSessionRegistry {
         }
     }
 
-    /// Generates a human-friendly 6-character room code (e.g., `FC-8F2B`).
-    pub fn generate_room_code() -> String {
-        let raw = uuid::Uuid::new_v4().simple().to_string();
-        format!("FC-{}", raw[..4].to_uppercase())
-    }
-
     /// Starts a P2P host session for an active instance.
     pub async fn start_host(
         &self,
@@ -76,7 +82,6 @@ impl P2pSessionRegistry {
         alias: String,
     ) -> Result<P2pSessionInfo, P2pError> {
         let session_id = uuid::Uuid::new_v4().to_string();
-        let room_code = Self::generate_room_code();
         let now = chrono::Utc::now().timestamp();
 
         let display_alias = if alias.trim().is_empty() {
@@ -85,21 +90,18 @@ impl P2pSessionRegistry {
             alias.trim().to_string()
         };
 
-        let motd = format!("[Focusite · {}] {} — {}", display_alias, room_code, instance_id);
+        let motd = format!("[Focusite · {}] {}", display_alias, instance_id);
         let broadcaster = LanBroadcaster::start(motd, host_port).await.ok();
-
-        let (stop_tx, _stop_rx) = watch::channel(false);
 
         let info = P2pSessionInfo {
             session_id: session_id.clone(),
-            room_code: room_code.clone(),
             role: P2pRole::Host,
             alias: display_alias,
             instance_id: Some(instance_id),
             local_port: host_port,
             target_port: Some(host_port),
-            status: "active".to_string(),
-            latency_ms: 1,
+            status: "broadcasting".to_string(),
+            latency_ms: 0,
             bytes_sent: 0,
             bytes_received: 0,
             created_at: now,
@@ -108,215 +110,138 @@ impl P2pSessionRegistry {
         let handle = P2pSessionHandle {
             info: info.clone(),
             broadcaster,
-            motd_tx: None,
-            stop_tx,
-            proxy_handle: None,
+            tunnel: None,
         };
 
         let mut lock = self.sessions.write().await;
         lock.insert(session_id, handle);
 
-        info!("P2P Host session started: room {}, port {}", room_code, host_port);
+        info!("P2P Host session started on port {}", host_port);
         Ok(info)
     }
 
-    /// Joins a P2P room by allocating an ephemeral loopback TCP port (`127.0.0.1:0`)
-    /// and starting the Minecraft LAN discovery broadcast.
-    pub async fn join_room(
+    /// Host: opens a WebRTC tunnel to the local game port and returns the offer code for a friend.
+    pub async fn create_tunnel_offer(
         &self,
-        room_code: String,
+        instance_id: Option<String>,
+        game_port: u16,
         alias: String,
-        simulated_target_port: Option<u16>,
-    ) -> Result<P2pSessionInfo, P2pError> {
-        let session_id = uuid::Uuid::new_v4().to_string();
-        let normalized_room = room_code.trim().to_uppercase();
-        let now = chrono::Utc::now().timestamp();
-
-        let display_alias = if alias.trim().is_empty() {
-            "Guest".to_string()
-        } else {
-            alias.trim().to_string()
+        stun: &StunTurnConfig,
+    ) -> Result<(P2pSessionInfo, String), P2pError> {
+        let display_alias = clean_alias(&alias, "Player");
+        let offer = Tunnel::create_host_offer(game_port, display_alias.clone(), stun).await?;
+        let info = P2pSessionInfo {
+            session_id: uuid::Uuid::new_v4().to_string(),
+            role: P2pRole::Host,
+            alias: display_alias,
+            instance_id,
+            local_port: game_port,
+            target_port: Some(game_port),
+            status: "connecting".to_string(),
+            latency_ms: 0,
+            bytes_sent: 0,
+            bytes_received: 0,
+            created_at: chrono::Utc::now().timestamp(),
         };
+        let handle = P2pSessionHandle { info: info.clone(), broadcaster: None, tunnel: Some(offer.tunnel) };
+        self.sessions.write().await.insert(info.session_id.clone(), handle);
+        Ok((info, offer.offer_code))
+    }
 
-        // Bind ephemeral port on 127.0.0.1
-        let proxy = LocalTcpProxy::new(0);
-        let (listener, local_addr) = proxy.bind().await?;
-        let local_port = local_addr.port();
+    /// Host: applies the friend's answer code.
+    pub async fn apply_tunnel_answer(
+        &self,
+        session_id: &str,
+        answer_code: &str,
+    ) -> Result<P2pSessionInfo, P2pError> {
+        let lock = self.sessions.read().await;
+        let handle = lock
+            .get(session_id)
+            .ok_or_else(|| P2pError::SignalingFailed(format!("找不到連線階段: {}", session_id)))?;
+        let tunnel = handle
+            .tunnel
+            .as_ref()
+            .ok_or_else(|| P2pError::SignalingFailed("這個連線階段不是 WebRTC 通道".into()))?;
+        tunnel.apply_answer(answer_code).await?;
+        Ok(handle.snapshot())
+    }
 
-        // Start LAN discovery broadcaster so the world shows up in Minecraft's LAN list
-        let motd = format!("[Focusite · {}] P2P Tunnel {}", display_alias, normalized_room);
-        let broadcaster = LanBroadcaster::start(motd.clone(), local_port).await.ok();
+    /// Guest: takes the host's offer code, listens on a loopback port and announces it as a LAN world.
+    pub async fn join_tunnel(
+        &self,
+        offer_code: &str,
+        local_port: u16,
+        stun: &StunTurnConfig,
+    ) -> Result<(P2pSessionInfo, String), P2pError> {
+        let guest = Tunnel::accept_offer(offer_code, local_port, stun).await?;
+        let tunnel = guest.tunnel;
+        let port = tunnel.local_port.unwrap_or(local_port);
+        let host_alias = clean_alias(tunnel.peer_alias.as_deref().unwrap_or(""), "Host");
 
-        let (stop_tx, mut stop_rx) = watch::channel(false);
-        let (motd_tx, motd_rx) = watch::channel(motd);
-
-        // Spawn TCP proxy listener
-        let proxy_handle = tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    accept_res = listener.accept() => {
-                        match accept_res {
-                            Ok((mut client_stream, peer_addr)) => {
-                                debug!("Incoming Minecraft TCP connection from {}", peer_addr);
-                                let motd_rx_client = motd_rx.clone();
-                                tokio::spawn(async move {
-                                    if let Some(target_port) = simulated_target_port {
-                                        // Forward to target port if available
-                                        if let Ok(mut target_stream) = TcpStream::connect(format!("127.0.0.1:{}", target_port)).await {
-                                            let _ = tokio::io::copy_bidirectional(&mut client_stream, &mut target_stream).await;
-                                            return;
-                                        }
-                                    }
-
-                                    // Inspect Minecraft Handshake and respond to Server List Ping
-                                    let mut buf = [0u8; 1024];
-                                    if let Ok(n) = client_stream.read(&mut buf).await {
-                                        if n > 0 {
-                                            if let Ok(handshake) = parse_handshake_packet(&buf[..n]) {
-                                                if handshake.next_state == 1 {
-                                                    let current_motd = motd_rx_client.borrow().clone();
-                                                    // Status ping: send MOTD packet
-                                                    let resp = build_status_response_packet(
-                                                        handshake.protocol_version,
-                                                        "Focusite P2P",
-                                                        &current_motd,
-                                                        1,
-                                                        8,
-                                                    );
-                                                    let _ = client_stream.write_all(&resp).await;
-                                                    let _ = client_stream.flush().await;
-
-                                                    // Allow peer to read response before disconnecting
-                                                    let mut discard = [0u8; 256];
-                                                    let _ = tokio::time::timeout(
-                                                        std::time::Duration::from_millis(500),
-                                                        client_stream.read(&mut discard),
-                                                    ).await;
-                                                }
-                                            }
-                                        }
-                                    }
-                                });
-                            }
-                            Err(e) => {
-                                debug!("TCP accept error: {}", e);
-                            }
-                        }
-                    }
-                    _ = stop_rx.changed() => {
-                        if *stop_rx.borrow() {
-                            break;
-                        }
-                    }
-                }
-            }
-            debug!("TCP proxy listener stopped for port {}", local_port);
-        });
+        let motd = format!("[Focusite · {}]", host_alias);
+        let broadcaster = LanBroadcaster::start(motd, port).await.ok();
 
         let info = P2pSessionInfo {
-            session_id: session_id.clone(),
-            room_code: normalized_room,
+            session_id: uuid::Uuid::new_v4().to_string(),
             role: P2pRole::Client,
-            alias: display_alias,
+            alias: host_alias,
             instance_id: None,
-            local_port,
-            target_port: simulated_target_port,
-            status: "active".to_string(),
-            latency_ms: 18,
+            local_port: port,
+            target_port: tunnel.peer_game_port,
+            status: "connecting".to_string(),
+            latency_ms: 0,
             bytes_sent: 0,
             bytes_received: 0,
-            created_at: now,
+            created_at: chrono::Utc::now().timestamp(),
         };
-
-        let handle = P2pSessionHandle {
-            info: info.clone(),
-            broadcaster,
-            motd_tx: Some(motd_tx),
-            stop_tx,
-            proxy_handle: Some(proxy_handle),
-        };
-
-        let mut lock = self.sessions.write().await;
-        lock.insert(session_id, handle);
-
-        info!("P2P Client session joined: local port {}", local_port);
-        Ok(info)
+        let handle = P2pSessionHandle { info: info.clone(), broadcaster, tunnel: Some(tunnel) };
+        self.sessions.write().await.insert(info.session_id.clone(), handle);
+        Ok((info, guest.answer_code))
     }
 
-    /// Stops and removes an active P2P session.
+    /// Stops and removes an active session.
     pub async fn stop_session(&self, session_id: &str) -> Result<(), P2pError> {
-        let handle_opt = {
-            let mut lock = self.sessions.write().await;
-            lock.remove(session_id)
-        };
-
+        let handle_opt = self.sessions.write().await.remove(session_id);
         if let Some(mut handle) = handle_opt {
-            let _ = handle.stop_tx.send(true);
             if let Some(mut broadcaster) = handle.broadcaster.take() {
                 broadcaster.stop().await;
             }
-            if let Some(proxy_handle) = handle.proxy_handle.take() {
-                let _ = proxy_handle.await;
+            if let Some(mut tunnel) = handle.tunnel.take() {
+                tunnel.close().await;
             }
             info!("P2P Session {} stopped", session_id);
         }
-
         Ok(())
     }
 
-    /// Lists all active P2P sessions.
+    /// Lists all active sessions with live tunnel numbers. Dead tunnels are removed first.
     pub async fn list_sessions(&self) -> Vec<P2pSessionInfo> {
-        let lock = self.sessions.read().await;
-        lock.values().map(|h| h.info.clone()).collect()
+        self.reap_dead().await;
+        self.sessions.read().await.values().map(|h| h.snapshot()).collect()
+    }
+
+    /// Stops tunnels that failed, closed, or never connected, so their LAN announcement,
+    /// listener and ping task do not linger.
+    async fn reap_dead(&self) {
+        let now = chrono::Utc::now().timestamp();
+        let dead: Vec<String> = self
+            .sessions
+            .read()
+            .await
+            .iter()
+            .filter(|(_, h)| {
+                h.tunnel.is_some() && is_dead(&h.snapshot().status, now - h.info.created_at)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in dead {
+            let _ = self.stop_session(&id).await;
+        }
     }
 
     /// Retrieves an active session by ID.
     pub async fn get_session(&self, session_id: &str) -> Option<P2pSessionInfo> {
-        let lock = self.sessions.read().await;
-        lock.get(session_id).map(|h| h.info.clone())
-    }
-
-    /// Updates the display alias and LAN broadcast MOTD for an active session.
-    pub async fn update_alias(
-        &self,
-        session_id: &str,
-        new_alias: &str,
-    ) -> Result<P2pSessionInfo, P2pError> {
-        let mut lock = self.sessions.write().await;
-        let handle = lock
-            .get_mut(session_id)
-            .ok_or_else(|| P2pError::SignalingFailed(format!("找不到連線階段: {}", session_id)))?;
-
-        let clean_alias = if new_alias.trim().is_empty() {
-            "Player".to_string()
-        } else {
-            new_alias.trim().to_string()
-        };
-
-        handle.info.alias = clean_alias.clone();
-
-        let updated_motd = match handle.info.role {
-            P2pRole::Host => format!(
-                "[Focusite · {}] {} — {}",
-                clean_alias,
-                handle.info.room_code,
-                handle.info.instance_id.as_deref().unwrap_or("World")
-            ),
-            P2pRole::Client => format!(
-                "[Focusite · {}] P2P Tunnel {}",
-                clean_alias, handle.info.room_code
-            ),
-        };
-
-        if let Some(broadcaster) = &mut handle.broadcaster {
-            broadcaster.update_motd(updated_motd.clone()).await;
-        }
-
-        if let Some(tx) = &handle.motd_tx {
-            let _ = tx.send(updated_motd);
-        }
-
-        Ok(handle.info.clone())
+        self.sessions.read().await.get(session_id).map(|h| h.snapshot())
     }
 
     /// Verifies Minecraft status handshake against the session's local port and measures latency.
@@ -442,72 +367,75 @@ impl P2pSessionRegistry {
     }
 }
 
+/// A tunnel is dead once it failed or closed, or when it has still not connected after the grace period.
+fn is_dead(status: &str, age_secs: i64) -> bool {
+    const SETUP_GRACE_SECS: i64 = 120;
+    matches!(status, "failed" | "closed") || (status == "connecting" && age_secs > SETUP_GRACE_SECS)
+}
+
+fn clean_alias(alias: &str, fallback: &str) -> String {
+    let trimmed = alias.trim();
+    if trimmed.is_empty() { fallback.to_string() } else { trimmed.to_string() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_session_registry_lifecycle() {
+    async fn test_host_broadcast_lifecycle() {
         let registry = P2pSessionRegistry::new();
+        let host = registry.start_host("my-instance".into(), 25565, "HostPlayer".into()).await.unwrap();
+        assert_eq!(host.role, P2pRole::Host);
+        assert_eq!(host.status, "broadcasting");
+        assert_eq!(registry.list_sessions().await.len(), 1);
+        registry.stop_session(&host.session_id).await.unwrap();
+        assert!(registry.list_sessions().await.is_empty());
+    }
 
-        // 1. Host session
-        let host_info = registry
-            .start_host("my-instance".into(), 25565, "HostPlayer".into())
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_tunnel_sessions_connect_and_report_live_stats() {
+        let registry = P2pSessionRegistry::new();
+        let no_stun = StunTurnConfig { stun_servers: Vec::new(), turn_servers: Vec::new() };
+
+        let (host, offer) = registry
+            .create_tunnel_offer(Some("inst".into()), 25565, "Host".into(), &no_stun)
             .await
-            .expect("failed to start host");
-        assert_eq!(host_info.role, P2pRole::Host);
-        assert_eq!(host_info.local_port, 25565);
-        assert!(host_info.room_code.starts_with("FC-"));
+            .unwrap();
+        assert!(offer.starts_with("focusite://p2p/"));
+        let (guest, answer) = registry.join_tunnel(&offer, 0, &no_stun).await.unwrap();
+        assert_eq!(guest.role, P2pRole::Client);
+        assert_eq!(guest.target_port, Some(25565));
+        assert!(guest.local_port > 0);
+        registry.apply_tunnel_answer(&host.session_id, &answer).await.unwrap();
 
-        // 2. Client session
-        let client_info = registry
-            .join_room(host_info.room_code.clone(), "GuestPlayer".into(), Some(25565))
-            .await
-            .expect("failed to join room");
-        assert_eq!(client_info.role, P2pRole::Client);
-        assert!(client_info.local_port > 0);
-        assert_ne!(client_info.local_port, 25565);
+        let mut status = String::new();
+        for _ in 0..100 {
+            status = registry.get_session(&host.session_id).await.unwrap().status;
+            if status == "connected" {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert_eq!(status, "connected");
 
-        // 3. List sessions
-        let list = registry.list_sessions().await;
-        assert_eq!(list.len(), 2);
+        registry.stop_session(&guest.session_id).await.unwrap();
+        registry.stop_session(&host.session_id).await.unwrap();
+    }
 
-        // 4. Stop client session
-        registry
-            .stop_session(&client_info.session_id)
-            .await
-            .expect("failed to stop client");
-        let list_after = registry.list_sessions().await;
-        assert_eq!(list_after.len(), 1);
-
-        // 5. Stop host session
-        registry
-            .stop_session(&host_info.session_id)
-            .await
-            .expect("failed to stop host");
-        let list_empty = registry.list_sessions().await;
-        assert!(list_empty.is_empty());
+    #[test]
+    fn test_dead_tunnel_rules() {
+        assert!(is_dead("failed", 0));
+        assert!(is_dead("closed", 0));
+        assert!(is_dead("connecting", 121));
+        assert!(!is_dead("connecting", 60));
+        assert!(!is_dead("connected", 10_000));
+        assert!(!is_dead("disconnected", 10_000)); // may still recover
     }
 
     #[tokio::test]
-    async fn test_update_alias_and_verify_handshake() {
+    async fn test_apply_answer_to_unknown_session_fails() {
         let registry = P2pSessionRegistry::new();
-        let client_info = registry
-            .join_room("FC-TEST".into(), "OldAlias".into(), None)
-            .await
-            .unwrap();
-
-        let updated = registry
-            .update_alias(&client_info.session_id, "NewAlias")
-            .await
-            .unwrap();
-        assert_eq!(updated.alias, "NewAlias");
-
-        // Verify handshake against active proxy
-        let hs = registry.verify_handshake(&client_info.session_id).await.unwrap();
-        assert!(hs.success);
-        assert!(hs.motd.contains("NewAlias"));
-
-        registry.stop_session(&client_info.session_id).await.unwrap();
+        assert!(registry.apply_tunnel_answer("nope", "x").await.is_err());
     }
 }

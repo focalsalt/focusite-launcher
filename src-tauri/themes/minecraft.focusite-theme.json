@@ -1,0 +1,22 @@
+{
+  "name": "Minecraft",
+  "author": "Focusite Team",
+  "description": "Official green theme.",
+  "tokens": {
+    "--fc-primary": "#3C8527",
+    "--fc-highlight": "#52A43A",
+    "--fc-bg-canvas": "#0a0f1d",
+    "--fc-neutral-50": "oklch(98.4% 0.003 247.858)",
+    "--fc-neutral-100": "oklch(96.8% 0.007 247.896)",
+    "--fc-neutral-200": "oklch(92.9% 0.013 255.508)",
+    "--fc-neutral-300": "oklch(86.9% 0.022 252.894)",
+    "--fc-neutral-400": "oklch(70.4% 0.04 256.788)",
+    "--fc-neutral-500": "oklch(55.4% 0.046 257.417)",
+    "--fc-neutral-600": "oklch(44.6% 0.043 257.281)",
+    "--fc-neutral-700": "oklch(37.2% 0.044 257.287)",
+    "--fc-neutral-800": "oklch(27.9% 0.041 260.031)",
+    "--fc-neutral-900": "oklch(20.8% 0.042 265.755)",
+    "--fc-neutral-950": "oklch(12.9% 0.042 264.695)",
+    "--fc-radius": "0.75rem"
+  }
+}

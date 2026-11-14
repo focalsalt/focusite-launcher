@@ -6,6 +6,7 @@ export interface LauncherSettingsDto {
   enableBmclapiMirror: boolean;
   curseforgeApiKey?: string | null;
   soundEnabled: boolean;
+  instancesDir?: string | null;
 }
 
 const isTauri = (): boolean => {
@@ -15,6 +16,11 @@ const isTauri = (): boolean => {
 const LOCAL_STORAGE_SETTINGS_KEY = "focusite_launcher_settings_v26";
 
 export const settingsService = {
+  /** Folder instances are stored in right now (custom or default). */
+  async getInstancesDir(): Promise<string> {
+    return isTauri() ? invoke<string>("get_instances_dir_path") : "";
+  },
+
   async getSettings(): Promise<LauncherSettingsDto> {
     if (isTauri()) {
       try {
@@ -42,12 +48,15 @@ export const settingsService = {
     enableBmclapiMirror?: boolean;
     curseforgeApiKey?: string | null;
     soundEnabled?: boolean;
+    /** Empty string resets to the default folder. */
+    instancesDir?: string;
   }): Promise<LauncherSettingsDto> {
     if (isTauri()) {
       return await invoke<LauncherSettingsDto>("update_launcher_settings", {
         enableBmclapiMirror: params.enableBmclapiMirror ?? null,
         curseforgeApiKey: params.curseforgeApiKey !== undefined ? params.curseforgeApiKey : null,
         soundEnabled: params.soundEnabled ?? null,
+        instancesDir: params.instancesDir ?? null,
       });
     }
     const current = await this.getSettings();
@@ -58,6 +67,7 @@ export const settingsService = {
           ? (params.curseforgeApiKey || null)
           : current.curseforgeApiKey,
       soundEnabled: params.soundEnabled ?? current.soundEnabled,
+      instancesDir: params.instancesDir !== undefined ? params.instancesDir || null : current.instancesDir,
     };
     localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(updated));
     return updated;

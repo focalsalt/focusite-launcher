@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface P2pSessionDto {
   sessionId: string;
-  roomCode: string;
   role: "host" | "client";
   alias: string;
   instanceId?: string;
@@ -13,17 +12,6 @@ export interface P2pSessionDto {
   bytesSent: number;
   bytesReceived: number;
   createdAt: number;
-
-  // 相容歷史 snake_case 存取
-  session_id?: string;
-  room_code?: string;
-  instance_id?: string;
-  local_port?: number;
-  target_port?: number;
-  latency_ms?: number;
-  bytes_sent?: number;
-  bytes_received?: number;
-  created_at?: number;
 }
 
 export interface P2pHandshakeResult {
@@ -34,77 +22,57 @@ export interface P2pHandshakeResult {
   serverVersion: string;
 }
 
-const normalizeSession = (raw: any): P2pSessionDto => {
-  return {
-    sessionId: raw.sessionId ?? raw.session_id,
-    roomCode: raw.roomCode ?? raw.room_code,
-    role: raw.role,
-    alias: raw.alias,
-    instanceId: raw.instanceId ?? raw.instance_id,
-    localPort: raw.localPort ?? raw.local_port,
-    targetPort: raw.targetPort ?? raw.target_port,
-    status: raw.status,
-    latencyMs: raw.latencyMs ?? raw.latency_ms ?? 0,
-    bytesSent: raw.bytesSent ?? raw.bytes_sent ?? 0,
-    bytesReceived: raw.bytesReceived ?? raw.bytes_received ?? 0,
-    createdAt: raw.createdAt ?? raw.created_at ?? Date.now(),
-    // 相容
-    session_id: raw.sessionId ?? raw.session_id,
-    room_code: raw.roomCode ?? raw.room_code,
-    instance_id: raw.instanceId ?? raw.instance_id,
-    local_port: raw.localPort ?? raw.local_port,
-    target_port: raw.targetPort ?? raw.target_port,
-    latency_ms: raw.latencyMs ?? raw.latency_ms ?? 0,
-    bytes_sent: raw.bytesSent ?? raw.bytes_sent ?? 0,
-    bytes_received: raw.bytesReceived ?? raw.bytes_received ?? 0,
-    created_at: raw.createdAt ?? raw.created_at ?? Date.now(),
-  };
-};
+export interface TunnelCodeDto {
+  session: P2pSessionDto;
+  /** Offer code (host) or answer code (guest) to hand to the friend. */
+  code: string;
+}
 
 export const p2pService = {
-  startHost: async (
-    instanceId: string,
-    hostPort: number,
-    alias: string
-  ): Promise<P2pSessionDto> => {
-    const raw = await invoke<any>("start_p2p_host", {
-      instanceId,
-      hostPort,
-      alias,
-    });
-    return normalizeSession(raw);
-  },
-
-  joinRoom: async (roomCode: string, alias: string): Promise<P2pSessionDto> => {
-    const raw = await invoke<any>("join_p2p_room", {
-      roomCode,
-      alias,
-    });
-    return normalizeSession(raw);
-  },
+  startHost: (instanceId: string, hostPort: number, alias: string): Promise<P2pSessionDto> =>
+    invoke<P2pSessionDto>("start_p2p_host", { instanceId, hostPort, alias }),
 
   stopSession: async (sessionId: string): Promise<void> => {
     await invoke("stop_p2p_session", { sessionId });
   },
 
-  listSessions: async (): Promise<P2pSessionDto[]> => {
-    const rawList = await invoke<any[]>("list_p2p_sessions");
-    return rawList.map(normalizeSession);
-  },
+  listSessions: (): Promise<P2pSessionDto[]> => invoke<P2pSessionDto[]>("list_p2p_sessions"),
 
+  /** The handshake result is serialized with snake_case field names by the Rust crate. */
   verifyHandshake: async (sessionId: string): Promise<P2pHandshakeResult> => {
-    const raw = await invoke<any>("p2p_verify_handshake", { sessionId });
+    const raw = await invoke<{
+      session_id: string;
+      success: boolean;
+      latency_ms: number;
+      motd: string;
+      server_version: string;
+    }>("p2p_verify_handshake", { sessionId });
     return {
-      sessionId: raw.sessionId ?? raw.session_id,
+      sessionId: raw.session_id,
       success: raw.success,
-      latencyMs: raw.latencyMs ?? raw.latency_ms ?? 0,
+      latencyMs: raw.latency_ms,
       motd: raw.motd,
-      serverVersion: raw.serverVersion ?? raw.server_version ?? "Minecraft",
+      serverVersion: raw.server_version,
     };
   },
 
-  updateSessionAlias: async (sessionId: string, newAlias: string): Promise<P2pSessionDto> => {
-    const raw = await invoke<any>("p2p_update_session_alias", { sessionId, newAlias });
-    return normalizeSession(raw);
+  /** Host: opens a WebRTC tunnel to the local game port and returns the invite code. */
+  createOffer: (instanceId: string | null, gamePort: number, alias: string): Promise<TunnelCodeDto> =>
+    invoke<TunnelCodeDto>("p2p_create_offer", { instanceId, gamePort, alias }),
+
+  /** Host: applies the friend's reply code. */
+  applyAnswer: (sessionId: string, answerCode: string): Promise<P2pSessionDto> =>
+    invoke<P2pSessionDto>("p2p_apply_answer", { sessionId, answerCode }),
+
+  /** Guest: joins with the host's invite code and returns the reply code. */
+  joinWithOffer: (offerCode: string, localPort?: number): Promise<TunnelCodeDto> =>
+    invoke<TunnelCodeDto>("p2p_join_with_offer", { offerCode, localPort: localPort ?? null }),
+
+  /** Whether Windows Firewall already allows this app (always true elsewhere). */
+  firewallStatus: (): Promise<boolean> => invoke<boolean>("p2p_firewall_status"),
+
+  /** Creates the firewall rule; Windows shows one administrator prompt. */
+  firewallSetup: async (): Promise<void> => {
+    await invoke("p2p_firewall_setup");
   },
 };

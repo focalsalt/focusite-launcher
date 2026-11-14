@@ -56,6 +56,9 @@ pub struct MissingModItem {
     pub file_name: String,
     #[serde(rename = "webUrl")]
     pub web_url: String,
+    /// Path of the file inside the minecraft folder (set for modpacks that name exact files, like .mrpack).
+    #[serde(rename = "relPath", default)]
+    pub rel_path: String,
 }
 
 /// Parses an HTML modlist to extract project name and URL mappings.
@@ -170,6 +173,13 @@ pub fn rescan_missing_mods(
     let mut remaining = Vec::new();
 
     for item in current_missing {
+        // Exact files (from .mrpack) are resolved by their real path; no guessing by name or id.
+        if !item.rel_path.is_empty() {
+            if !minecraft_dir.join(&item.rel_path).is_file() {
+                remaining.push(item.clone());
+            }
+            continue;
+        }
         let target = item.file_name.to_lowercase();
         let target_no_ext = target.trim_end_matches(".jar").trim_end_matches(".disabled");
         let name_clean = item.name.to_lowercase().replace(' ', "-");
@@ -186,8 +196,8 @@ pub fn rescan_missing_mods(
             let is_match = fname == &target
                 || fname.starts_with(target_no_ext)
                 || (!name_clean.is_empty() && fname.contains(&name_clean))
-                || (!file_id_str.is_empty() && fname.contains(&file_id_str))
-                || (!project_id_str.is_empty() && fname.contains(&project_id_str));
+                || (item.file_id != 0 && fname.contains(&file_id_str))
+                || (item.project_id != 0 && fname.contains(&project_id_str));
 
             if is_match {
                 matched_idx = Some(idx);
@@ -269,6 +279,26 @@ mod tests {
     }
 
     #[test]
+    fn test_rescan_resolves_exact_files_by_path_only() {
+        let dir = std::env::temp_dir().join(format!("fc_rescan_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("mods")).unwrap();
+        // A file whose name contains "0" must not satisfy an item with id 0.
+        std::fs::write(dir.join("mods").join("other-1.0.jar"), "x").unwrap();
+        let item = MissingModItem {
+            project_id: 0,
+            file_id: 0,
+            name: "wanted.jar".into(),
+            file_name: "wanted.jar".into(),
+            web_url: String::new(),
+            rel_path: "mods/wanted.jar".into(),
+        };
+        assert_eq!(rescan_missing_mods(&dir, std::slice::from_ref(&item)).len(), 1);
+        std::fs::write(dir.join("mods").join("wanted.jar"), "x").unwrap();
+        assert!(rescan_missing_mods(&dir, std::slice::from_ref(&item)).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_rescan_missing_mods() {
         let temp_dir = std::env::temp_dir().join(format!("focusite_rescan_test_{}", uuid::Uuid::new_v4()));
         let mods_dir = temp_dir.join("mods");
@@ -281,6 +311,7 @@ mod tests {
                 name: "JEI".into(),
                 file_name: "jei-1.20.1.jar".into(),
                 web_url: "https://curseforge.com/projects/1".into(),
+                rel_path: String::new(),
             },
             MissingModItem {
                 project_id: 2,
@@ -288,6 +319,7 @@ mod tests {
                 name: "AppleSkin".into(),
                 file_name: "appleskin-forge.jar".into(),
                 web_url: "https://curseforge.com/projects/2".into(),
+                rel_path: String::new(),
             },
         ];
 

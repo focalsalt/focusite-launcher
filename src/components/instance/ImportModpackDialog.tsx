@@ -1,10 +1,13 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,9 +21,23 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileArchive,
+  Search,
+  Loader2,
+  Globe,
+  Check,
 } from "lucide-react";
 import { modpackService, MissingModItem, ModpackImportResult } from "@/services/modpackService";
 import { instanceService } from "@/services/instanceService";
+import { workshopService, WorkshopProjectSummary, WorkshopCategory } from "@/services/workshopService";
+import { FilterSidebar, Sort } from "@/components/workshop/FilterSidebar";
+import { ProjectDetailPanel } from "@/components/workshop/ProjectDetailPanel";
+import { useProjectDetail } from "@/components/workshop/useProjectDetail";
+import { useVersionManifest } from "./VersionLoaderFields";
+import { toUserMessage } from "@/lib/errorMessage";
+import { toast } from "@/lib/toast";
+import { ProjectRow } from "@/components/workshop/ProjectRow";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useI18n } from "@/i18n";
 
 interface ImportModpackDialogProps {
   isOpen: boolean;
@@ -33,47 +50,152 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
   onClose,
   onImportSuccess,
 }) => {
+  const { t } = useI18n();
   const [packFilePath, setPackFilePath] = useState<string>("");
+  const [source, setSource] = useState<"local" | "online">("local");
+  const [onlineQuery, setOnlineQuery] = useState<string>("");
+  const [onlineResults, setOnlineResults] = useState<WorkshopProjectSummary[]>([]);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [selectedProject, setSelectedProject] = useState<WorkshopProjectSummary | null>(null);
   const [customName, setCustomName] = useState<string>("");
   const [isImporting, setIsImporting] = useState<boolean>(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [sort, setSort] = useState<Sort>("relevance");
+  const [gameVersion, setGameVersion] = useState<string>("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [categories, setCategories] = useState<WorkshopCategory[]>([]);
+  const [activeProject, setActiveProject] = useState<WorkshopProjectSummary | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<{ id: string; label: string } | null>(null);
+  const { manifest } = useVersionManifest(isOpen);
+  const mcVersions = useMemo(
+    () => (manifest?.versions ?? []).filter((v) => v.type === "release").map((v) => v.id),
+    [manifest],
+  );
+  const activeId = activeProject?.id;
+  const { detail, versions, versionId, setVersionId, isLoading: isLoadingDetail } = useProjectDetail(
+    activeId,
+    gameVersion,
+    undefined,
+    activeId && selectedProject?.id === activeId ? selectedVersion?.id : undefined,
+    (v) => v.filename.endsWith(".mrpack"),
+  );
+  const currentVersion = versions.find((v) => v.id === versionId);
+  const [nameTouched, setNameTouched] = useState<boolean>(false);
 
   // 待補齊狀態
   const [importResult, setImportResult] = useState<ModpackImportResult | null>(null);
   const [missingMods, setMissingMods] = useState<MissingModItem[]>([]);
   const [isRescanning, setIsRescanning] = useState<boolean>(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileChosen = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // In web environment, file.name is accessible; if Tauri path is injected via drag/drop or input:
-    // With web input, file doesn't have absolute path in sandboxed browser, but in Tauri drag/drop or typing path:
-    const path = (file as unknown as { path?: string }).path || file.name;
-    setPackFilePath(path);
-    if (!customName) {
-      const baseName = file.name.replace(/\.(mrpack|zip)$/i, "");
-      setCustomName(baseName);
+  const handleBrowseFile = async () => {
+    try {
+      const selected = await openFileDialog({
+        multiple: false,
+        filters: [
+          {
+            name: t.importPack.filterName,
+            extensions: ["mrpack", "zip"],
+          },
+        ],
+      });
+      if (selected && typeof selected === "string") {
+        setPackFilePath(selected);
+        if (!nameTouched) {
+          const filename = selected.split(/[\\/]/).pop() || "";
+          const baseName = filename.replace(/\.(mrpack|zip)$/i, "");
+          if (baseName) setCustomName(baseName);
+        }
+      }
+    } catch (err) {
+      console.error("Open file dialog error:", err);
+      toast(t.errors.fileDialogFailed(toUserMessage(err)), "error");
     }
-    setErrorMsg(null);
   };
+
+  /** PCL version folder or Prism instance folder: its files are copied into a new instance. */
+  const handleBrowseFolder = async () => {
+    try {
+      const selected = await openFileDialog({ directory: true, multiple: false });
+      if (selected && typeof selected === "string") {
+        setPackFilePath(selected);
+        if (!nameTouched) {
+          const folder = selected.split(/[\\/]/).filter(Boolean).pop() || "";
+          if (folder) setCustomName(folder);
+        }
+      }
+    } catch (err) {
+      console.error("Open folder dialog error:", err);
+      toast(t.errors.fileDialogFailed(toUserMessage(err)), "error");
+    }
+  };
+
+  const searchOnline = async (query: string) => {
+    setIsSearching(true);
+    try {
+      setOnlineResults(
+        await workshopService.searchProjects(query, "modpack", gameVersion || undefined, undefined, 0, 30, {
+          categories: [...picked],
+          sort,
+        }),
+      );
+    } catch (err) {
+      toast(t.errors.onlineSearchFailed(toUserMessage(err)), "error");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Search when the online source opens and whenever a filter changes.
+  useEffect(() => {
+    if (isOpen && source === "online") void searchOnline(onlineQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, source, sort, gameVersion, picked]);
+
+  useEffect(() => {
+    if (!isOpen || source !== "online" || categories.length > 0) return;
+    workshopService
+      .listCategories("modpack")
+      .then(setCategories)
+      .catch((err) => toast(toUserMessage(err), "error"));
+  }, [isOpen, source, categories.length]);
+
+  const toggleCategory = (name: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+
+  const pickVersion = () => {
+    if (!activeProject || !currentVersion) {
+      toast(t.workshopWin.pickVersionFirst, "error");
+      return;
+    }
+    setSelectedProject(activeProject);
+    setSelectedVersion({ id: currentVersion.id, label: currentVersion.version_number });
+    if (!nameTouched) setCustomName(activeProject.title);
+  };
+
+  const isPicked = !!activeProject && selectedProject?.id === activeProject.id && selectedVersion?.id === versionId;
 
   const handleStartImport = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!packFilePath.trim()) {
-      setErrorMsg("請輸入或選取模組包檔案路徑 (.mrpack 或 .zip)");
+    if (source === "online") {
+      if (!selectedProject) {
+        toast(t.importPack.onlinePick, "error");
+        return;
+      }
+    } else if (!packFilePath.trim()) {
+      toast(t.importPack.pickPath, "error");
       return;
     }
 
     setIsImporting(true);
-    setErrorMsg(null);
     try {
-      const res = await modpackService.importModpack(
-        packFilePath.trim(),
-        customName.trim() || undefined
-      );
+      const res =
+        source === "online" && selectedProject
+          ? await modpackService.importModrinthModpack(selectedProject.id, customName.trim() || undefined, selectedVersion?.id)
+          : await modpackService.importModpack(packFilePath.trim(), customName.trim() || undefined);
 
       setImportResult(res);
       setMissingMods(res.missingMods);
@@ -87,8 +209,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
         setIsImporting(false);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setErrorMsg(msg);
+      toast(toUserMessage(err), "error");
       setIsImporting(false);
     }
   };
@@ -116,6 +237,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
       setMissingMods(remaining);
     } catch (err) {
       console.error("Rescan failed:", err);
+      toast(t.errors.rescanFailed(toUserMessage(err)), "error");
     } finally {
       setIsRescanning(false);
     }
@@ -130,7 +252,11 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
   const resetAll = () => {
     setPackFilePath("");
     setCustomName("");
-    setErrorMsg(null);
+    setSelectedProject(null);
+    setSource("local");
+    setNameTouched(false);
+    setActiveProject(null);
+    setSelectedVersion(null);
     setImportResult(null);
     setMissingMods([]);
     onClose();
@@ -147,53 +273,53 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
               <DialogTitle className="text-base font-bold text-white">
-                待補齊 CurseForge 受保護模組清單
+                {t.importPack.missingTitle}
               </DialogTitle>
             </div>
             <DialogDescription className="text-xs text-slate-400 leading-relaxed pt-1">
-              模組作者設定禁止由未授權第三方自動下載，或尚未在設定頁配置官方 CurseForge API Key。
-              請將下載的 .jar 檔案放入實例 mods 資料夾後點擊「重新掃描」。
+              {t.importPack.missingDesc}
+              {t.importPack.missingHint}
             </DialogDescription>
           </DialogHeader>
 
           {/* 狀態資訊橫幅 */}
           <div className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 text-xs">
             <div className="flex items-center gap-2">
-              <span className="text-slate-400">實例名稱：</span>
+              <span className="text-slate-400">{t.importPack.instanceName}</span>
               <span className="font-semibold text-white">{importResult.instanceName}</span>
               <Badge variant="outline" className="text-[10px] font-mono border-white/10">
                 {importResult.loader} {importResult.version}
               </Badge>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-slate-400">剩餘缺失項目：</span>
+              <span className="text-slate-400">{t.importPack.remaining}</span>
               <Badge
                 variant={isReady ? "success" : "outline"}
                 className={`text-[10px] font-mono font-bold ${
                   !isReady ? "border-amber-500/50 text-amber-400 bg-amber-500/10" : ""
                 }`}
               >
-                {missingMods.length} 項
+                {t.importPack.itemCount(missingMods.length)}
               </Badge>
             </div>
           </div>
 
           {/* 條列缺失項目（嚴格不放單項按鈕） */}
           <div className="space-y-1.5">
-            <span className="text-xs font-semibold text-slate-300">缺失模組清單：</span>
+            <span className="text-xs font-semibold text-slate-300">{t.importPack.missingList}</span>
             <div className="h-64 rounded-xl border border-white/10 bg-black/30 overflow-hidden">
               <ScrollArea className="h-full w-full" viewportClassName="p-3">
                 {missingMods.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-48 text-center space-y-2">
-                    <CheckCircle2 className="h-8 w-8 text-[#52A43A]" />
-                    <p className="text-sm font-semibold text-white">所有缺失模組已全數補齊！</p>
-                    <p className="text-xs text-slate-400">點擊下方按鈕以完成實例建立。</p>
+                    <CheckCircle2 className="h-8 w-8 text-brand-light" />
+                    <p className="text-sm font-semibold text-white">{t.importPack.allDone}</p>
+                    <p className="text-xs text-slate-400">{t.importPack.finishHint}</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {missingMods.map((mod, idx) => (
                       <div
-                        key={`${mod.projectId}-${mod.fileId}`}
+                        key={`${mod.projectId}-${mod.fileId}-${mod.relPath ?? mod.fileName}`}
                         className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.03] border border-white/5 text-xs"
                       >
                         <div className="space-y-0.5">
@@ -201,16 +327,18 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                             <span className="font-semibold text-slate-200">
                               {idx + 1}. {mod.name}
                             </span>
-                            <Badge variant="outline" className="text-[9px] font-mono text-slate-400">
-                              ID: {mod.projectId}
-                            </Badge>
+                            {mod.projectId !== 0 && (
+                              <Badge variant="outline" className="text-[9px] font-mono text-slate-400">
+                                ID: {mod.projectId}
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-[11px] font-mono text-slate-400">
-                            目標檔名：{mod.fileName}
+                            {t.importPack.targetFile(mod.fileName)}
                           </p>
                         </div>
                         <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-950/20">
-                          待手動放入
+                          {t.importPack.waitingManual}
                         </Badge>
                       </div>
                     ))}
@@ -231,8 +359,8 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                 disabled={isReady}
                 className="gap-1.5 text-xs h-8 border-white/10 bg-white/5 hover:bg-white/10"
               >
-                <ExternalLink className="h-3.5 w-3.5 text-[#52A43A]" />
-                一鍵開啟全部頁面
+                <ExternalLink className="h-3.5 w-3.5 text-brand-light" />
+                {t.importPack.openAllPages}
               </Button>
               <Button
                 type="button"
@@ -241,8 +369,8 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                 onClick={handleOpenModsFolder}
                 className="gap-1.5 text-xs h-8 border-white/10 bg-white/5 hover:bg-white/10"
               >
-                <FolderOpen className="h-3.5 w-3.5 text-[#52A43A]" />
-                開啟實例 mods 資料夾
+                <FolderOpen className="h-3.5 w-3.5 text-brand-light" />
+                {t.importPack.openModsFolder}
               </Button>
             </div>
 
@@ -255,17 +383,17 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                 disabled={isRescanning}
                 className="gap-1.5 text-xs h-8 border-white/10"
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${isRescanning ? "animate-spin text-[#52A43A]" : ""}`} />
-                重新掃描
+                <RefreshCw className={`h-3.5 w-3.5 ${isRescanning ? "animate-spin text-brand-light" : ""}`} />
+                {t.importPack.rescan}
               </Button>
               <Button
                 type="button"
                 size="sm"
                 disabled={!isReady}
                 onClick={handleFinish}
-                className="bg-[#3C8527] hover:bg-[#52A43A] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold h-8 px-4"
+                className="bg-brand hover:bg-brand-light disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold h-8 px-4"
               >
-                完成建立實例
+                {t.importPack.finish}
               </Button>
             </div>
           </div>
@@ -274,112 +402,234 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
     );
   }
 
-  // 原始導入選擇檔案視圖
+  const hasActiveFilters = picked.size > 0 || sort !== "relevance" || gameVersion !== "";
+  const resetFilters = () => {
+    setPicked(new Set());
+    setSort("relevance");
+    setGameVersion("");
+  };
+
+  // Import picker: fixed-height layout so the list scrolls and the footer is always reachable.
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && resetAll()}>
-      <DialogContent onClose={resetAll} className="max-w-md border-white/10 bg-slate-950/95 text-slate-100 backdrop-blur-xl">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <FolderDown className="h-5 w-5 text-[#52A43A]" />
-            <DialogTitle className="text-base font-bold text-white">
-              導入模組包 (Import Modpack)
-            </DialogTitle>
-          </div>
-          <DialogDescription className="text-xs text-slate-400 pt-1">
-            支援 Modrinth (.mrpack) 與 CurseForge (.zip) 格式。將自動解析依賴 Loader、設定 overrides 並補齊模組。
-          </DialogDescription>
-        </DialogHeader>
-
-        {errorMsg && (
-          <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-400">
-            {errorMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleStartImport} className="space-y-4 pt-1">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChosen}
-            accept=".mrpack,.zip"
-            className="hidden"
-          />
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">
-              模組包檔案路徑 (.mrpack / .zip) *
-            </label>
-            <div className="flex items-center gap-2">
-              <Input
-                value={packFilePath}
-                onChange={(e) => setPackFilePath(e.target.value)}
-                placeholder="例如：C:\Downloads\BetterMC.mrpack"
-                className="bg-black/30 border-white/10 text-xs font-mono h-9 flex-1"
-                required
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                className="text-xs h-9 border-white/10 bg-white/5 hover:bg-white/10 shrink-0"
-              >
-                瀏覽...
-              </Button>
+      <DialogContent
+        onClose={resetAll}
+        className="max-w-7xl overflow-hidden border-white/10 bg-slate-900/98 p-0 text-slate-100 shadow-2xl backdrop-blur-2xl"
+      >
+        <form onSubmit={handleStartImport} className="flex h-[min(86vh,780px)] flex-col select-none">
+          <DialogHeader className="flex h-16 shrink-0 flex-row items-center justify-between gap-4 border-b border-white/10 px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-tr from-brand to-brand-dark text-white shadow-md shadow-brand/20">
+                <FolderDown className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-slate-100">{t.importPack.title}</DialogTitle>
+                <DialogDescription className="text-xs text-slate-400">{t.importPack.desc}</DialogDescription>
+              </div>
             </div>
-          </div>
+            {/* Dropdown so further sources (e.g. CurseForge) can be added later. */}
+            <div className="mr-8 w-60 shrink-0">
+              <Select value={source} onValueChange={(v) => setSource(v as "local" | "online")}>
+                <SelectTrigger className="h-9">
+                  <SelectValue>
+                    <span className="flex items-center gap-2">
+                      {source === "local" ? (
+                        <FolderOpen className="h-3.5 w-3.5 text-brand-light" />
+                      ) : (
+                        <Globe className="h-3.5 w-3.5 text-brand-light" />
+                      )}
+                      {source === "local" ? t.importPack.sourceLocal : t.importPack.sourceOnline}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="local">{t.importPack.sourceLocal}</SelectItem>
+                  <SelectItem value="online">{t.importPack.sourceOnline}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </DialogHeader>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">
-              自訂實例名稱 (可選)
-            </label>
+          <AnimatePresence mode="popLayout" initial={false}>
+            {source === "local" ? (
+              <motion.div
+                key="local"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                className="flex min-h-0 flex-1 flex-col justify-center gap-5 px-6"
+              >
+                <div className="mx-auto w-full max-w-xl space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">{t.importPack.pathLabel}</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={packFilePath}
+                      onChange={(e) => setPackFilePath(e.target.value)}
+                      placeholder={t.importPack.pathPlaceholder}
+                      className="h-9 flex-1 bg-black/30 font-mono"
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={handleBrowseFile} className="h-9 shrink-0">
+                      <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
+                      {t.inst.browseEllipsis}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={handleBrowseFolder} className="h-9 shrink-0">
+                      <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
+                      {t.importPack.pickFolder}
+                    </Button>
+                  </div>
+                </div>
+                <div className="mx-auto w-full max-w-xl space-y-1 rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-relaxed text-slate-400">
+                  <div className="flex items-center gap-1.5 font-semibold text-slate-300">
+                    <FileArchive className="h-3.5 w-3.5 text-brand-light" />
+                    <span>{t.importPack.formatEngine}</span>
+                  </div>
+                  <p>
+                    • <strong className="text-slate-200">.mrpack</strong>
+                    {t.importPack.mrpackNote}
+                  </p>
+                  <p>
+                    • <strong className="text-slate-200">.zip</strong>
+                    {t.importPack.zipNote}
+                  </p>
+                  <p>
+                    • <strong className="text-slate-200">PCL / Prism Launcher</strong>
+                    {t.importPack.launcherNote}
+                  </p>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="online"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                className="flex min-h-0 flex-1"
+              >
+                <FilterSidebar
+                  sort={sort}
+                  onSort={setSort}
+                  gameVersion={gameVersion}
+                  onGameVersion={setGameVersion}
+                  mcVersions={mcVersions}
+                  categories={categories}
+                  picked={picked}
+                  onToggleCategory={toggleCategory}
+                  onReset={resetFilters}
+                  hasActive={hasActiveFilters}
+                />
+
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-4">
+                    <div className="relative flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        value={onlineQuery}
+                        onChange={(e) => setOnlineQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void searchOnline(onlineQuery);
+                          }
+                        }}
+                        placeholder={t.importPack.onlineSearchPlaceholder}
+                        className="h-8 bg-black/30 pl-9"
+                      />
+                    </div>
+                    <Button type="button" size="sm" disabled={isSearching} onClick={() => void searchOnline(onlineQuery)}>
+                      {t.importPack.onlineSearch}
+                    </Button>
+                  </div>
+
+                  <ScrollArea className="min-h-0 flex-1" viewportClassName="p-4">
+                    {isSearching ? (
+                      <div className="flex h-64 items-center justify-center gap-2 text-xs text-slate-400">
+                        <Loader2 className="h-4 w-4 animate-spin text-brand-light" />
+                        {t.importPack.onlineSearching}
+                      </div>
+                    ) : onlineResults.length === 0 ? (
+                      <div className="flex h-64 items-center justify-center text-xs text-slate-500">
+                        {t.importPack.onlineNoResults}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {onlineResults.map((proj) => (
+                          <ProjectRow
+                            key={proj.id}
+                            project={proj}
+                            active={activeProject?.id === proj.id}
+                            checked={selectedProject?.id === proj.id}
+                            onClick={() => setActiveProject(proj)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </div>
+
+                <AnimatePresence initial={false}>
+                  {activeProject && (
+                    <ProjectDetailPanel
+                      key="detail"
+                      project={activeProject}
+                      projectType="modpack"
+                      detail={detail}
+                      versions={versions}
+                      versionId={versionId}
+                      onVersionChange={setVersionId}
+                      isLoading={isLoadingDetail}
+                      onClose={() => setActiveProject(null)}
+                      action={
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={isPicked ? "outline" : "default"}
+                          disabled={!currentVersion}
+                          onClick={pickVersion}
+                          className="w-full"
+                        >
+                          <Check className="mr-1.5 h-3.5 w-3.5" />
+                          {isPicked ? t.importPack.picked : t.importPack.pickThis}
+                        </Button>
+                      }
+                    />
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <DialogFooter className="flex h-16 shrink-0 flex-row items-center gap-3 space-x-0 border-t border-white/10 bg-black/20 px-6 pt-0">
+            {source === "online" && selectedProject && selectedVersion && (
+              <Badge variant="outline" className="max-w-xs shrink-0 truncate border-brand-light/40 px-2.5 py-1 text-brand-light">
+                {selectedProject.title} · {selectedVersion.label}
+              </Badge>
+            )}
             <Input
               value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
-              placeholder="留空將採用模組包原始名稱"
-              className="bg-black/30 border-white/10 text-xs h-9"
+              onChange={(e) => {
+                setCustomName(e.target.value);
+                setNameTouched(true);
+              }}
+              placeholder={t.importPack.customNamePlaceholder}
+              aria-label={t.importPack.customNameLabel}
+              className="h-9 flex-1 bg-black/30"
             />
-          </div>
-
-          <div className="rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] text-slate-400 space-y-1 leading-relaxed">
-            <div className="flex items-center gap-1.5 text-slate-300 font-semibold">
-              <FileArchive className="h-3.5 w-3.5 text-[#52A43A]" />
-              <span>自動格式辨識引擎</span>
-            </div>
-            <p>
-              • <strong className="text-slate-200">.mrpack</strong>：由 Modrinth 官方 CDN 透過 SHA-1 與 CAS 快取直接補齊。
-            </p>
-            <p>
-              • <strong className="text-slate-200">.zip</strong>：若未設置 CurseForge Key 或受作者版權限制，將啟動缺失導引彈窗。
-            </p>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={resetAll}
-              className="text-xs"
-            >
-              取消
+            <Button type="button" variant="glass" size="sm" onClick={resetAll} className="shrink-0">
+              {t.common.cancel}
             </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={isImporting}
-              className="bg-[#3C8527] hover:bg-[#52A43A] text-white text-xs font-semibold h-8 px-4"
-            >
+            <Button type="submit" size="sm" disabled={isImporting} className="shrink-0 px-4">
               {isImporting ? (
                 <span className="flex items-center gap-1.5">
                   <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  正在導入與解壓...
+                  {source === "online" ? t.importPack.onlineImporting : t.importPack.importing}
                 </span>
               ) : (
-                "開始導入"
+                t.importPack.startImport
               )}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

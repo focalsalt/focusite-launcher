@@ -1,0 +1,22 @@
+{
+  "name": "Focusite",
+  "author": "Focusite Team",
+  "description": "Warm orange theme with stone neutrals.",
+  "tokens": {
+    "--fc-primary": "#EA580C",
+    "--fc-highlight": "#FB923C",
+    "--fc-bg-canvas": "#110c09",
+    "--fc-neutral-50": "#fafaf9",
+    "--fc-neutral-100": "#f5f5f4",
+    "--fc-neutral-200": "#e7e5e4",
+    "--fc-neutral-300": "#d6d3d1",
+    "--fc-neutral-400": "#a8a29e",
+    "--fc-neutral-500": "#78716c",
+    "--fc-neutral-600": "#57534e",
+    "--fc-neutral-700": "#44403c",
+    "--fc-neutral-800": "#292524",
+    "--fc-neutral-900": "#1c1917",
+    "--fc-neutral-950": "#0c0a09",
+    "--fc-radius": "0.75rem"
+  }
+}

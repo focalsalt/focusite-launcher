@@ -98,13 +98,77 @@ pub fn skin_save_local(name: String, bytes: Vec<u8>) -> Result<SkinItemDto, Stri
 pub fn skin_delete_local(filename: String) -> Result<(), String> {
     let skins_dir = get_skins_dir();
     if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
-        return Err("非法檔案名稱".into());
+        return Err("無效的檔案名稱".into());
     }
     let target = skins_dir.join(&filename);
     if target.is_file() {
         fs::remove_file(target).map_err(|e| format!("刪除皮膚失敗: {}", e))?;
     }
     Ok(())
+}
+
+/// Refreshes the account session and returns a token that is known to be valid.
+async fn fresh_token(account_id: &str) -> Result<String, String> {
+    let acc = super::auth::auth_refresh_profile(account_id.to_string()).await?;
+    if !acc.has_valid_token {
+        return Err("此帳號登入已過期，請重新登入".to_string());
+    }
+    focusite_auth::keyring_store::CredentialStore::get_token(account_id)
+        .map_err(|e| format!("讀取認證 Token 失敗: {}", e))?
+        .ok_or_else(|| "找不到此帳號的有效登入憑證，請重新登入".to_string())
+}
+
+#[tauri::command]
+pub async fn skin_upload_to_mojang(
+    account_id: String,
+    skin_bytes: Vec<u8>,
+    variant: String,
+) -> Result<super::auth::UserAccountDto, String> {
+    if skin_bytes.is_empty() {
+        return Err("皮膚資料不可為空".into());
+    }
+
+    let token = fresh_token(&account_id).await?;
+
+    let client = reqwest::Client::new();
+    let profile = focusite_auth::xbox::upload_minecraft_skin(&client, &token, &skin_bytes, &variant)
+        .await
+        .map_err(|e| format!("上傳外觀至 Mojang 失敗: {}", e))?;
+
+    // Also cache skin file locally
+    let _ = skin_save_local(format!("cloud_{}", profile.name), skin_bytes);
+
+    // Refresh profile in accounts.json
+    super::auth::auth_refresh_profile(account_id).await
+}
+
+#[tauri::command]
+pub async fn skin_set_active_cape(
+    account_id: String,
+    cape_id: String,
+) -> Result<super::auth::UserAccountDto, String> {
+    let token = fresh_token(&account_id).await?;
+
+    let client = reqwest::Client::new();
+    focusite_auth::xbox::set_active_cape(&client, &token, &cape_id)
+        .await
+        .map_err(|e| format!("切換披風失敗: {}", e))?;
+
+    super::auth::auth_refresh_profile(account_id).await
+}
+
+#[tauri::command]
+pub async fn skin_hide_active_cape(
+    account_id: String,
+) -> Result<super::auth::UserAccountDto, String> {
+    let token = fresh_token(&account_id).await?;
+
+    let client = reqwest::Client::new();
+    focusite_auth::xbox::hide_active_cape(&client, &token)
+        .await
+        .map_err(|e| format!("卸下披風失敗: {}", e))?;
+
+    super::auth::auth_refresh_profile(account_id).await
 }
 
 #[cfg(test)]
