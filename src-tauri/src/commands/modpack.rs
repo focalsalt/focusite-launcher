@@ -266,12 +266,15 @@ async fn import_mrpack_internal(
     let cas_dir = super::get_app_data_dir().join("cas");
     let cas = CasManager::new(&cas_dir);
 
+    // No total time limit: big files on slow links must finish. A stalled connection still fails.
     let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .read_timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
 
     let mut missing_mods: Vec<MissingModItem> = Vec::new();
+    let mut jobs = Vec::new();
     for file in index.files {
         if let Some(ref env) = file.env {
             if env.client.as_deref() == Some("unsupported") {
@@ -299,11 +302,32 @@ async fn import_mrpack_internal(
         if target_path.exists() {
             continue;
         }
-        let url = &file.downloads[0];
-        let sha1 = file.hashes.get("sha1").map(String::as_str);
-        if let Err(reason) = fetch_pack_file(&http, &cas, url, sha1, &target_path).await {
+        jobs.push((
+            file.path,
+            rel_path_str,
+            file.downloads[0].clone(),
+            file.hashes.get("sha1").cloned(),
+            file.file_size,
+            target_path,
+        ));
+    }
+
+    // Four downloads at a time; results are collected in the order they finish.
+    let limit = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
+    let mut set = tokio::task::JoinSet::new();
+    for (path, rel, url, sha1, size, target) in jobs {
+        let (http, cas, limit) = (http.clone(), cas.clone(), limit.clone());
+        set.spawn(async move {
+            let _permit = limit.acquire_owned().await;
+            let res = fetch_pack_file(&http, &cas, &url, sha1.as_deref(), size, &target).await;
+            (path, rel, url, res)
+        });
+    }
+    while let Some(done) = set.join_next().await {
+        let (path, rel_path_str, url, res) = done.map_err(|e| e.to_string())?;
+        if let Err(reason) = res {
             // The import goes on; the file is listed so the user can fetch it by hand.
-            tracing::warn!("模組包檔案 {} 下載失敗：{}", file.path, reason);
+            tracing::warn!("模組包檔案 {} 下載失敗：{}", path, reason);
             let file_name = rel_path_str.rsplit('/').next().unwrap_or(&rel_path_str).to_string();
             missing_mods.push(MissingModItem {
                 project_id: 0,
@@ -311,7 +335,7 @@ async fn import_mrpack_internal(
                 name: file_name.clone(),
                 file_name,
                 // Only links the allowlist accepts are offered for opening in the browser.
-                web_url: if super::workshop::validate_download_url(url).is_ok() { url.clone() } else { String::new() },
+                web_url: if super::workshop::validate_download_url(&url).is_ok() { url } else { String::new() },
                 rel_path: rel_path_str,
             });
         }
@@ -335,26 +359,36 @@ async fn import_mrpack_internal(
     outcome
 }
 
+/// Size limit for a pack file whose index entry does not state one.
+const MAX_PACK_FILE_BYTES: u64 = 512 * 1024 * 1024;
+
 /// Downloads one modpack file: allowlisted host, successful HTTP status and a SHA-1 that must match.
 async fn fetch_pack_file(
     http: &reqwest::Client,
     cas: &CasManager,
     url: &str,
     sha1: Option<&str>,
+    expected_size: u64,
     target: &Path,
 ) -> Result<(), String> {
     super::workshop::validate_download_url(url)?;
     let sha1 = sha1.ok_or("缺少 SHA-1 雜湊，無法驗證檔案")?;
-    let bytes = http
+    // The pack index states each file's size; a larger body is refused (0 = not stated).
+    let max = if expected_size > 0 { expected_size } else { MAX_PACK_FILE_BYTES };
+    let mut resp = http
         .get(url)
         .send()
         .await
         .map_err(super::ctx("連線失敗"))?
         .error_for_status()
-        .map_err(super::ctx("伺服器回應錯誤"))?
-        .bytes()
-        .await
-        .map_err(super::ctx("下載中斷"))?;
+        .map_err(super::ctx("伺服器回應錯誤"))?;
+    let mut bytes: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(super::ctx("下載中斷"))? {
+        if (bytes.len() + chunk.len()) as u64 > max {
+            return Err("檔案大小超出模組包宣告的大小".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
     let hash = cas.store_bytes(&bytes, Some(sha1)).map_err(super::ctx("雜湊驗證或快取寫入失敗"))?;
     cas.link_to_instance(&hash, target).map_err(super::ctx("無法放入實例"))?;
     Ok(())
@@ -618,9 +652,9 @@ mod tests {
         let target = dir.join("mods").join("a.jar");
 
         // Neither case reaches the network: the host check and the hash check come first.
-        let evil = run(fetch_pack_file(&http, &cas, "http://127.0.0.1/a.jar", Some("0".repeat(40).as_str()), &target));
+        let evil = run(fetch_pack_file(&http, &cas, "http://127.0.0.1/a.jar", Some("0".repeat(40).as_str()), 0, &target));
         assert!(evil.is_err());
-        let no_hash = run(fetch_pack_file(&http, &cas, "https://cdn.modrinth.com/a.jar", None, &target));
+        let no_hash = run(fetch_pack_file(&http, &cas, "https://cdn.modrinth.com/a.jar", None, 0, &target));
         assert!(no_hash.unwrap_err().contains("SHA-1"));
         assert!(!target.exists());
         let _ = std::fs::remove_dir_all(&dir);

@@ -34,6 +34,24 @@ type InstanceLogBufferMap = Arc<Mutex<HashMap<String, VecDeque<InstanceLogPayloa
 static RUNNING_PROCESSES: LazyLock<RunningProcessMap> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
+/// Instances between "Play was pressed" and "process registered", so a second press is refused.
+static LAUNCHING: LazyLock<Mutex<std::collections::HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+
+struct LaunchGuard(String);
+
+impl Drop for LaunchGuard {
+    fn drop(&mut self) {
+        if let Ok(mut s) = LAUNCHING.lock() {
+            s.remove(&self.0);
+        }
+    }
+}
+
+pub fn is_instance_launching(instance_id: &str) -> bool {
+    LAUNCHING.lock().map(|s| s.contains(instance_id)).unwrap_or(false)
+}
+
 /// Ring buffer storing up to 10,000 log events per instance.
 static LOG_BUFFERS: LazyLock<InstanceLogBufferMap> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
@@ -267,6 +285,13 @@ pub async fn launch_instance(
             return Err(format!("實例 '{}' 已在運行中，無法重複啟動", instance_id));
         }
     }
+    let _launch_guard = {
+        let mut s = LAUNCHING.lock().map_err(|e| e.to_string())?;
+        if !s.insert(instance_id.clone()) {
+            return Err(format!("實例 '{}' 正在啟動中，請稍候", instance_id));
+        }
+        LaunchGuard(instance_id.clone())
+    };
 
     // 2. Read instance configuration
     let base_dir = get_instances_dir().join(&instance_id);

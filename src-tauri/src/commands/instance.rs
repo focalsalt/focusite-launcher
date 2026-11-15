@@ -9,7 +9,8 @@ use focusite_core::instance::{sanitize_folder_name, PackFolderKind, VersionCapab
 
 pub fn is_instance_busy(instance_id: &str) -> bool {
     super::launch::is_instance_running(instance_id)
-        || super::provisioning::is_instance_provisioning(instance_id)
+        || super::launch::is_instance_launching(instance_id)
+        ||super::provisioning::is_instance_provisioning(instance_id)
 }
 
 pub fn default_min_memory() -> u32 {

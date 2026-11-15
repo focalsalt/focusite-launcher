@@ -40,6 +40,10 @@ pub struct ModrinthEnv {
 /// Safely extracts a zip entry preventing Zip-Slip directory traversal vulnerabilities.
 /// Largest single file accepted from a modpack archive.
 pub const MAX_ENTRY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// Limits for the whole archive: all unpacked overrides together, entry count, and the index file.
+const MAX_TOTAL_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const MAX_ENTRIES: usize = 50_000;
+const MAX_INDEX_BYTES: u64 = 16 * 1024 * 1024;
 
 pub fn safe_extract_entry<R: Read>(
     entry_name: &str,
@@ -102,10 +106,14 @@ pub fn unpack_mrpack(
             .by_name("modrinth.index.json")
             .map_err(|_| ModpackError::InvalidArchive("Missing modrinth.index.json".into()))?;
         let mut content = String::new();
-        index_file.read_to_string(&mut content)?;
+        (&mut index_file).take(MAX_INDEX_BYTES).read_to_string(&mut content)?;
         serde_json::from_str(&content)?
     };
 
+    if zip.len() > MAX_ENTRIES {
+        return Err(ModpackError::InvalidArchive(format!("Archive has more than {} entries", MAX_ENTRIES)));
+    }
+    let mut total_bytes: u64 = 0;
     let mut extracted_overrides = Vec::new();
 
     // 2. Extract overrides/ and client-overrides/
@@ -128,6 +136,13 @@ pub fn unpack_mrpack(
         }
 
         let extracted = safe_extract_entry(rel_path, &mut file, minecraft_dir)?;
+        total_bytes += std::fs::metadata(&extracted)?.len();
+        if total_bytes > MAX_TOTAL_BYTES {
+            return Err(ModpackError::InvalidArchive(format!(
+                "Archive expands to more than {} MiB",
+                MAX_TOTAL_BYTES / (1024 * 1024)
+            )));
+        }
         extracted_overrides.push(extracted);
     }
 

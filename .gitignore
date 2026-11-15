@@ -94,7 +94,8 @@ crash-reports/
 .agent/*
 .agents/*
 .claude/*
-graphify-out/
+graphify-out/*
+.codegraph/*
 
 # VS Code (preserve extensions and recommended settings if needed)
 .vscode/*

@@ -43,6 +43,13 @@ pub async fn install_meta_loader(
     vanilla_manifest: &VersionManifest,
     versions_dir: &Path,
 ) -> Result<VersionManifest, CoreError> {
+    // Both strings come from the instance config (a modpack can set them) and end up in a URL and a folder name.
+    for part in [game_version, loader_version] {
+        if part.is_empty() || !part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+')) || part.contains("..") {
+            return Err(CoreError::InvalidManifest(format!("Unsafe version string: {}", part)));
+        }
+    }
+
     let profile = if loader_type.eq_ignore_ascii_case("quilt") {
         fetch_quilt_profile(game_version, loader_version).await?
     } else {
@@ -100,6 +107,22 @@ pub fn extract_installer_profile(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unsafe_loader_version_is_rejected_before_any_request() {
+        let vanilla: VersionManifest = serde_json::from_str(r#"{"id":"1.20.4","type":"release","mainClass":"m","libraries":[]}"#).unwrap();
+        let dir = std::env::temp_dir();
+        let run = |game: &str, loader: &str| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(install_meta_loader("fabric", game, loader, &vanilla, &dir))
+        };
+        assert!(matches!(run("1.20.4", "../../x"), Err(CoreError::InvalidManifest(_))));
+        assert!(matches!(run("1.20.4", "a/b"), Err(CoreError::InvalidManifest(_))));
+        assert!(matches!(run("..", "0.15.7"), Err(CoreError::InvalidManifest(_))));
+    }
 
     #[test]
     fn test_fabric_and_quilt_url_format() {

@@ -99,7 +99,8 @@ pub async fn download_version_client(
     }
 
     let temp_download_dir = std::env::temp_dir().join("focusite_downloads");
-    let temp_file = temp_download_dir.join(format!("{}.jar", version_id));
+    // Unique name: two downloads of one version must not write or delete the same file.
+    let temp_file = temp_download_dir.join(format!("{}-{}.jar", version_id, uuid::Uuid::new_v4()));
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<focusite_download::DownloadProgress>(100);
     let app_clone = app.clone();

@@ -270,6 +270,7 @@ pub async fn auth_refresh_profile(id: String) -> Result<UserAccountDto, String> 
 
     let mut final_profile: Option<xbox::MinecraftProfileResponse> = None;
     let mut has_token = false;
+    let had_creds = maybe_creds.is_some();
 
     if let Some((mc_token, maybe_refresh)) = maybe_creds {
         // 1. 嘗試以快取的 Minecraft Access Token 查詢官方完整個人檔案與持有披風
@@ -284,6 +285,15 @@ pub async fn auth_refresh_profile(id: String) -> Result<UserAccountDto, String> 
                     let _ = dotenvy::dotenv();
                     if let Ok(client_id) = oauth::get_microsoft_client_id() {
                         if let Ok(new_oauth) = oauth::refresh_oauth_token(&client, &client_id, &refresh_token).await {
+                            // Microsoft rotates refresh tokens: keep the new one now, so a failure
+                            // in a later step cannot lose it.
+                            if let Some(new_refresh) = new_oauth.refresh_token.as_deref() {
+                                let _ = focusite_auth::keyring_store::CredentialStore::save_credentials(
+                                    &id,
+                                    &mc_token,
+                                    Some(new_refresh),
+                                );
+                            }
                             if let Ok((new_xbl, _)) = xbox::authenticate_xbox_live(&client, &new_oauth.access_token).await {
                                 if let Ok((new_xsts, uhs)) = xbox::obtain_xsts_token(&client, &new_xbl).await {
                                     if let Ok(new_mc) = xbox::login_minecraft_with_xbox(&client, &uhs, &new_xsts).await {
@@ -341,6 +351,10 @@ pub async fn auth_refresh_profile(id: String) -> Result<UserAccountDto, String> 
     // 2. 查無 Token 或 Token 已完全過期無法自動刷新：從 Mojang Session Server 自動刷新公開資訊 (Skin & Model & Active Cape)
     let public_profile = xbox::fetch_public_session_profile(&client, &id).await;
 
+    // Read the store again after the network wait, so a removal, switch or login made meanwhile is kept.
+    let mut store = load_account_store();
+    let acc_pos = store.accounts.iter().position(|a| a.id == id);
+
     if let Some(pos) = acc_pos {
         if let Ok(pub_p) = public_profile {
             store.accounts[pos].username = pub_p.name;
@@ -354,8 +368,13 @@ pub async fn auth_refresh_profile(id: String) -> Result<UserAccountDto, String> 
                 store.accounts[pos].cape_url = pub_p.cape_url;
             }
         }
-        store.accounts[pos].has_valid_token = has_token;
-        let updated = store.accounts[pos].clone();
+        // Stored credentials that could not be checked (offline) are not proof of a dead login:
+        // report "no valid token" for this launch, but do not write it to disk.
+        if has_token || !had_creds {
+            store.accounts[pos].has_valid_token = has_token;
+        }
+        let mut updated = store.accounts[pos].clone();
+        updated.has_valid_token = has_token;
         save_account_store(&store)?;
         return Ok(updated);
     }
