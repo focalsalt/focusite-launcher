@@ -285,7 +285,7 @@ pub fn scan_system_javas() -> Vec<JavaInstallation> {
     }
 
     // Sort by major version descending
-    results.sort_by(|a, b| b.major_version.cmp(&a.major_version));
+    results.sort_by_key(|j| std::cmp::Reverse(j.major_version));
     results
 }
 

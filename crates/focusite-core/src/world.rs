@@ -161,7 +161,7 @@ pub fn list_instance_worlds(instance_dir: &Path) -> Result<Vec<WorldSummary>, Co
     }
 
     // Sort by last played descending
-    worlds.sort_by(|a, b| b.last_played.cmp(&a.last_played));
+    worlds.sort_by_key(|w| std::cmp::Reverse(w.last_played));
     Ok(worlds)
 }
 
