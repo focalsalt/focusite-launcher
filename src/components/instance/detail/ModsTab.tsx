@@ -8,6 +8,7 @@ import type { MinecraftInstance, VersionCapabilities } from "@/types/navigation"
 import type { ModFileInfo } from "@/services/instanceService";
 import { FramelessEmptyState, tabContentVariants, ModItem } from "./shared";
 import { useI18n } from "@/i18n";
+import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 
 interface ModsTabProps {
   instance: MinecraftInstance;
@@ -17,16 +18,19 @@ interface ModsTabProps {
   toggleMod: (filename: string, enabled: boolean) => void | Promise<void>;
   toggleCoremod: (filename: string, enabled: boolean) => void | Promise<void>;
   tabDirection: number;
+  ref?: React.Ref<HTMLDivElement>;
 }
 
-export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods, toggleMod, toggleCoremod, tabDirection }: ModsTabProps) => {
+export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods, toggleMod, toggleCoremod, tabDirection, ref }: ModsTabProps) => {
   const { t } = useI18n();
   const [legacyModTab, setLegacyModTab] = useState<"mods" | "coremods">("mods");
+  const pill = useSlidingIndicator(legacyModTab);
 
   return (
               <motion.div
                 key="mods"
                 custom={tabDirection}
+                ref={ref}
                 variants={tabContentVariants}
                 initial="initial"
                 animate="animate"
@@ -36,22 +40,17 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                 {caps.modsTabMode === "legacydualnav" ? (
                   <>
                     <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                      <div className="flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
+                      <div className="relative flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
+                        <SlidingIndicator box={pill.box} className="top-1 bottom-1 rounded-lg bg-brand shadow-sm shadow-brand/50" />
                         <button
                           type="button"
+                          ref={pill.register("mods")}
                           onClick={() => setLegacyModTab("mods")}
                           className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${legacyModTab === "mods"
                             ? "text-white"
                             : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
-                          {legacyModTab === "mods" && (
-                            <motion.div
-                              layoutId="legacy-mod-pill"
-                              className="absolute inset-0 rounded-lg bg-brand shadow-sm shadow-brand/50"
-                              transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                            />
-                          )}
                           <span className="relative z-10 flex items-center gap-1.5">
                             <Package className="h-3.5 w-3.5" />
                             Mods
@@ -60,19 +59,13 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
 
                         <button
                           type="button"
+                          ref={pill.register("coremods")}
                           onClick={() => setLegacyModTab("coremods")}
                           className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${legacyModTab === "coremods"
                             ? "text-white"
                             : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
-                          {legacyModTab === "coremods" && (
-                            <motion.div
-                              layoutId="legacy-mod-pill"
-                              className="absolute inset-0 rounded-lg bg-brand shadow-sm shadow-brand/50"
-                              transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                            />
-                          )}
                           <span className="relative z-10 flex items-center gap-1.5">
                             <Package className="h-3.5 w-3.5" />
                             Core Mods

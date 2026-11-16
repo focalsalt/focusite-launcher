@@ -42,7 +42,7 @@ const LoadMoreSentinel: React.FC<{ onVisible: () => void }> = ({ onVisible }) =>
   return <div ref={ref} className="h-8 w-full" aria-hidden />;
 };
 
-const subTabVariants = slideVariants("x", 32);
+const subTabVariants = slideVariants("x", 16);
 
 interface NewsViewProps {
   subNav: NewsSubNav;

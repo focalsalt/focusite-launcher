@@ -29,6 +29,10 @@ impl JavaInstallation {
 /// Helper to map Minecraft version string to required Java major version.
 pub fn get_recommended_java_version(minecraft_version: &str) -> u32 {
     let parts: Vec<&str> = minecraft_version.split('.').collect();
+    // Year-based versions (26.1, 26.4-snapshot-8, ...) replaced the "1.x" scheme and need Java 25.
+    if parts.first().and_then(|p| p.parse::<u32>().ok()).is_some_and(|major| major >= 26) {
+        return 25;
+    }
     if parts.len() >= 2 {
         if let Ok(minor) = parts[1].parse::<u32>() {
             if minor >= 21 {
@@ -470,6 +474,9 @@ mod tests {
         assert_eq!(get_recommended_java_version("1.18.2"), 17);
         assert_eq!(get_recommended_java_version("1.17.1"), 16);
         assert_eq!(get_recommended_java_version("1.16.5"), 8);
+        assert_eq!(get_recommended_java_version("26.1.2"), 25);
+        assert_eq!(get_recommended_java_version("26.2"), 25);
+        assert_eq!(get_recommended_java_version("26.4-snapshot-8"), 25);
     }
 
     #[test]

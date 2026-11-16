@@ -324,6 +324,18 @@ pub async fn ensure_instance_provisioned(
     let mut native_jars = Vec::new();
 
     for lib in &allowed_libs {
+        // Fabric/Quilt libraries are plain Maven coordinates without a `downloads` block.
+        if let Some(url) = lib.maven_download_url() {
+            let dest = libraries_dir.join(lib.get_relative_path());
+            if !dest.is_file() {
+                lib_tasks.push(DownloadTask {
+                    url,
+                    destination: dest.to_string_lossy().to_string(),
+                    expected_sha1: None,
+                    expected_size: None,
+                });
+            }
+        }
         if let Some(ref downloads) = lib.downloads {
             if let Some(ref artifact) = downloads.artifact {
                 let rel_path = artifact
@@ -503,7 +515,12 @@ pub async fn ensure_instance_provisioned(
     // ==========================================
     // 5. Java Runtime Environment
     // ==========================================
-    let required_major = get_recommended_java_version(version_id);
+    // The version manifest states the Java it needs; the version-string guess is only a fallback.
+    let required_major = manifest
+        .java_version
+        .as_ref()
+        .map(|j| j.major_version)
+        .unwrap_or_else(|| get_recommended_java_version(version_id));
     let resolved_java = match resolve_or_locate_java(required_major, instance_config.java_path.as_deref()) {
         Ok(path) => path,
         Err(_) => {

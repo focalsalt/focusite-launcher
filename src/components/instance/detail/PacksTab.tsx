@@ -7,6 +7,7 @@ import { workshopService } from "@/services/workshopService";
 import type { MinecraftInstance, PackFileInfo, VersionCapabilities } from "@/types/navigation";
 import { FramelessEmptyState, tabContentVariants, PackItem } from "./shared";
 import { useI18n } from "@/i18n";
+import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 
 interface PacksTabProps {
   instance: MinecraftInstance;
@@ -17,15 +18,18 @@ interface PacksTabProps {
   resourceShaderDir: number;
   handleResourceShaderChange: (tab: "packs" | "shaders") => void;
   tabDirection: number;
+  ref?: React.Ref<HTMLDivElement>;
 }
 
-export const PacksTab: React.FC<PacksTabProps> = ({ instance, caps, resourcepacks, shaderpacks, resourceShaderTab, resourceShaderDir, handleResourceShaderChange, tabDirection }: PacksTabProps) => {
+export const PacksTab: React.FC<PacksTabProps> = ({ instance, caps, resourcepacks, shaderpacks, resourceShaderTab, resourceShaderDir, handleResourceShaderChange, tabDirection, ref }: PacksTabProps) => {
+  const pill = useSlidingIndicator(resourceShaderTab);
   const { t } = useI18n();
 
   return (
               <motion.div
                 key="resourcepacks"
                 custom={tabDirection}
+                ref={ref}
                 variants={tabContentVariants}
                 initial="initial"
                 animate="animate"
@@ -81,22 +85,17 @@ export const PacksTab: React.FC<PacksTabProps> = ({ instance, caps, resourcepack
                   <>
                     {/* 二級水平 Sub-Nav */}
                     <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                      <div className="flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
+                      <div className="relative flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
+                        <SlidingIndicator box={pill.box} className="top-1 bottom-1 rounded-lg bg-brand shadow-sm shadow-brand/50" />
                         <button
                           type="button"
+                          ref={pill.register("packs")}
                           onClick={() => handleResourceShaderChange("packs")}
                           className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${resourceShaderTab === "packs"
                             ? "text-white"
                             : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
-                          {resourceShaderTab === "packs" && (
-                            <motion.div
-                              layoutId="resource-shader-pill"
-                              className="absolute inset-0 rounded-lg bg-brand shadow-sm shadow-brand/50"
-                              transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                            />
-                          )}
                           <span className="relative z-10 flex items-center gap-1.5">
                             <Palette className="h-3.5 w-3.5" />
                             {t.packs.tabPacks}
@@ -105,19 +104,13 @@ export const PacksTab: React.FC<PacksTabProps> = ({ instance, caps, resourcepack
 
                         <button
                           type="button"
+                          ref={pill.register("shaders")}
                           onClick={() => handleResourceShaderChange("shaders")}
                           className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${resourceShaderTab === "shaders"
                             ? "text-white"
                             : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
-                          {resourceShaderTab === "shaders" && (
-                            <motion.div
-                              layoutId="resource-shader-pill"
-                              className="absolute inset-0 rounded-lg bg-brand shadow-sm shadow-brand/50"
-                              transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                            />
-                          )}
                           <span className="relative z-10 flex items-center gap-1.5">
                             <Layers className="h-3.5 w-3.5" />
                             {t.packs.shaderTab}

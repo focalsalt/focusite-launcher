@@ -14,7 +14,7 @@ const HOME_SUB_NAV_ORDER: Record<HomeSubNav, number> = {
   p2p: 1,
 };
 
-const subTabVariants = slideVariants("x", 32);
+const subTabVariants = slideVariants("x", 16);
 
 interface HomeViewProps {
   subNav: HomeSubNav;

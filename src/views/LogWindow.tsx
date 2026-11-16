@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { motion } from "motion/react";
 import {
   Terminal,
   Square,
@@ -32,6 +31,7 @@ import { WindowBar } from "@/components/layout/WindowBar";
 import { useI18n } from "@/i18n";
 import { toast } from "@/lib/toast";
 import { Toaster } from "@/components/ui/Toaster";
+import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 
 export const LogWindow: React.FC = () => {
   const { t } = useI18n();
@@ -57,6 +57,7 @@ export const LogWindow: React.FC = () => {
 
   const [filterText, setFilterText] = useState<string>("");
   const [streamFilter, setStreamFilter] = useState<string>("all");
+  const pill = useSlidingIndicator(streamFilter);
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -287,10 +288,12 @@ export const LogWindow: React.FC = () => {
         </div>
 
         {/* Stream Filter Pills */}
-        <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 text-xs">
+        <div className="relative flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 text-xs">
+          <SlidingIndicator box={pill.box} className="top-1 bottom-1 rounded-lg bg-brand shadow-sm shadow-brand/50" />
           {(["all", "stdout", "stderr", "system"] as const).map((s) => (
             <button
               key={s}
+              ref={pill.register(s)}
               type="button"
               onClick={() => setStreamFilter(s)}
               className={`relative px-3 py-1 rounded-lg font-medium transition-colors ${
@@ -299,13 +302,6 @@ export const LogWindow: React.FC = () => {
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              {streamFilter === s && (
-                <motion.div
-                  layoutId="log-stream-filter-pill"
-                  className="absolute inset-0 rounded-lg bg-brand shadow-sm shadow-brand/50"
-                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                />
-              )}
               <span className="relative z-10">{s.toUpperCase()}</span>
             </button>
           ))}

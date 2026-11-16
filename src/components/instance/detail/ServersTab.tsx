@@ -19,9 +19,10 @@ interface ServersTabProps {
   isLaunching: boolean;
   isRunning: boolean;
   tabDirection: number;
+  ref?: React.Ref<HTMLDivElement>;
 }
 
-export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setServers, onLaunch, isLaunching, isRunning, tabDirection }: ServersTabProps) => {
+export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setServers, onLaunch, isLaunching, isRunning, tabDirection, ref }: ServersTabProps) => {
   const { t } = useI18n();
   const [pingResults, setPingResults] = useState<Record<string, ServerPingResult | null>>({});
   const [isPinging, setIsPinging] = useState<Record<string, boolean>>({});
@@ -34,6 +35,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
               <motion.div
                 key="servers"
                 custom={tabDirection}
+                ref={ref}
                 variants={tabContentVariants}
                 initial="initial"
                 animate="animate"

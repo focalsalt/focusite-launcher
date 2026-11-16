@@ -32,7 +32,7 @@ export function FramelessEmptyState({
 }
 
 // Horizontal spring slide variants shared by every instance sub-tab.
-export const tabContentVariants = slideVariants("x", 32);
+export const tabContentVariants = slideVariants("x", 16);
 
 export function PackItem({
   pack,
@@ -108,9 +108,9 @@ export function ModItem({
 
 
 /** Placeholder rows shown while an instance's files are being listed. */
-export function TabSkeleton() {
+export function TabSkeleton({ ref }: { ref?: React.Ref<HTMLDivElement> }) {
   return (
-    <div className="space-y-3" aria-busy="true">
+    <div ref={ref} className="space-y-3" aria-busy="true">
       <Skeleton className="h-6 w-40" />
       {Array.from({ length: 5 }, (_, i) => (
         <div key={i} className="flex items-center gap-3 rounded-xl border border-white/5 bg-black/20 p-3">

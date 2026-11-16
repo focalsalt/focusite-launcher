@@ -1,6 +1,5 @@
 import React from "react";
 import { Search, Plus, FolderDown } from "lucide-react";
-import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,6 +8,7 @@ import {
   NewsSubNav,
 } from "@/types/navigation";
 import { useI18n } from "@/i18n";
+import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 
 interface DynamicTitlebarProps {
   currentView: MainView;
@@ -42,57 +42,35 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
 
   return (
     <div className="relative z-10 flex h-14 w-full shrink-0 select-none items-center justify-between border-b border-white/10 bg-slate-900/40 px-6 backdrop-blur-md">
-      {/* 1. 新聞快訊：Title(靠左) + Navbar(靠右)；使用獨立作用域 layoutId="news-subnav-indicator" */}
+      {/* 1. 新聞快訊：Title(靠左) + Navbar(靠右) */}
       {currentView === "news" && (
         <>
           <h2 className="text-lg font-bold tracking-tight text-slate-100">
             {t.shell.newsFlash}
           </h2>
-          <div className="flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
-            <TitlebarTabButton
-              active={newsNav === "official"}
-              layoutId="news-subnav-indicator"
-              onClick={() => onNewsNavChange("official")}
-            >
-              {t.shell.officialNews}
-            </TitlebarTabButton>
-            <TitlebarTabButton
-              active={newsNav === "changelog"}
-              layoutId="news-subnav-indicator"
-              onClick={() => onNewsNavChange("changelog")}
-            >
-              {t.shell.javaChangelog}
-            </TitlebarTabButton>
-            <TitlebarTabButton
-              active={newsNav === "announcements"}
-              layoutId="news-subnav-indicator"
-              onClick={() => onNewsNavChange("announcements")}
-            >
-              {t.shell.launcherAnnouncements}
-            </TitlebarTabButton>
-          </div>
+          <SubNav
+            active={newsNav}
+            onChange={onNewsNavChange}
+            items={[
+              { id: "official", label: t.shell.officialNews },
+              { id: "changelog", label: t.shell.javaChangelog },
+              { id: "announcements", label: t.shell.launcherAnnouncements },
+            ]}
+          />
         </>
       )}
 
-      {/* 2. 首頁：Navbar(置中)；使用獨立作用域 layoutId="home-subnav-indicator" */}
+      {/* 2. 首頁：Navbar(置中) */}
       {currentView === "home" && (
         <div className="flex w-full items-center justify-center">
-          <div className="flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
-            <TitlebarTabButton
-              active={homeNav === "overview"}
-              layoutId="home-subnav-indicator"
-              onClick={() => onHomeNavChange("overview")}
-            >
-              {t.shell.homeOverview}
-            </TitlebarTabButton>
-            <TitlebarTabButton
-              active={homeNav === "p2p"}
-              layoutId="home-subnav-indicator"
-              onClick={() => onHomeNavChange("p2p")}
-            >
-              {t.shell.p2p}
-            </TitlebarTabButton>
-          </div>
+          <SubNav
+            active={homeNav}
+            onChange={onHomeNavChange}
+            items={[
+              { id: "overview", label: t.shell.homeOverview },
+              { id: "p2p", label: t.shell.p2p },
+            ]}
+          />
         </div>
       )}
 
@@ -148,33 +126,33 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
   );
 };
 
-function TitlebarTabButton({
+/** Tab strip with a sliding indicator (see `useSlidingIndicator` for why it avoids `layoutId`). */
+function SubNav<T extends string>({
+  items,
   active,
-  layoutId,
-  onClick,
-  children,
+  onChange,
 }: {
-  active: boolean;
-  layoutId: string;
-  onClick: () => void;
-  children: React.ReactNode;
+  items: { id: T; label: string }[];
+  active: T;
+  onChange: (id: T) => void;
 }) {
+  const pill = useSlidingIndicator(active);
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`relative rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-        active ? "text-white" : "text-slate-400 hover:text-slate-200"
-      }`}
-    >
-      {active && (
-        <motion.div
-          layoutId={layoutId}
-          className="absolute inset-0 rounded-lg bg-brand shadow-sm shadow-brand/30"
-          transition={{ type: "spring", stiffness: 500, damping: 35 }}
-        />
-      )}
-      <span className="relative z-10">{children}</span>
-    </button>
+    <div className="relative flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
+      <SlidingIndicator box={pill.box} className="top-1 bottom-1 rounded-lg bg-brand shadow-sm shadow-brand/30" />
+      {items.map((item) => (
+        <button
+          key={item.id}
+          ref={pill.register(item.id)}
+          type="button"
+          onClick={() => onChange(item.id)}
+          className={`relative rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+            active === item.id ? "text-white" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
   );
 }

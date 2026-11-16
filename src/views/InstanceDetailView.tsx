@@ -3,7 +3,7 @@ import { clearCachedFiles } from "@/lib/instanceFilesCache";
 import { TabSkeleton } from "@/components/instance/detail/shared";
 import { InstanceSetupPanel } from "@/components/instance/InstanceSetupPanel";
 import React, { useState, useEffect, useMemo } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import {
   FolderOpen,
   Settings,
@@ -45,6 +45,7 @@ import {
 import { toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
+import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 
 
 const PRESET_ICONS = [
@@ -108,6 +109,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
   const [activeSubTab, setActiveSubTab] =
     useState<InstanceDetailSubNav>("screenshots");
   const [tabDirection, setTabDirection] = useState<number>(1);
+  const tabLine = useSlidingIndicator(activeSubTab);
   const setRenameError = (msg: string) => toast(msg, "error");
   const [resourceShaderTab, setResourceShaderTab] = useState<"packs" | "shaders">("packs");
   const [resourceShaderDir, setResourceShaderDir] = useState<number>(1);
@@ -643,12 +645,14 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
   // 2. 六大子分頁導覽列 (吸頂黏附)
   const tabNavSection = (
     <div className="sticky top-0 z-30 w-full border-b border-white/10 bg-canvas/90 backdrop-blur-xl">
-      <div className="flex items-center gap-1 px-6 py-1 overflow-x-auto">
+      <div className="relative flex items-center gap-1 px-6 py-1 overflow-x-auto">
+        <SlidingIndicator box={tabLine.box} className="bottom-1 h-0.5 bg-brand-light shadow-[0_0_8px_color-mix(in_srgb,var(--fc-highlight)_80%,transparent)]" />
         {navTabs.map((tab) => {
           const isActive = activeSubTab === tab.id;
           return (
             <button
               key={tab.id}
+              ref={tabLine.register(tab.id)}
               type="button"
               onClick={() => handleSelectSubTab(tab.id)}
               className={`relative flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold transition-colors ${isActive
@@ -659,17 +663,6 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
               {tab.icon}
               <span>{tab.label}</span>
 
-              {isActive && (
-                <motion.div
-                  layoutId="instance-detail-tab-pill"
-                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-light shadow-[0_0_8px_color-mix(in_srgb,var(--fc-highlight)_80%,transparent)]"
-                  transition={{
-                    type: "spring",
-                    stiffness: 500,
-                    damping: 35,
-                  }}
-                />
-              )}
             </button>
           );
         })}

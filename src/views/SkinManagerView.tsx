@@ -32,6 +32,7 @@ import { authService } from "@/services/authService";
 import { toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
+import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 
 export interface DefaultSkinPreset {
   id: string;
@@ -401,6 +402,8 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
     activeAccount.skinModel || "auto-detect"
   );
   const [animation, setAnimation] = useState<AnimationMode>("idle");
+  const animPill = useSlidingIndicator(animation);
+  const tabLine = useSlidingIndicator(activeTab);
   const [autoRotate, setAutoRotate] = useState<boolean>(false);
 
   // 使用者正版帳號持有的真實披風
@@ -733,12 +736,14 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                 <label className="text-[11px] font-bold text-slate-300">
                   {t.skin.animationMode}
                 </label>
-                <div className="flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
+                <div className="relative flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
+                  <SlidingIndicator box={animPill.box} className="top-1 bottom-1 rounded-lg bg-brand shadow-sm shadow-brand/30" />
                   {animButtons.map((btn) => {
                     const isActive = animation === btn.id;
                     return (
                       <button
                         key={btn.id}
+                        ref={animPill.register(btn.id)}
                         type="button"
                         onClick={() => setAnimation(btn.id)}
                         className={`relative flex-1 py-1 text-xs font-semibold transition-colors duration-150 ${
@@ -749,17 +754,6 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                           {btn.icon}
                           {btn.label}
                         </span>
-                        {isActive && (
-                          <motion.div
-                            layoutId="skin-anim-indicator"
-                            className="absolute inset-0 rounded-lg bg-brand shadow-sm shadow-brand/30"
-                            transition={{
-                              type: "spring",
-                              stiffness: 450,
-                              damping: 35,
-                            }}
-                          />
-                        )}
                       </button>
                     );
                   })}
@@ -803,8 +797,10 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
           <div className="flex flex-1 flex-col min-w-0 h-full overflow-hidden">
             {/* 右側頂部固定 Tab 列 (精確對齊實例詳情頁之底部綠色滑動光線指示器) */}
             <div className="flex items-center justify-between border-b border-white/10 shrink-0">
-              <div className="flex items-center gap-1">
+              <div className="relative flex items-center gap-1">
+                <SlidingIndicator box={tabLine.box} className="bottom-0 h-0.5 bg-brand-light shadow-[0_0_8px_color-mix(in_srgb,var(--fc-highlight)_80%,transparent)]" />
                 <button
+                  ref={tabLine.register("wardrobe")}
                   type="button"
                   onClick={() => handleTabChange("wardrobe")}
                   className={`relative flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold transition-colors ${
@@ -815,20 +811,10 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                 >
                   <Shirt className="h-4 w-4" />
                   <span>{t.skin.tabSkins(localSkins.length + OFFICIAL_9_SKINS.length)}</span>
-                  {activeTab === "wardrobe" && (
-                    <motion.div
-                      layoutId="skin-tab-indicator"
-                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-light shadow-[0_0_8px_color-mix(in_srgb,var(--fc-highlight)_80%,transparent)]"
-                      transition={{
-                        type: "spring",
-                        stiffness: 500,
-                        damping: 35,
-                      }}
-                    />
-                  )}
                 </button>
 
                 <button
+                  ref={tabLine.register("capes")}
                   type="button"
                   onClick={() => handleTabChange("capes")}
                   className={`relative flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold transition-colors ${
@@ -839,17 +825,6 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                 >
                   <Sparkles className="h-4 w-4" />
                   <span>{t.skin.tabCapes(accountCapes.length)}</span>
-                  {activeTab === "capes" && (
-                    <motion.div
-                      layoutId="skin-tab-indicator"
-                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-light shadow-[0_0_8px_color-mix(in_srgb,var(--fc-highlight)_80%,transparent)]"
-                      transition={{
-                        type: "spring",
-                        stiffness: 500,
-                        damping: 35,
-                      }}
-                    />
-                  )}
                 </button>
               </div>
 

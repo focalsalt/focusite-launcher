@@ -166,9 +166,26 @@ pub struct LibraryEntry {
     pub downloads: Option<LibraryDownloads>,
     pub rules: Option<Vec<Rule>>,
     pub natives: Option<HashMap<String, String>>,
+    /// Maven repository base used by Fabric/Quilt style libraries that have no `downloads` block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 impl LibraryEntry {
+    /// Download URL for a plain Maven library (no `downloads` block, as in Fabric/Quilt profiles).
+    /// Profiles cached before `url` was kept have no repository, so the loader's own repository is assumed.
+    pub fn maven_download_url(&self) -> Option<String> {
+        if self.downloads.is_some() {
+            return None;
+        }
+        let base = self.url.as_deref().unwrap_or(if self.name.starts_with("org.quiltmc") {
+            "https://maven.quiltmc.org/repository/release/"
+        } else {
+            "https://maven.fabricmc.net/"
+        });
+        Some(format!("{}/{}", base.trim_end_matches('/'), maven_to_path(&self.name)?))
+    }
+
     /// Determines whether this library is allowed under given OS and architecture.
     pub fn is_allowed(&self, os_name: &str, os_arch: &str) -> bool {
         match &self.rules {
@@ -644,6 +661,23 @@ impl LoaderVersionInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_maven_library_download_url() {
+        let lib = |json: &str| serde_json::from_str::<LibraryEntry>(json).unwrap();
+        // Fabric profile entry without a repository (as cached by earlier versions).
+        assert_eq!(
+            lib(r#"{"name":"net.fabricmc:fabric-loader:0.20.1"}"#).maven_download_url().as_deref(),
+            Some("https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar")
+        );
+        // An explicit repository wins, with or without a trailing slash.
+        assert_eq!(
+            lib(r#"{"name":"a.b:c:1","url":"https://repo.example/m"}"#).maven_download_url().as_deref(),
+            Some("https://repo.example/m/a/b/c/1/c-1.jar")
+        );
+        // Mojang libraries carry a `downloads` block and are handled elsewhere.
+        assert!(lib(r#"{"name":"a.b:c:1","downloads":{}}"#).maven_download_url().is_none());
+    }
 
     #[test]
     fn test_parse_minimal_manifest() {

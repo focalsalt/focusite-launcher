@@ -13,9 +13,10 @@ interface ScreenshotsTabProps {
   instance: MinecraftInstance;
   screenshots: ScreenshotFileInfo[];
   tabDirection: number;
+  ref?: React.Ref<HTMLDivElement>;
 }
 
-export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screenshots, tabDirection }: ScreenshotsTabProps) => {
+export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screenshots, tabDirection, ref }: ScreenshotsTabProps) => {
   const { t } = useI18n();
   const [currentScreenshotIdx, setCurrentScreenshotIdx] = useState<number>(0);
 
@@ -49,6 +50,7 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
               <motion.div
                 key="screenshots"
                 custom={tabDirection}
+                ref={ref}
                 variants={tabContentVariants}
                 initial="initial"
                 animate="animate"

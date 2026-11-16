@@ -22,9 +22,10 @@ interface WorldsTabProps {
   isRunning: boolean;
   refreshInstanceFiles: () => void;
   tabDirection: number;
+  ref?: React.Ref<HTMLDivElement>;
 }
 
-export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch, isLaunching, isRunning, refreshInstanceFiles, tabDirection }: WorldsTabProps) => {
+export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch, isLaunching, isRunning, refreshInstanceFiles, tabDirection, ref }: WorldsTabProps) => {
   const { t } = useI18n();
   const [renameWorldTarget, setRenameWorldTarget] = useState<WorldSummary | null>(null);
   const [newWorldName, setNewWorldName] = useState<string>("");
@@ -50,6 +51,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
               <motion.div
                 key="saves"
                 custom={tabDirection}
+                ref={ref}
                 variants={tabContentVariants}
                 initial="initial"
                 animate="animate"

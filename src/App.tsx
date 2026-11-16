@@ -62,7 +62,7 @@ const VIEW_INDEX: Record<MainView, number> = {
 const viewDirectionFor = (from: MainView, to: MainView): number =>
   from === "skins" || to === "skins" ? 0 : VIEW_INDEX[to] > VIEW_INDEX[from] ? 1 : -1;
 
-const pageVariants = slideVariants("y", 24);
+const pageVariants = slideVariants("y", 12);
 
 export default function App() {
   const { t } = useI18n();

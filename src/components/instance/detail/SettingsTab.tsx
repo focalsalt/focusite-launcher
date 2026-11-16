@@ -26,6 +26,7 @@ interface SettingsTabProps {
   onInstanceUpdated?: (updated: MinecraftInstance) => void;
   setIsDeleteDialogOpen: (open: boolean) => void;
   tabDirection: number;
+  ref?: React.Ref<HTMLDivElement>;
 }
 
 /** Heading row shared by every section of this tab. */
@@ -55,6 +56,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onInstanceUpdated,
   setIsDeleteDialogOpen,
   tabDirection,
+  ref,
 }: SettingsTabProps) => {
   const { t } = useI18n();
   const [javaPathInput, setJavaPathInput] = useState<string>(selectedJavaPath);
@@ -110,6 +112,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     <motion.div
       key="settings"
       custom={tabDirection}
+      ref={ref}
       variants={tabContentVariants}
       initial="initial"
       animate="animate"
