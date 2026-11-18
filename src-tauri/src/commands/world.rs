@@ -7,8 +7,13 @@ use focusite_core::world::{
 };
 use super::instance::{get_instances_dir, validate_safe_id};
 
+// Listing parses every level.dat, deleting and zipping can touch gigabytes: all run off the main thread.
 #[command]
-pub fn list_instance_worlds_cmd(instance_id: String) -> Result<Vec<WorldSummary>, String> {
+pub async fn list_instance_worlds_cmd(instance_id: String) -> Result<Vec<WorldSummary>, String> {
+    super::blocking(move || list_worlds(instance_id)).await
+}
+
+fn list_worlds(instance_id: String) -> Result<Vec<WorldSummary>, String> {
     // Read-only listing is safe while the game is running.
     validate_safe_id(&instance_id)?;
     let instance_dir = get_instances_dir().join(&instance_id);
@@ -34,7 +39,11 @@ pub fn rename_instance_world_cmd(
 }
 
 #[command]
-pub fn delete_instance_world_cmd(instance_id: String, folder_name: String) -> Result<(), String> {
+pub async fn delete_instance_world_cmd(instance_id: String, folder_name: String) -> Result<(), String> {
+    super::blocking(move || delete_world_blocking(instance_id, folder_name)).await
+}
+
+fn delete_world_blocking(instance_id: String, folder_name: String) -> Result<(), String> {
     validate_safe_id(&instance_id)?;
     if super::instance::is_instance_busy(&instance_id) {
         return Err(format!("實例 '{}' 正在運行或安裝中，無法刪除存檔", instance_id));
@@ -44,11 +53,15 @@ pub fn delete_instance_world_cmd(instance_id: String, folder_name: String) -> Re
 }
 
 #[command]
-pub fn backup_instance_world_cmd(
+pub async fn backup_instance_world_cmd(
     instance_id: String,
     folder_name: String,
     target_zip_path: String,
 ) -> Result<(), String> {
+    super::blocking(move || backup_world_blocking(instance_id, folder_name, target_zip_path)).await
+}
+
+fn backup_world_blocking(instance_id: String, folder_name: String, target_zip_path: String) -> Result<(), String> {
     validate_safe_id(&instance_id)?;
     if super::instance::is_instance_busy(&instance_id) {
         return Err(format!("實例 '{}' 正在運行或安裝中，無法備份存檔", instance_id));
@@ -85,20 +98,20 @@ mod tests {
 
     #[test]
     fn test_world_commands_safety_id_validation() {
-        assert!(list_instance_worlds_cmd("../malicious".into()).is_err());
+        assert!(list_worlds("../malicious".into()).is_err());
         assert!(rename_instance_world_cmd("../bad".into(), "world".into(), "new".into()).is_err());
-        assert!(delete_instance_world_cmd("bad/id".into(), "world".into()).is_err());
+        assert!(delete_world_blocking("bad/id".into(), "world".into()).is_err());
     }
 
     #[test]
     fn test_backup_instance_world_path_validation() {
-        assert!(backup_instance_world_cmd("inst1".into(), "w1".into(), "target.exe".into()).is_err());
-        assert!(backup_instance_world_cmd("inst1".into(), "w1".into(), "../escape.zip".into()).is_err());
+        assert!(backup_world_blocking("inst1".into(), "w1".into(), "target.exe".into()).is_err());
+        assert!(backup_world_blocking("inst1".into(), "w1".into(), "../escape.zip".into()).is_err());
 
         // Existing file overwrite rejection
         let temp_existing = std::env::temp_dir().join(format!("existing_backup_{}.zip", uuid::Uuid::new_v4()));
         std::fs::write(&temp_existing, b"dummy").unwrap();
-        assert!(backup_instance_world_cmd(
+        assert!(backup_world_blocking(
             "inst1".into(),
             "w1".into(),
             temp_existing.to_string_lossy().to_string()

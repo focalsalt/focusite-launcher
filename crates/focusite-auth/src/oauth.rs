@@ -17,10 +17,13 @@ pub fn resolve_client_id(env_val: Option<String>) -> Result<String, AuthError> {
     }
 }
 
-/// Gets the Microsoft Client ID strictly from .env or environment variables.
+/// Gets the Microsoft Client ID: the runtime environment / .env wins (development); otherwise the value
+/// baked in when the release was built (`MICROSOFT_CLIENT_ID` set in the build environment). The ID of a
+/// public device-code client is not a secret.
 pub fn get_microsoft_client_id() -> Result<String, AuthError> {
     let _ = dotenvy::dotenv();
     resolve_client_id(std::env::var("MICROSOFT_CLIENT_ID").ok())
+        .or_else(|_| resolve_client_id(option_env!("MICROSOFT_CLIENT_ID").map(String::from)))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

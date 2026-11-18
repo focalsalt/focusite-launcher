@@ -227,6 +227,12 @@ pub fn unique_folder_name(base: &Path, name: &str) -> Result<String, String> {
 static MOD_COUNTS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, (std::time::SystemTime, usize)>>> =
     std::sync::LazyLock::new(Default::default);
 
+/// A mod file as the mods tab lists it: `.jar` or `.zip`, optionally disabled with a `.disabled` suffix.
+fn is_mod_file(name: &str) -> bool {
+    let name = name.strip_suffix(".disabled").unwrap_or(name);
+    name.ends_with(".jar") || name.ends_with(".zip")
+}
+
 fn count_mods(mods_dir: &Path) -> usize {
     let modified = fs::metadata(mods_dir).and_then(|m| m.modified()).ok();
     if let Some(time) = modified {
@@ -240,12 +246,7 @@ fn count_mods(mods_dir: &Path) -> usize {
         .map(|entries| {
             entries
                 .filter_map(|e| e.ok())
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .map(|ext| ext == "jar" || ext == "disabled")
-                        .unwrap_or(false)
-                })
+                .filter(|e| e.file_name().to_str().is_some_and(is_mod_file))
                 .count()
         })
         .unwrap_or(0);
@@ -359,9 +360,7 @@ pub fn write_instance_config(instance_dir: &Path, config: &InstanceDiskConfig) -
 
 #[tauri::command]
 pub async fn list_instances() -> Result<Vec<InstanceSummaryDto>, String> {
-    tokio::task::spawn_blocking(list_instances_blocking)
-        .await
-        .map_err(|e| format!("背景工作執行失敗：{}", e))?
+    super::blocking(list_instances_blocking).await
 }
 
 /// Dot-folders and folders carrying the Windows "hidden" attribute are not instances.
@@ -504,7 +503,11 @@ pub fn list_custom_jars(instance_id: String) -> Result<Vec<String>, String> {
 
 /// Stores a jar in the instance's `custom_jar` folder and returns the saved file name.
 #[tauri::command]
-pub fn save_custom_jar(instance_id: String, name: String, bytes: Vec<u8>) -> Result<String, String> {
+pub async fn save_custom_jar(instance_id: String, name: String, bytes: Vec<u8>) -> Result<String, String> {
+    super::blocking(move || save_custom_jar_blocking(instance_id, name, bytes)).await
+}
+
+fn save_custom_jar_blocking(instance_id: String, name: String, bytes: Vec<u8>) -> Result<String, String> {
     validate_safe_id(&instance_id)?;
     let name = validate_custom_jar_name(&name)?;
     if bytes.is_empty() {
@@ -522,7 +525,7 @@ pub fn save_custom_jar(instance_id: String, name: String, bytes: Vec<u8>) -> Res
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub fn create_instance(
+pub async fn create_instance(
     name: String,
     version: String,
     loader: String,
@@ -532,73 +535,57 @@ pub fn create_instance(
     custom_jar_name: Option<String>,
     custom_jar_bytes: Option<Vec<u8>>,
 ) -> Result<InstanceSummaryDto, String> {
-    let base_dir = get_instances_dir();
-
-    let folder_name = unique_folder_name(&base_dir, &name)?;
-
-    let inst_dir = base_dir.join(&folder_name);
-    let game_dir = inst_dir.join("minecraft");
-
-    fs::create_dir_all(game_dir.join("mods"))
-        .map_err(|e| format!("無法建立 mods 資料夾：{}", e))?;
-    fs::create_dir_all(game_dir.join("coremods"))
-        .map_err(|e| format!("無法建立 coremods 資料夾：{}", e))?;
-    fs::create_dir_all(game_dir.join("saves"))
-        .map_err(|e| format!("無法建立 saves 資料夾：{}", e))?;
-    fs::create_dir_all(game_dir.join("logs"))
-        .map_err(|e| format!("無法建立 logs 資料夾：{}", e))?;
-    fs::create_dir_all(game_dir.join("resourcepacks"))
-        .map_err(|e| format!("無法建立 resourcepacks 資料夾：{}", e))?;
-    fs::create_dir_all(game_dir.join("texturepacks"))
-        .map_err(|e| format!("無法建立 texturepacks 資料夾：{}", e))?;
-    fs::create_dir_all(game_dir.join("shaderpacks"))
-        .map_err(|e| format!("無法建立 shaderpacks 資料夾：{}", e))?;
-    fs::create_dir_all(game_dir.join("screenshots"))
-        .map_err(|e| format!("無法建立 screenshots 資料夾：{}", e))?;
-
-    let mut icon_source = None;
-    let mut icon_updated_at = None;
-
-    if let Some(bytes) = icon_bytes {
-        if !bytes.is_empty() {
-            let icon_file = inst_dir.join("icon.png");
-            if let Ok(img) = image::load_from_memory(&bytes) {
-                let resized = img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3);
-                let _ = resized.save(&icon_file);
-            } else {
-                let _ = fs::write(&icon_file, &bytes);
+    // A custom loader jar is checked before anything is written, so a bad jar leaves no folder behind.
+    let custom_jar = if loader == "Custom" {
+        match (custom_jar_name, custom_jar_bytes) {
+            (Some(n), Some(b)) if !b.is_empty() => {
+                let bare = Path::new(&n).file_name().and_then(|f| f.to_str()).unwrap_or("");
+                Some((validate_custom_jar_name(bare)?, b))
             }
-            icon_source = Some("custom".into());
-            icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
-        }
-    }
-
-    // A custom loader jar lives in `custom_jar/`; its name is remembered as the "loader version".
-    let mut loader_version = loader_version;
-    if loader == "Custom" {
-        let (jar_name, bytes) = match (custom_jar_name, custom_jar_bytes) {
-            (Some(n), Some(b)) if !b.is_empty() => (n, b),
             _ => return Err("自訂載入器需要提供 .jar 檔案".into()),
-        };
-        let safe_jar_name = validate_custom_jar_name(
-            std::path::Path::new(&jar_name)
-                .file_name()
-                .and_then(|f| f.to_str())
-                .unwrap_or(""),
-        )?;
-        let jar_dir = inst_dir.join(CUSTOM_JAR_DIR);
-        fs::create_dir_all(&jar_dir).map_err(|e| format!("無法建立 {} 資料夾：{}", CUSTOM_JAR_DIR, e))?;
-        fs::write(jar_dir.join(&safe_jar_name), &bytes).map_err(|e| format!("無法儲存自訂 Jar：{}", e))?;
-        loader_version = Some(safe_jar_name);
-    }
+        }
+    } else {
+        None
+    };
 
-    let mut config = new_disk_config(&folder_name, &name, &version, &loader, loader_version);
-    config.description = description.clone();
-    config.icon_source = icon_source;
-    config.icon_updated_at = icon_updated_at;
+    super::blocking(move || {
+        let base_dir = get_instances_dir();
+        let folder_name = unique_folder_name(&base_dir, &name)?;
+        let inst_dir = base_dir.join(&folder_name);
+        let game_dir = inst_dir.join("minecraft");
+        for sub in ["mods", "coremods", "saves", "logs", "resourcepacks", "texturepacks", "shaderpacks", "screenshots"] {
+            fs::create_dir_all(game_dir.join(sub)).map_err(|e| format!("無法建立 {} 資料夾：{}", sub, e))?;
+        }
 
-    write_instance_config(&inst_dir, &config)?;
-    Ok(convert_disk_config_to_summary(&inst_dir, config))
+        let mut config = new_disk_config(&folder_name, &name, &version, &loader, loader_version);
+        config.description = description;
+
+        if let Some(bytes) = icon_bytes.filter(|b| !b.is_empty()) {
+            let icon_file = inst_dir.join("icon.png");
+            match image::load_from_memory(&bytes) {
+                Ok(img) => {
+                    let _ = img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3).save(&icon_file);
+                }
+                Err(_) => {
+                    let _ = fs::write(&icon_file, &bytes);
+                }
+            }
+            config.icon_source = Some("custom".into());
+            config.icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
+        }
+
+        // A custom loader jar lives in `custom_jar/`; its name is remembered as the "loader version".
+        if let Some((jar_name, bytes)) = custom_jar {
+            let jar_dir = inst_dir.join(CUSTOM_JAR_DIR);
+            fs::create_dir_all(&jar_dir).map_err(|e| format!("無法建立 {} 資料夾：{}", CUSTOM_JAR_DIR, e))?;
+            fs::write(jar_dir.join(&jar_name), &bytes).map_err(|e| format!("無法儲存自訂 Jar：{}", e))?;
+            config.loader_version = Some(jar_name);
+        }
+
+        write_instance_config(&inst_dir, &config)?;
+        Ok(convert_disk_config_to_summary(&inst_dir, config))
+    })
+    .await
 }
 
 /// First-time setup of a folder that has no config of ours: writes the config, nothing else is touched.
@@ -753,84 +740,79 @@ pub fn update_instance_settings(
 }
 
 #[tauri::command]
-pub fn duplicate_instance(
+pub async fn duplicate_instance(
     source_id: String,
     new_name: Option<String>,
 ) -> Result<InstanceSummaryDto, String> {
     validate_safe_id(&source_id)?;
+    if is_instance_busy(&source_id) {
+        return Err(format!("實例 '{}' 正在運行或安裝中，無法複製", source_id));
+    }
+    super::blocking(move || duplicate_instance_blocking(&source_id, new_name)).await
+}
+
+fn duplicate_instance_blocking(source_id: &str, new_name: Option<String>) -> Result<InstanceSummaryDto, String> {
     let base_dir = get_instances_dir();
-    let src_dir = base_dir.join(&source_id);
+    let src_dir = base_dir.join(source_id);
     if !src_dir.is_dir() {
         return Err(format!("找不到來源實例資料夾: {}", source_id));
     }
 
-    let _cfg_lock = lock_configs();
     let mut config = read_instance_config(&src_dir)?;
     let clone_name = new_name
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| format!("{} (複製)", config.name));
 
-    let sanitized_base = sanitize_folder_name(&clone_name);
-    validate_safe_id(&sanitized_base)?;
-
-    let mut target_folder = sanitized_base.clone();
-    let mut counter = 2;
-    while base_dir.join(&target_folder).exists() {
-        target_folder = format!("{} ({})", sanitized_base, counter);
-        counter += 1;
-    }
-
+    let target_folder = unique_folder_name(&base_dir, &clone_name)?;
     let dst_dir = base_dir.join(&target_folder);
-    fs::create_dir_all(&dst_dir).map_err(|e| format!("建立新實例資料夾失敗: {}", e))?;
+    // `create_dir` (not `_all`) claims the name; it fails if another copy took it a moment ago.
+    fs::create_dir(&dst_dir).map_err(|e| format!("建立新實例資料夾失敗: {}", e))?;
 
-    // Copy directory tree recursively with hardlink optimization for .jar files
-    copy_dir_recursive_with_hardlink(&src_dir, &dst_dir)?;
-
-    config.id = target_folder.clone();
-    config.name = clone_name;
-    config.created_at = chrono::Utc::now().timestamp_millis();
-    config.last_played_at = None;
-
-    write_instance_config(&dst_dir, &config)?;
+    let copied = copy_dir_recursive_with_hardlink(&src_dir, &dst_dir).and_then(|_| {
+        config.id = target_folder.clone();
+        config.name = clone_name;
+        config.created_at = chrono::Utc::now().timestamp_millis();
+        config.last_played_at = None;
+        config.total_play_time_ms = 0;
+        write_instance_config(&dst_dir, &config)
+    });
+    // An incomplete copy must not look like a usable backup.
+    if let Err(e) = copied {
+        let _ = fs::remove_dir_all(&dst_dir);
+        return Err(e);
+    }
     Ok(convert_disk_config_to_summary(&dst_dir, config))
 }
 
+/// Copies a directory tree; mod jars are hard-linked when possible (they never change in place).
 fn copy_dir_recursive_with_hardlink(src: &Path, dst: &Path) -> Result<(), String> {
-    if !dst.exists() {
-        fs::create_dir_all(dst).map_err(|e| format!("無法建立目錄 {}：{}", dst.display(), e))?;
-    }
-
+    fs::create_dir_all(dst).map_err(|e| format!("無法建立目錄 {}：{}", dst.display(), e))?;
     let entries = fs::read_dir(src).map_err(|e| format!("無法讀取目錄 {}：{}", src.display(), e))?;
-    for entry in entries.filter_map(|e| e.ok()) {
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("無法讀取目錄 {}：{}", src.display(), e))?;
         let src_path = entry.path();
-        let file_name = entry.file_name();
-        let dst_path = dst.join(&file_name);
-
-        if src_path.is_dir() {
+        let dst_path = dst.join(entry.file_name());
+        let kind = entry.file_type().map_err(|e| format!("無法讀取 {}：{}", src_path.display(), e))?;
+        if kind.is_symlink() {
+            tracing::warn!("略過符號連結 {}", src_path.display());
+        } else if kind.is_dir() {
             copy_dir_recursive_with_hardlink(&src_path, &dst_path)?;
-        } else if src_path.is_file() {
+        } else {
             let ext = src_path.extension().and_then(|x| x.to_str()).unwrap_or("");
-            if ext == "jar" || ext == "disabled" {
-                // Hardlink optimization for mods
-                let _ = focusite_cas::hardlink::HardlinkManager::link_or_copy(&src_path, &dst_path);
+            let res = if ext == "jar" || ext == "disabled" {
+                focusite_cas::hardlink::HardlinkManager::link_or_copy(&src_path, &dst_path).map(|_| ())
             } else {
-                let _ = fs::copy(&src_path, &dst_path);
-            }
+                fs::copy(&src_path, &dst_path).map(|_| ())
+            };
+            res.map_err(|e| format!("無法複製 {}：{}", src_path.display(), e))?;
         }
     }
     Ok(())
 }
 
 #[tauri::command]
-pub fn set_instance_show_log(instance_id: String, show_log: bool) -> Result<(), String> {
-    validate_safe_id(&instance_id)?;
-    let base_dir = get_instances_dir().join(&instance_id);
-    update_instance_config(&base_dir, |c| c.show_log_on_launch = show_log)
-}
-
-#[tauri::command]
-pub fn delete_instance(app_handle: AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_instance(app_handle: AppHandle, id: String) -> Result<(), String> {
     validate_safe_id(&id)?;
     if is_instance_busy(&id) {
         return Err(format!("實例 '{}' 正在運行或安裝中，無法刪除", id));
@@ -852,16 +834,25 @@ pub fn delete_instance(app_handle: AppHandle, id: String) -> Result<(), String> 
         }
     }
 
-    let base_dir = get_instances_dir();
-    let inst_dir = base_dir.join(&id);
-    if inst_dir.exists() {
-        fs::remove_dir_all(inst_dir).map_err(|e| format!("刪除實例失敗：{}", e))?;
-    }
-    Ok(())
+    let inst_dir = get_instances_dir().join(&id);
+    super::blocking(move || {
+        if inst_dir.exists() {
+            fs::remove_dir_all(inst_dir).map_err(|e| format!("刪除實例失敗：{}", e))?;
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn set_instance_icon_from_file(
+pub async fn set_instance_icon_from_file(
+    instance_id: String,
+    source_image_path: String,
+) -> Result<InstanceSummaryDto, String> {
+    super::blocking(move || set_instance_icon_from_file_blocking(instance_id, source_image_path)).await
+}
+
+fn set_instance_icon_from_file_blocking(
     instance_id: String,
     source_image_path: String,
 ) -> Result<InstanceSummaryDto, String> {
@@ -1058,9 +1049,7 @@ fn scan_folder_mods(mods_dir: &Path) -> Result<Vec<ModFileDto>, String> {
                 .file_name()
                 .map(|f| f.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let is_jar = filename.ends_with(".jar") || filename.ends_with(".jar.disabled");
-            let is_zip = filename.ends_with(".zip") || filename.ends_with(".zip.disabled");
-            if is_jar || is_zip {
+            if is_mod_file(&filename) {
                 let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                 let enabled = !filename.ends_with(".disabled");
                 mods.push(ModFileDto {
@@ -1182,34 +1171,6 @@ pub fn list_instance_shaderpacks(instance_id: String) -> Result<Vec<PackFileDto>
 }
 
 #[tauri::command]
-pub fn list_instance_saves(instance_id: String) -> Result<Vec<String>, String> {
-    validate_safe_id(&instance_id)?;
-    let saves_dir = get_instances_dir()
-        .join(&instance_id)
-        .join("minecraft")
-        .join("saves");
-
-    if !saves_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let entries = fs::read_dir(&saves_dir)
-        .map_err(|e| format!("讀取存檔資料夾失敗：{}", e))?;
-
-    let mut saves = Vec::new();
-    for entry in entries.filter_map(|e| e.ok()) {
-        let path = entry.path();
-        if path.is_dir() {
-            if let Some(name) = path.file_name().and_then(|f| f.to_str()) {
-                saves.push(name.to_string());
-            }
-        }
-    }
-
-    Ok(saves)
-}
-
-#[tauri::command]
 pub fn list_instance_screenshots(instance_id: String) -> Result<Vec<ScreenshotFileDto>, String> {
     validate_safe_id(&instance_id)?;
     let screenshots_dir = get_instances_dir()
@@ -1251,22 +1212,6 @@ pub fn list_instance_screenshots(instance_id: String) -> Result<Vec<ScreenshotFi
     }
     screenshots.sort_by(|a, b| b.name.cmp(&a.name));
     Ok(screenshots)
-}
-
-#[tauri::command]
-pub fn get_instance_log(instance_id: String) -> Result<String, String> {
-    validate_safe_id(&instance_id)?;
-    let log_file = get_instances_dir()
-        .join(&instance_id)
-        .join("minecraft")
-        .join("logs")
-        .join("latest.log");
-
-    if !log_file.is_file() {
-        return Ok(String::new());
-    }
-
-    fs::read_to_string(log_file).map_err(|e| format!("讀取日誌檔失敗：{}", e))
 }
 
 #[cfg(test)]

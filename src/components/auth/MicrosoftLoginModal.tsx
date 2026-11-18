@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,12 +8,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Copy, ExternalLink, RefreshCw, AlertCircle, Check } from "lucide-react";
-import { authService, DeviceCodeInfo } from "@/services/authService";
 import { UserAccount } from "@/types/navigation";
-import { openExternal } from "@/lib/openExternal";
-import { toUserMessage } from "@/lib/errorMessage";
-import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
+import { useDeviceCodeLogin } from "./useDeviceCodeLogin";
 
 interface MicrosoftLoginModalProps {
   isOpen: boolean;
@@ -21,136 +18,33 @@ interface MicrosoftLoginModalProps {
   onSuccess: (account: UserAccount) => void;
 }
 
-type ErrorCategory = "missing_config" | "expired" | "general";
-
 export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
 }) => {
   const { t } = useI18n();
-  const [deviceInfo, setDeviceInfo] = useState<DeviceCodeInfo | null>(null);
-  const [isStarting, setIsStarting] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [errorCategory, setErrorCategory] = useState<ErrorCategory | null>(null);
-  const [isCopied, setIsCopied] = useState<boolean>(false);
-  const [pollingStatus, setPollingStatus] = useState<string>(t.auth.waiting);
-  const pollTimerRef = useRef<number | null>(null);
-  // Only the newest request may show its code; a second start (double click, StrictMode) must not swap it.
-  const startSeqRef = useRef<number>(0);
-
-  const startLoginFlow = async () => {
-    const seq = ++startSeqRef.current;
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-    setIsStarting(true);
-    setErrorMessage(null);
-    setErrorCategory(null);
-    setDeviceInfo(null);
-    setPollingStatus(t.auth.requestingCode);
-
-    try {
-      const info = await authService.startDeviceCode();
-      if (seq !== startSeqRef.current) return;
-      setDeviceInfo(info);
-      setPollingStatus(t.auth.waitingBrowser);
-      startPolling(info.device_code, info.interval || 5);
-    } catch (err: unknown) {
-      if (seq !== startSeqRef.current) return;
-      const msg = toUserMessage(err);
-      const isMissing =
-        msg.toLowerCase().includes("client_id") ||
-        msg.toLowerCase().includes("missingclientid");
-      setErrorCategory(isMissing ? "missing_config" : "general");
-      setErrorMessage(
-        isMissing
-          ? t.auth.missingClientId
-          : msg
-      );
-      setPollingStatus(t.auth.startFailed);
-    } finally {
-      if (seq === startSeqRef.current) setIsStarting(false);
-    }
-  };
-
-  const startPolling = (deviceCode: string, intervalSec: number) => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-    }
-
-    pollTimerRef.current = window.setInterval(async () => {
-      try {
-        const result = await authService.pollDeviceCode(deviceCode);
-        if (result.status === "success" && result.account) {
-          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-          onSuccess(result.account);
-          onClose();
-        } else if (result.status === "expired") {
-          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-          setErrorCategory("expired");
-          setErrorMessage(t.auth.codeExpired);
-        } else if (result.status === "error") {
-          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-          const msg = result.error_message || t.auth.authError;
-          const isMissing =
-            msg.toLowerCase().includes("client_id") ||
-            msg.toLowerCase().includes("missingclientid");
-          setErrorCategory(isMissing ? "missing_config" : "general");
-          setErrorMessage(msg);
-        } else if (result.status === "pending") {
-          setPollingStatus(t.auth.waitingConsent);
-        }
-      } catch (e: unknown) {
-        console.error("Polling error:", e);
-      }
-    }, Math.max(intervalSec, 3) * 1000);
-  };
+  const {
+    deviceInfo,
+    isStarting,
+    errorMessage,
+    errorCategory,
+    isCopied,
+    pollingStatus,
+    start: startLoginFlow,
+    stop,
+    copyCode: handleCopyCode,
+    openVerificationPage: handleOpenLink,
+  } = useDeviceCodeLogin((account) => {
+    onSuccess(account);
+    onClose();
+  });
 
   useEffect(() => {
-    if (isOpen) {
-      startLoginFlow();
-    } else {
-      startSeqRef.current++;
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    }
-    return () => {
-      startSeqRef.current++; // a code request still in flight must not start polling after close
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
+    if (isOpen) startLoginFlow();
+    else stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
-
-  const handleCopyCode = () => {
-    if (deviceInfo?.user_code) {
-      navigator.clipboard.writeText(deviceInfo.user_code);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-      toast(t.common.copied, "success");
-    }
-  };
-
-  const handleOpenLink = async () => {
-    if (!deviceInfo) return;
-    // 自動將驗證代碼寫入使用者剪貼簿
-    if (deviceInfo.user_code) {
-      navigator.clipboard.writeText(deviceInfo.user_code);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-      toast(t.common.copied, "success");
-    }
-
-    // 開啟微軟官方指定之驗證入口 (https://www.microsoft.com/link)，維持原生乾淨 URL 嚴禁附加 ?otc= 參數
-    const targetUrl = deviceInfo.verification_uri;
-
-    await openExternal(targetUrl).catch((err) => console.error("Failed to open link:", err));
-  };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

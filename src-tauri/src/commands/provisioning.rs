@@ -217,7 +217,8 @@ pub async fn ensure_instance_provisioned(
 
         let serialized = serde_json::to_string_pretty(&detail)
             .map_err(|e| format!("序列化版本設定檔失敗: {}", e))?;
-        std::fs::write(&version_json_path, serialized)
+        // Atomic, so an interrupted write never leaves a half file that blocks every later launch.
+        super::atomic_write(&version_json_path, serialized.as_bytes())
             .map_err(|e| format!("無法寫入版本設定檔: {}", e))?;
 
         detail
@@ -554,7 +555,7 @@ pub async fn ensure_instance_provisioned(
             let comp_dir = runtime_dir.join(component);
             let mut jre_tasks = Vec::new();
 
-            for (rel_path, url, sha1, _) in jre_items {
+            for (rel_path, url, sha1, size) in jre_items {
                 let dest = comp_dir.join(&rel_path);
                 if !dest.is_file() {
                     let target_url = MirrorManager::rewrite_url(&url, provider);
@@ -562,7 +563,8 @@ pub async fn ensure_instance_provisioned(
                         url: target_url,
                         destination: dest.to_string_lossy().to_string(),
                         expected_sha1: sha1,
-                        expected_size: None,
+                        // A known size skips the HEAD probe for the hundreds of small runtime files.
+                        expected_size: Some(size),
                     });
                 }
             }

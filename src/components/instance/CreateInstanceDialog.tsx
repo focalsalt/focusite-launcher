@@ -59,6 +59,10 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [iconBytes, setIconBytes] = useState<number[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Each picked icon holds a blob URL; release it once it is replaced or the dialog unmounts.
+  useEffect(() => () => {
+    if (iconPreview) URL.revokeObjectURL(iconPreview);
+  }, [iconPreview]);
 
   // Custom Loader Jar 狀態
   const [customJar, setCustomJar] = useState<{

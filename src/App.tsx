@@ -323,7 +323,7 @@ export default function App() {
         };
       }
       setRunningInstances(map);
-    });
+    }).catch((err) => console.error("Failed to list running instances:", err));
   }, []);
 
   // 監聽後端遊戲進程狀態變更事件與退出二次確認請求
@@ -482,7 +482,7 @@ export default function App() {
 
   const handleSelectAccount = (id: string) => {
     setActiveAccountId(id);
-    authService.setActiveAccount(id);
+    authService.setActiveAccount(id).catch((err) => toast(toUserMessage(err), "error"));
     setAccounts((prev) =>
       prev.map((acc) => ({
         ...acc,
@@ -496,13 +496,18 @@ export default function App() {
   };
 
   const handleSignOut = async (id: string) => {
-    await authService.removeAccount(id);
+    try {
+      await authService.removeAccount(id);
+    } catch (err) {
+      toast(toUserMessage(err), "error");
+      return;
+    }
     const remaining = accounts.filter((a) => a.id !== id);
     setAccounts(remaining);
     if (activeAccountId === id) {
       if (remaining.length > 0) {
         setActiveAccountId(remaining[0].id);
-        authService.setActiveAccount(remaining[0].id);
+        authService.setActiveAccount(remaining[0].id).catch((err) => toast(toUserMessage(err), "error"));
       } else {
         setActiveAccountId("");
         setIsLoginModalOpen(true);

@@ -358,18 +358,15 @@ struct MojangDownloadItem {
     url: String,
 }
 
-/// File item to download for JRE provisioning: (relative_path, url, sha1, is_executable)
-pub type JreDownloadItem = (String, String, Option<String>, bool);
+/// File item to download for JRE provisioning: (relative_path, url, sha1, size_bytes)
+pub type JreDownloadItem = (String, String, Option<String>, u64);
 
 /// Fetches the file download list for a specific Mojang JRE component.
 pub async fn fetch_mojang_runtime_download_list(
     component: &str,
     platform: &str,
 ) -> Result<Vec<JreDownloadItem>, CoreError> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(CoreError::Network)?;
+    let client = crate::http_client().map_err(CoreError::Network)?;
 
     let all_resp = client
         .get(MOJANG_JAVA_RUNTIME_ALL_URL)
@@ -407,8 +404,7 @@ pub async fn fetch_mojang_runtime_download_list(
         if entry.entry_type == "file" {
             if let Some(downloads) = entry.downloads {
                 if let Some(raw) = downloads.raw {
-                    let is_exe = entry.executable.unwrap_or(false);
-                    download_items.push((rel_path, raw.url, Some(raw.sha1), is_exe));
+                    download_items.push((rel_path, raw.url, Some(raw.sha1), raw.size));
                 }
             }
         }

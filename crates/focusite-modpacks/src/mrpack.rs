@@ -37,14 +37,14 @@ pub struct ModrinthEnv {
     pub server: Option<String>,
 }
 
-/// Safely extracts a zip entry preventing Zip-Slip directory traversal vulnerabilities.
 /// Largest single file accepted from a modpack archive.
 pub const MAX_ENTRY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-/// Limits for the whole archive: all unpacked overrides together, entry count, and the index file.
+/// Limits for the whole archive: all unpacked overrides together, entry count, and small text files.
 const MAX_TOTAL_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const MAX_ENTRIES: usize = 50_000;
-const MAX_INDEX_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_TEXT_BYTES: u64 = 16 * 1024 * 1024;
 
+/// Safely extracts a zip entry preventing Zip-Slip directory traversal vulnerabilities.
 pub fn safe_extract_entry<R: Read>(
     entry_name: &str,
     reader: R,
@@ -90,6 +90,61 @@ pub fn safe_extract_entry<R: Read>(
     Ok(target_path)
 }
 
+pub(crate) fn open_zip(archive_bytes: &[u8]) -> Result<ZipArchive<Cursor<&[u8]>>, ModpackError> {
+    let zip = ZipArchive::new(Cursor::new(archive_bytes))
+        .map_err(|e| ModpackError::InvalidArchive(format!("Failed to open zip archive: {}", e)))?;
+    if zip.len() > MAX_ENTRIES {
+        return Err(ModpackError::InvalidArchive(format!("Archive has more than {} entries", MAX_ENTRIES)));
+    }
+    Ok(zip)
+}
+
+/// Reads a small text file from the archive (at most 16 MiB); `None` when the archive has no such file.
+pub(crate) fn read_text(zip: &mut ZipArchive<Cursor<&[u8]>>, name: &str) -> Result<Option<String>, ModpackError> {
+    let Ok(file) = zip.by_name(name) else { return Ok(None) };
+    let mut content = String::new();
+    file.take(MAX_TEXT_BYTES).read_to_string(&mut content)?;
+    Ok(Some(content))
+}
+
+/// Extracts every file under one of `prefixes` into `dir` (prefix stripped), within the archive limits.
+pub(crate) fn extract_overrides(
+    zip: &mut ZipArchive<Cursor<&[u8]>>,
+    prefixes: &[&str],
+    dir: &Path,
+) -> Result<Vec<PathBuf>, ModpackError> {
+    let mut total_bytes: u64 = 0;
+    let mut extracted = Vec::new();
+    for i in 0..zip.len() {
+        let mut file = zip
+            .by_index(i)
+            .map_err(|e| ModpackError::InvalidArchive(e.to_string()))?;
+        let name = file.name().to_string();
+        let Some(rel_path) = prefixes.iter().find_map(|p| name.strip_prefix(p)) else { continue };
+        if rel_path.is_empty() || file.is_dir() {
+            continue;
+        }
+        let path = safe_extract_entry(rel_path, &mut file, dir)?;
+        total_bytes += std::fs::metadata(&path)?.len();
+        if total_bytes > MAX_TOTAL_BYTES {
+            return Err(ModpackError::InvalidArchive(format!(
+                "Archive expands to more than {} MiB",
+                MAX_TOTAL_BYTES / (1024 * 1024)
+            )));
+        }
+        extracted.push(path);
+    }
+    Ok(extracted)
+}
+
+/// Reads `modrinth.index.json` without unpacking anything.
+pub fn read_mrpack_index(archive_bytes: &[u8]) -> Result<ModrinthIndex, ModpackError> {
+    let mut zip = open_zip(archive_bytes)?;
+    let content = read_text(&mut zip, "modrinth.index.json")?
+        .ok_or_else(|| ModpackError::InvalidArchive("Missing modrinth.index.json".into()))?;
+    Ok(serde_json::from_str(&content)?)
+}
+
 /// Extracts a .mrpack archive into an instance directory.
 /// Overrides (`overrides/` or `client-overrides/`) are unpacked into `minecraft_dir`.
 /// Returns parsed `ModrinthIndex` and the list of extracted override file paths.
@@ -97,107 +152,10 @@ pub fn unpack_mrpack(
     archive_bytes: &[u8],
     minecraft_dir: &Path,
 ) -> Result<(ModrinthIndex, Vec<PathBuf>), ModpackError> {
-    let mut zip = ZipArchive::new(Cursor::new(archive_bytes))
-        .map_err(|e| ModpackError::InvalidArchive(format!("Failed to open zip archive: {}", e)))?;
-
-    // 1. Read modrinth.index.json
-    let index: ModrinthIndex = {
-        let mut index_file = zip
-            .by_name("modrinth.index.json")
-            .map_err(|_| ModpackError::InvalidArchive("Missing modrinth.index.json".into()))?;
-        let mut content = String::new();
-        (&mut index_file).take(MAX_INDEX_BYTES).read_to_string(&mut content)?;
-        serde_json::from_str(&content)?
-    };
-
-    if zip.len() > MAX_ENTRIES {
-        return Err(ModpackError::InvalidArchive(format!("Archive has more than {} entries", MAX_ENTRIES)));
-    }
-    let mut total_bytes: u64 = 0;
-    let mut extracted_overrides = Vec::new();
-
-    // 2. Extract overrides/ and client-overrides/
-    for i in 0..zip.len() {
-        let mut file = zip
-            .by_index(i)
-            .map_err(|e| ModpackError::InvalidArchive(e.to_string()))?;
-        let name = file.name().to_string();
-
-        let rel_path = if let Some(stripped) = name.strip_prefix("overrides/") {
-            stripped
-        } else if let Some(stripped) = name.strip_prefix("client-overrides/") {
-            stripped
-        } else {
-            continue;
-        };
-
-        if rel_path.is_empty() || file.is_dir() {
-            continue;
-        }
-
-        let extracted = safe_extract_entry(rel_path, &mut file, minecraft_dir)?;
-        total_bytes += std::fs::metadata(&extracted)?.len();
-        if total_bytes > MAX_TOTAL_BYTES {
-            return Err(ModpackError::InvalidArchive(format!(
-                "Archive expands to more than {} MiB",
-                MAX_TOTAL_BYTES / (1024 * 1024)
-            )));
-        }
-        extracted_overrides.push(extracted);
-    }
-
-    Ok((index, extracted_overrides))
-}
-
-/// Creates a .mrpack archive with index metadata and optional overrides directory.
-pub fn create_mrpack<W: std::io::Write + std::io::Seek>(
-    writer: W,
-    index: &ModrinthIndex,
-    overrides_dir: Option<&Path>,
-) -> Result<(), ModpackError> {
-    let mut zip = zip::ZipWriter::new(writer);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-
-    // 1. Write modrinth.index.json
-    zip.start_file("modrinth.index.json", options)
-        .map_err(|e| ModpackError::InvalidArchive(e.to_string()))?;
-    let index_json = serde_json::to_string_pretty(index)?;
-    std::io::Write::write_all(&mut zip, index_json.as_bytes())?;
-
-    // 2. Write overrides/ if provided
-    if let Some(ov_dir) = overrides_dir {
-        if ov_dir.is_dir() {
-            fn add_dir<W: std::io::Write + std::io::Seek>(
-                zip: &mut zip::ZipWriter<W>,
-                base: &Path,
-                current: &Path,
-                opts: zip::write::SimpleFileOptions,
-            ) -> Result<(), ModpackError> {
-                for entry in std::fs::read_dir(current)? {
-                    let entry = entry?;
-                    let path = entry.path();
-                    if path.is_file() {
-                        let rel = path
-                            .strip_prefix(base)
-                            .map_err(|e| ModpackError::InvalidArchive(e.to_string()))?;
-                        let zip_path = format!("overrides/{}", rel.to_string_lossy().replace('\\', "/"));
-                        zip.start_file(zip_path, opts)
-                            .map_err(|e| ModpackError::InvalidArchive(e.to_string()))?;
-                        let mut f = File::open(&path)?;
-                        std::io::copy(&mut f, zip)?;
-                    } else if path.is_dir() {
-                        add_dir(zip, base, &path, opts)?;
-                    }
-                }
-                Ok(())
-            }
-            add_dir(&mut zip, ov_dir, ov_dir, options)?;
-        }
-    }
-
-    zip.finish().map_err(|e| ModpackError::InvalidArchive(e.to_string()))?;
-    Ok(())
+    let index = read_mrpack_index(archive_bytes)?;
+    let mut zip = open_zip(archive_bytes)?;
+    let extracted = extract_overrides(&mut zip, &["overrides/", "client-overrides/"], minecraft_dir)?;
+    Ok((index, extracted))
 }
 
 #[cfg(test)]
@@ -289,36 +247,6 @@ mod tests {
         assert_eq!(index.name, "Test Memory Pack");
         assert_eq!(overrides.len(), 1);
         assert!(mc_dir.join("config/options.txt").is_file());
-
-        let _ = std::fs::remove_dir_all(&temp_dir);
-    }
-
-    #[test]
-    fn test_create_mrpack_roundtrip() {
-        let temp_dir = std::env::temp_dir().join(format!("focusite_mrpack_create_{}", uuid::Uuid::new_v4()));
-        let ov_dir = temp_dir.join("overrides_src");
-        let dest_mc = temp_dir.join("dest_mc");
-        std::fs::create_dir_all(ov_dir.join("mods")).unwrap();
-        std::fs::write(ov_dir.join("mods/test_mod.jar"), b"PK_DUMMY_JAR").unwrap();
-
-        let index = ModrinthIndex {
-            format_version: 1,
-            game: "minecraft".into(),
-            version_id: "1.0.0".into(),
-            name: "Created Pack".into(),
-            summary: Some("Test export".into()),
-            files: vec![],
-            dependencies: HashMap::from([("minecraft".into(), "1.20.1".into())]),
-        };
-
-        let mut out_buf = Cursor::new(Vec::new());
-        create_mrpack(&mut out_buf, &index, Some(&ov_dir)).unwrap();
-
-        let raw_bytes = out_buf.into_inner();
-        let (unpacked_idx, unpacked_overrides) = unpack_mrpack(&raw_bytes, &dest_mc).unwrap();
-        assert_eq!(unpacked_idx.name, "Created Pack");
-        assert_eq!(unpacked_overrides.len(), 1);
-        assert!(dest_mc.join("mods/test_mod.jar").is_file());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

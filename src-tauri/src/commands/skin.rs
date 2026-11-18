@@ -23,8 +23,13 @@ pub fn get_skins_dir() -> PathBuf {
     dir
 }
 
+/// Reads every saved skin file, so it runs off the main thread.
 #[tauri::command]
-pub fn skin_list_local() -> Result<Vec<SkinItemDto>, String> {
+pub async fn skin_list_local() -> Result<Vec<SkinItemDto>, String> {
+    super::blocking(list_local_skins).await
+}
+
+fn list_local_skins() -> Result<Vec<SkinItemDto>, String> {
     let skins_dir = get_skins_dir();
     let mut items = Vec::new();
 
@@ -130,7 +135,7 @@ pub async fn skin_upload_to_mojang(
 
     let token = fresh_token(&account_id).await?;
 
-    let client = reqwest::Client::new();
+    let client = super::http().clone();
     let profile = focusite_auth::xbox::upload_minecraft_skin(&client, &token, &skin_bytes, &variant)
         .await
         .map_err(|e| format!("上傳外觀至 Mojang 失敗: {}", e))?;
@@ -149,7 +154,7 @@ pub async fn skin_set_active_cape(
 ) -> Result<super::auth::UserAccountDto, String> {
     let token = fresh_token(&account_id).await?;
 
-    let client = reqwest::Client::new();
+    let client = super::http().clone();
     focusite_auth::xbox::set_active_cape(&client, &token, &cape_id)
         .await
         .map_err(|e| format!("切換披風失敗: {}", e))?;
@@ -163,7 +168,7 @@ pub async fn skin_hide_active_cape(
 ) -> Result<super::auth::UserAccountDto, String> {
     let token = fresh_token(&account_id).await?;
 
-    let client = reqwest::Client::new();
+    let client = super::http().clone();
     focusite_auth::xbox::hide_active_cape(&client, &token)
         .await
         .map_err(|e| format!("卸下披風失敗: {}", e))?;
@@ -184,12 +189,12 @@ mod tests {
         assert!(item.filename.ends_with(".png"));
         assert_eq!(item.bytes, dummy_bytes);
 
-        let list = skin_list_local().expect("List should succeed");
+        let list = list_local_skins().expect("List should succeed");
         assert!(list.iter().any(|s| s.filename == item.filename));
 
         skin_delete_local(item.filename.clone()).expect("Delete should succeed");
 
-        let after_list = skin_list_local().expect("List after delete should succeed");
+        let after_list = list_local_skins().expect("List after delete should succeed");
         assert!(!after_list.iter().any(|s| s.filename == item.filename));
     }
 }

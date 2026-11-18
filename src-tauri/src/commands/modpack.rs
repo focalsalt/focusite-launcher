@@ -1,15 +1,17 @@
 //! Modpack import commands supporting .mrpack (Modrinth) and .zip (CurseForge) formats.
 
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use focusite_cas::CasManager;
 use focusite_modpacks::curseforge::{
-    rescan_missing_mods as cf_rescan, unpack_curseforge_pack, MissingModItem,
+    read_curseforge_manifest, rescan_missing_mods as cf_rescan, unpack_curseforge_overrides, MissingModItem,
 };
-use focusite_modpacks::mrpack::unpack_mrpack;
+use focusite_modpacks::mrpack::{read_mrpack_index, unpack_mrpack};
 use super::instance::{
-    default_jvm_args, default_max_memory, default_min_memory, get_instances_dir, unique_folder_name,
-    validate_safe_filename, validate_safe_id, write_instance_config, InstanceDiskConfig,
+    get_instances_dir, new_disk_config, unique_folder_name, validate_safe_filename, validate_safe_id,
+    write_instance_config, InstanceDiskConfig,
 };
 use super::settings::load_settings_from_disk;
 
@@ -30,11 +32,21 @@ struct CurseForgeFileResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CurseForgeFileData {
-    #[serde(rename = "fileName")]
     file_name: String,
-    #[serde(rename = "downloadUrl")]
     download_url: Option<String>,
+    #[serde(default)]
+    file_length: u64,
+    #[serde(default)]
+    hashes: Vec<CurseForgeFileHash>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CurseForgeFileHash {
+    value: String,
+    /// 1 = SHA-1, 2 = MD5.
+    algo: u32,
 }
 
 #[tauri::command]
@@ -57,7 +69,8 @@ pub async fn import_modpack(
     if size > MAX_PACK_BYTES {
         return Err("模組包檔案過大（上限 1 GiB）".into());
     }
-    let archive_bytes = std::fs::read(&path)
+    let archive_bytes = tokio::fs::read(&path)
+        .await
         .map_err(|e| format!("無法讀取模組包檔案: {}", e))?;
 
     let is_mrpack = path
@@ -104,18 +117,12 @@ pub async fn import_modrinth_modpack(
         return Err("無效的模組包專案 ID".into());
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent(concat!("Focusite-Launcher/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(super::ctx("無法建立網路連線"))?;
-
     let url = format!(
         "{}/project/{}/version",
         focusite_modpacks::workshop::MODRINTH_API_BASE,
         project_id
     );
-    let versions: Vec<ModrinthPackVersion> = client
+    let versions: Vec<ModrinthPackVersion> = super::http()
         .get(&url)
         .send()
         .await
@@ -167,16 +174,92 @@ pub async fn import_modrinth_modpack(
     import_mrpack_internal(&bytes, custom_name).await
 }
 
+/// Claims a new, uniquely named instance folder (with `minecraft/mods`) for an imported pack.
+fn create_pack_instance_dir(name: &str) -> Result<(String, PathBuf), String> {
+    let base = get_instances_dir();
+    let instance_id = unique_folder_name(&base, name)?;
+    let inst_dir = base.join(&instance_id);
+    // `create_dir` (not `_all`) fails if another import claimed the same name a moment ago.
+    std::fs::create_dir(&inst_dir).map_err(super::ctx("無法建立實例目錄"))?;
+    std::fs::create_dir_all(inst_dir.join("minecraft").join("mods")).map_err(super::ctx("無法建立實例目錄"))?;
+    Ok((instance_id, inst_dir))
+}
+
+/// Copies the pack's own icon (or a Prism icon) to `icon.png` and records its source in `cfg`.
+fn set_pack_icon(archive_bytes: &[u8], inst_dir: &Path, cfg: &mut InstanceDiskConfig) {
+    const MAX_ICON_BYTES: u64 = 8 * 1024 * 1024;
+    let mut found: Option<(Vec<u8>, &str)> = None;
+    if let Ok(mut zip) = zip::ZipArchive::new(std::io::Cursor::new(archive_bytes)) {
+        for icon_name in ["icon.png", "logo.png", "modpack.png", "cover.png"] {
+            let Ok(file) = zip.by_name(icon_name) else { continue };
+            let mut buf = Vec::new();
+            if file.take(MAX_ICON_BYTES).read_to_end(&mut buf).is_ok() {
+                found = Some((buf, "modpack"));
+                break;
+            }
+        }
+    }
+    if found.is_none() {
+        if let Ok((_, Some(icon))) = focusite_modpacks::prism::extract_prism_metadata(archive_bytes) {
+            found = Some((icon, "prism"));
+        }
+    }
+    if let Some((bytes, source)) = found {
+        if std::fs::write(inst_dir.join("icon.png"), bytes).is_ok() {
+            cfg.icon_source = Some(source.into());
+            cfg.icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
+        }
+    }
+}
+
+/// Runs the download jobs four at a time. Returns the missing-mod entry of every job that failed, so the
+/// import can finish and the user can fetch those files by hand.
+async fn run_pack_jobs<F>(jobs: Vec<(MissingModItem, F)>) -> Result<Vec<MissingModItem>, String>
+where
+    F: Future<Output = Result<(), String>> + Send + 'static,
+{
+    let limit = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
+    let mut set = tokio::task::JoinSet::new();
+    for (missing, job) in jobs {
+        let limit = limit.clone();
+        set.spawn(async move {
+            let _permit = limit.acquire_owned().await;
+            (missing, job.await)
+        });
+    }
+    let mut missing_mods = Vec::new();
+    while let Some(done) = set.join_next().await {
+        let (missing, res) = done.map_err(|e| e.to_string())?;
+        if let Err(reason) = res {
+            tracing::warn!("模組包檔案 {} 下載失敗：{}", missing.name, reason);
+            missing_mods.push(missing);
+        }
+    }
+    Ok(missing_mods)
+}
+
+/// Runs `fill` for a freshly created pack instance and deletes the folder when it fails,
+/// so a failed import never leaves a half-made instance behind.
+async fn finish_pack_import(
+    inst_dir: &Path,
+    fill: impl Future<Output = Result<ModpackImportResult, String>>,
+) -> Result<ModpackImportResult, String> {
+    let outcome = fill.await;
+    if outcome.is_err() {
+        let _ = std::fs::remove_dir_all(inst_dir);
+    }
+    outcome
+}
+
+fn cas() -> CasManager {
+    CasManager::new(super::get_app_data_dir().join("cas"))
+}
+
 async fn import_mrpack_internal(
     archive_bytes: &[u8],
     custom_name: Option<String>,
 ) -> Result<ModpackImportResult, String> {
-    let temp_dir = std::env::temp_dir().join(format!("focusite_mrpack_unpack_{}", uuid::Uuid::new_v4()));
-    let temp_mc = temp_dir.join("minecraft");
-    std::fs::create_dir_all(&temp_mc).map_err(super::ctx("無法建立暫存資料夾"))?;
-
-    let (index, _) = unpack_mrpack(archive_bytes, &temp_mc)
-        .map_err(|e| format!("解壓 .mrpack 失敗: {}", e))?;
+    let index = read_mrpack_index(archive_bytes).map_err(|e| format!("解析 .mrpack 失敗: {}", e))?;
 
     let mc_version = index
         .dependencies
@@ -184,179 +267,79 @@ async fn import_mrpack_internal(
         .cloned()
         .unwrap_or_else(|| "1.21.4".into());
 
-    let (loader, loader_version) = if let Some(ver) = index.dependencies.get("fabric-loader") {
-        ("Fabric".to_string(), Some(ver.clone()))
-    } else if let Some(ver) = index.dependencies.get("neoforge") {
-        ("NeoForge".to_string(), Some(ver.clone()))
-    } else if let Some(ver) = index.dependencies.get("forge") {
-        ("Forge".to_string(), Some(ver.clone()))
-    } else if let Some(ver) = index.dependencies.get("quilt-loader") {
-        ("Quilt".to_string(), Some(ver.clone()))
-    } else {
-        ("Vanilla".to_string(), None)
-    };
+    let (loader, loader_version) = [
+        ("fabric-loader", "Fabric"),
+        ("neoforge", "NeoForge"),
+        ("forge", "Forge"),
+        ("quilt-loader", "Quilt"),
+    ]
+    .iter()
+    .find_map(|(key, name)| index.dependencies.get(*key).map(|v| (name.to_string(), Some(v.clone()))))
+    .unwrap_or_else(|| ("Vanilla".to_string(), None));
 
     let name = custom_name.unwrap_or_else(|| index.name.clone());
     // A pack never lands in an existing instance: the folder name is made unique.
-    let instance_id = unique_folder_name(&get_instances_dir(), &name)?;
-
-    let inst_dir = get_instances_dir().join(&instance_id);
+    let (instance_id, inst_dir) = create_pack_instance_dir(&name)?;
     let mc_dir = inst_dir.join("minecraft");
-    std::fs::create_dir_all(&mc_dir)
-        .map_err(|e| format!("無法建立實例目錄: {}", e))?;
 
-    let outcome: Result<ModpackImportResult, String> = async {
-    let _ = std::fs::remove_dir_all(&temp_dir);
-    unpack_mrpack(archive_bytes, &mc_dir).map_err(|e| format!("解壓 .mrpack 失敗: {}", e))?;
+    finish_pack_import(&inst_dir, async {
+        unpack_mrpack(archive_bytes, &mc_dir).map_err(|e| format!("解壓 .mrpack 失敗: {}", e))?;
 
-    // Extract modpack or Prism icon if present
-    let mut icon_source = None;
-    let mut icon_updated_at = None;
-    if let Ok(mut zip) = zip::ZipArchive::new(std::io::Cursor::new(archive_bytes)) {
-        for icon_name in &["icon.png", "logo.png", "modpack.png", "cover.png"] {
-            if let Ok(mut file) = zip.by_name(icon_name) {
-                let icon_target = inst_dir.join("icon.png");
-                if let Ok(mut out) = std::fs::File::create(&icon_target) {
-                    if std::io::copy(&mut file, &mut out).is_ok() {
-                        icon_source = Some("modpack".into());
-                        icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
-                        break;
-                    }
-                }
-            }
-        }
-    }
+        let mut cfg = new_disk_config(&instance_id, &name, &mc_version, &loader, loader_version);
+        cfg.description = index.summary.clone();
+        set_pack_icon(archive_bytes, &inst_dir, &mut cfg);
+        write_instance_config(&inst_dir, &cfg)?;
 
-    if icon_source.is_none() {
-        if let Ok((_, Some(prism_icon))) = focusite_modpacks::prism::extract_prism_metadata(archive_bytes) {
-            let icon_target = inst_dir.join("icon.png");
-            if std::fs::write(&icon_target, prism_icon).is_ok() {
-                icon_source = Some("prism".into());
-                icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
-            }
-        }
-    }
-
-    // Write the instance config
-    let disk_cfg = InstanceDiskConfig {
-        id: instance_id.clone(),
-        name: name.clone(),
-        version: mc_version.clone(),
-        loader: loader.clone(),
-        loader_version,
-        description: index.summary,
-        is_favorite: false,
-        icon_source,
-        icon_updated_at,
-        created_at: chrono::Utc::now().timestamp_millis(),
-        last_played_at: None,
-        show_log_on_launch: false,
-        min_memory_mb: default_min_memory(),
-        max_memory_mb: default_max_memory(),
-        java_path: None,
-        jvm_args: default_jvm_args(),
-        group: None,
-        custom_jvm_args: None,
-        environment_vars: None,
-        total_play_time_ms: 0,
-    };
-    write_instance_config(&inst_dir, &disk_cfg)?;
-
-    // Download mrpack files with CAS deduplication and path traversal validation
-    let cas_dir = super::get_app_data_dir().join("cas");
-    let cas = CasManager::new(&cas_dir);
-
-    // No total time limit: big files on slow links must finish. A stalled connection still fails.
-    let http = reqwest::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(15))
-        .read_timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let mut missing_mods: Vec<MissingModItem> = Vec::new();
-    let mut jobs = Vec::new();
-    for file in index.files {
-        if let Some(ref env) = file.env {
-            if env.client.as_deref() == Some("unsupported") {
+        // Files are checked (allowlisted host, size, SHA-1) and deduplicated through the CAS.
+        let cas = cas();
+        let http = super::http().clone();
+        let mut jobs = Vec::new();
+        for file in index.files {
+            if file.env.as_ref().and_then(|e| e.client.as_deref()) == Some("unsupported") || file.downloads.is_empty() {
                 continue;
             }
-        }
-        if file.downloads.is_empty() {
-            continue;
-        }
 
-        let rel_path_str = file.path.replace('\\', "/");
-        if rel_path_str.starts_with('/') || rel_path_str.contains("..") || rel_path_str.contains(':') {
-            return Err(format!("偵測到非法 mrpack 檔案路徑: {}", file.path));
-        }
+            let rel_path = file.path.replace('\\', "/");
+            if rel_path.starts_with('/') || rel_path.contains("..") || rel_path.contains(':') {
+                return Err(format!("偵測到非法 mrpack 檔案路徑: {}", file.path));
+            }
+            let target = mc_dir.join(&rel_path);
+            if !target.starts_with(&mc_dir) {
+                return Err(format!("檔案路徑逃逸出實例目錄: {}", file.path));
+            }
+            if let Some(parent) = target.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if target.exists() {
+                continue;
+            }
 
-        let target_path = mc_dir.join(&rel_path_str);
-        if !target_path.starts_with(&mc_dir) {
-            return Err(format!("檔案路徑逃逸出實例目錄: {}", file.path));
-        }
-
-        if let Some(parent) = target_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-
-        if target_path.exists() {
-            continue;
-        }
-        jobs.push((
-            file.path,
-            rel_path_str,
-            file.downloads[0].clone(),
-            file.hashes.get("sha1").cloned(),
-            file.file_size,
-            target_path,
-        ));
-    }
-
-    // Four downloads at a time; results are collected in the order they finish.
-    let limit = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
-    let mut set = tokio::task::JoinSet::new();
-    for (path, rel, url, sha1, size, target) in jobs {
-        let (http, cas, limit) = (http.clone(), cas.clone(), limit.clone());
-        set.spawn(async move {
-            let _permit = limit.acquire_owned().await;
-            let res = fetch_pack_file(&http, &cas, &url, sha1.as_deref(), size, &target).await;
-            (path, rel, url, res)
-        });
-    }
-    while let Some(done) = set.join_next().await {
-        let (path, rel_path_str, url, res) = done.map_err(|e| e.to_string())?;
-        if let Err(reason) = res {
-            // The import goes on; the file is listed so the user can fetch it by hand.
-            tracing::warn!("模組包檔案 {} 下載失敗：{}", path, reason);
-            let file_name = rel_path_str.rsplit('/').next().unwrap_or(&rel_path_str).to_string();
-            missing_mods.push(MissingModItem {
+            let url = file.downloads[0].clone();
+            let file_name = rel_path.rsplit('/').next().unwrap_or(&rel_path).to_string();
+            let missing = MissingModItem {
                 project_id: 0,
                 file_id: 0,
                 name: file_name.clone(),
                 file_name,
                 // Only links the allowlist accepts are offered for opening in the browser.
-                web_url: if super::workshop::validate_download_url(&url).is_ok() { url } else { String::new() },
-                rel_path: rel_path_str,
-            });
+                web_url: if super::workshop::validate_download_url(&url).is_ok() { url.clone() } else { String::new() },
+                rel_path,
+            };
+            let (http, cas, sha1, size) = (http.clone(), cas.clone(), file.hashes.get("sha1").cloned(), file.file_size);
+            jobs.push((missing, async move { fetch_pack_file(&http, &cas, &url, sha1.as_deref(), size, &target).await }));
         }
-    }
 
-    let is_completed = missing_mods.is_empty();
-    Ok(ModpackImportResult {
-        instance_id: instance_id.clone(),
-        instance_name: name,
-        version: mc_version,
-        loader,
-        missing_mods,
-        is_completed,
+        let missing_mods = run_pack_jobs(jobs).await?;
+        Ok(ModpackImportResult {
+            instance_id: instance_id.clone(),
+            instance_name: name.clone(),
+            version: mc_version.clone(),
+            loader: loader.clone(),
+            is_completed: missing_mods.is_empty(),
+            missing_mods,
+        })
     })
-    }
-    .await;
-
-    if outcome.is_err() {
-        let _ = std::fs::remove_dir_all(&inst_dir);
-    }
-    outcome
+    .await
 }
 
 /// Size limit for a pack file whose index entry does not state one.
@@ -394,217 +377,144 @@ async fn fetch_pack_file(
     Ok(())
 }
 
+/// Resolves one CurseForge file through the API, then downloads it with the same checks as .mrpack files.
+async fn fetch_curseforge_file(
+    http: &reqwest::Client,
+    cas: &CasManager,
+    api_key: &str,
+    project_id: u32,
+    file_id: u32,
+    mods_dir: &Path,
+) -> Result<(), String> {
+    let api_url = format!("https://api.curseforge.com/v1/mods/{}/files/{}", project_id, file_id);
+    let info: CurseForgeFileResponse = http
+        .get(&api_url)
+        .header("x-api-key", api_key)
+        .send()
+        .await
+        .map_err(super::ctx("無法連線至 CurseForge"))?
+        .error_for_status()
+        .map_err(super::ctx("CurseForge 回應錯誤"))?
+        .json()
+        .await
+        .map_err(super::ctx("CurseForge 資料格式錯誤"))?;
+    let file_name = Path::new(&info.data.file_name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    validate_safe_filename(file_name)?;
+    let url = info.data.download_url.as_deref().ok_or("作者未開放第三方下載")?;
+    let sha1 = info.data.hashes.iter().find(|h| h.algo == 1).map(|h| h.value.as_str());
+    fetch_pack_file(http, cas, url, sha1, info.data.file_length, &mods_dir.join(file_name)).await
+}
+
+/// Maps a CurseForge loader id such as `forge-47.2.0` to our loader name and version.
+fn curseforge_loader(id: &str) -> (String, Option<String>) {
+    let lower = id.to_lowercase();
+    for (prefix, name) in [("neoforge-", "NeoForge"), ("forge-", "Forge"), ("fabric-", "Fabric"), ("quilt-", "Quilt")] {
+        if lower.starts_with(prefix) {
+            return (name.to_string(), Some(id[prefix.len()..].to_string()));
+        }
+    }
+    ("Vanilla".to_string(), None)
+}
+
 async fn import_curseforge_internal(
     archive_bytes: &[u8],
     custom_name: Option<String>,
 ) -> Result<ModpackImportResult, String> {
-    let temp_dir = std::env::temp_dir().join(format!("focusite_cf_unpack_{}", uuid::Uuid::new_v4()));
-    let temp_mc = temp_dir.join("minecraft");
-    std::fs::create_dir_all(&temp_mc).map_err(super::ctx("無法建立暫存資料夾"))?;
-
-    let (manifest, modlist_map, _) = unpack_curseforge_pack(archive_bytes, &temp_mc)
-        .map_err(|e| format!("解壓 CurseForge 模組包失敗: {}", e))?;
-    let _ = std::fs::remove_dir_all(&temp_dir);
+    let (manifest, modlist_map) =
+        read_curseforge_manifest(archive_bytes).map_err(|e| format!("解析 CurseForge 模組包失敗: {}", e))?;
 
     let mc_version = manifest.minecraft.version.clone();
-    let (loader, loader_version) = if let Some(primary) = manifest
+    let (loader, loader_version) = manifest
         .minecraft
         .mod_loaders
         .iter()
         .find(|l| l.primary)
         .or_else(|| manifest.minecraft.mod_loaders.first())
-    {
-        let id_lower = primary.id.to_lowercase();
-        if id_lower.starts_with("forge-") {
-            ("Forge".to_string(), Some(primary.id.replace("forge-", "")))
-        } else if id_lower.starts_with("neoforge-") {
-            ("NeoForge".to_string(), Some(primary.id.replace("neoforge-", "")))
-        } else if id_lower.starts_with("fabric-") {
-            ("Fabric".to_string(), Some(primary.id.replace("fabric-", "")))
-        } else if id_lower.starts_with("quilt-") {
-            ("Quilt".to_string(), Some(primary.id.replace("quilt-", "")))
-        } else {
-            ("Vanilla".to_string(), None)
-        }
-    } else {
-        ("Vanilla".to_string(), None)
-    };
+        .map(|l| curseforge_loader(&l.id))
+        .unwrap_or_else(|| ("Vanilla".to_string(), None));
 
     let name = custom_name.unwrap_or_else(|| manifest.name.clone());
-    let instance_id = unique_folder_name(&get_instances_dir(), &name)?;
-
-    let inst_dir = get_instances_dir().join(&instance_id);
+    let (instance_id, inst_dir) = create_pack_instance_dir(&name)?;
     let mc_dir = inst_dir.join("minecraft");
     let mods_dir = mc_dir.join("mods");
-    std::fs::create_dir_all(&mods_dir)
-        .map_err(|e| format!("無法建立實例 mods 目錄: {}", e))?;
-    let outcome: Result<ModpackImportResult, String> = async {
 
-    // Unpack overrides into instance
-    unpack_curseforge_pack(archive_bytes, &mc_dir).map_err(|e| format!("解壓 CurseForge 模組包失敗: {}", e))?;
+    finish_pack_import(&inst_dir, async {
+        unpack_curseforge_overrides(archive_bytes, &manifest, &mc_dir)
+            .map_err(|e| format!("解壓 CurseForge 模組包失敗: {}", e))?;
 
-    // Extract modpack or Prism icon if present
-    let mut icon_source = None;
-    let mut icon_updated_at = None;
-    if let Ok(mut zip) = zip::ZipArchive::new(std::io::Cursor::new(archive_bytes)) {
-        for icon_name in &["icon.png", "logo.png", "modpack.png", "cover.png"] {
-            if let Ok(mut file) = zip.by_name(icon_name) {
-                let icon_target = inst_dir.join("icon.png");
-                if let Ok(mut out) = std::fs::File::create(&icon_target) {
-                    if std::io::copy(&mut file, &mut out).is_ok() {
-                        icon_source = Some("modpack".into());
-                        icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
-                        break;
-                    }
-                }
-            }
-        }
-    }
+        let mut cfg = new_disk_config(&instance_id, &name, &mc_version, &loader, loader_version);
+        cfg.description = Some(format!("由 CurseForge 模組包「{}」導入", manifest.name));
+        set_pack_icon(archive_bytes, &inst_dir, &mut cfg);
+        write_instance_config(&inst_dir, &cfg)?;
 
-    if icon_source.is_none() {
-        if let Ok((_, Some(prism_icon))) = focusite_modpacks::prism::extract_prism_metadata(archive_bytes) {
-            let icon_target = inst_dir.join("icon.png");
-            if std::fs::write(&icon_target, prism_icon).is_ok() {
-                icon_source = Some("prism".into());
-                icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
-            }
-        }
-    }
-
-    // Write the instance config
-    let disk_cfg = InstanceDiskConfig {
-        id: instance_id.clone(),
-        name: name.clone(),
-        version: mc_version.clone(),
-        loader: loader.clone(),
-        loader_version,
-        description: Some(format!("由 CurseForge 模組包「{}」導入", manifest.name)),
-        is_favorite: false,
-        icon_source,
-        icon_updated_at,
-        created_at: chrono::Utc::now().timestamp_millis(),
-        last_played_at: None,
-        show_log_on_launch: false,
-        min_memory_mb: default_min_memory(),
-        max_memory_mb: default_max_memory(),
-        java_path: None,
-        jvm_args: default_jvm_args(),
-        group: None,
-        custom_jvm_args: None,
-        environment_vars: None,
-        total_play_time_ms: 0,
-    };
-    write_instance_config(&inst_dir, &disk_cfg)?;
-
-    let cas_dir = super::get_app_data_dir().join("cas");
-    let cas = CasManager::new(&cas_dir);
-
-    // Resolve mods with CurseForge API or build MissingModItem list
-    let settings = load_settings_from_disk();
-    let api_key = settings.curseforge_api_key.as_deref();
-
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let mut missing_mods: Vec<MissingModItem> = Vec::new();
-
-    for file_ref in manifest.files {
-        let mut downloaded = false;
-
-        if let Some(key) = api_key {
-            let api_url = format!(
-                "https://api.curseforge.com/v1/mods/{}/files/{}",
-                file_ref.project_id, file_ref.file_id
-            );
-            if let Ok(resp) = http.get(&api_url).header("x-api-key", key).send().await {
-                if let Ok(file_info) = resp.json::<CurseForgeFileResponse>().await {
-                    let raw_fname = Path::new(&file_info.data.file_name)
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("mod.jar");
-
-                    if validate_safe_filename(raw_fname).is_ok() {
-                        if let Some(dl_url) = file_info.data.download_url {
-                            let target_file = mods_dir.join(raw_fname);
-                            if let Ok(dl_resp) = http.get(&dl_url).send().await {
-                                if let Ok(bytes) = dl_resp.bytes().await {
-                                    if let Ok(cas_hash) = cas.store_bytes(&bytes, None) {
-                                        if cas.link_to_instance(&cas_hash, &target_file).is_ok() {
-                                            downloaded = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if !downloaded {
-            let (matched_name, web_url) = if let Some((url, name)) = modlist_map
+        let api_key = load_settings_from_disk().curseforge_api_key;
+        let (cas, http) = (cas(), super::http().clone());
+        let mut missing_mods = Vec::new();
+        let mut jobs = Vec::new();
+        for file_ref in &manifest.files {
+            let (matched_name, web_url) = modlist_map
                 .iter()
                 .find(|(url, _)| {
                     url.contains(&format!("/{}", file_ref.project_id))
                         || url.contains(&format!("projects/{}", file_ref.project_id))
-                }) {
-                    (name.clone(), url.clone())
-                } else {
+                })
+                .map(|(url, name)| (name.clone(), url.clone()))
+                .unwrap_or_else(|| {
                     (
                         format!("Mod #{}", file_ref.project_id),
                         format!("https://www.curseforge.com/projects/{}", file_ref.project_id),
                     )
-                };
-
+                });
             let safe_mod_name = matched_name.replace(['<', '>', ':', '"', '/', '\\', '|', '?', '*'], "_");
-            missing_mods.push(MissingModItem {
+            let missing = MissingModItem {
                 project_id: file_ref.project_id,
                 file_id: file_ref.file_id,
                 name: matched_name,
                 file_name: format!("{}-{}.jar", safe_mod_name.replace(' ', "-"), file_ref.file_id),
                 web_url,
                 rel_path: String::new(),
-            });
+            };
+            // Without an API key nothing can be resolved: every mod is listed for manual download.
+            let Some(key) = api_key.clone() else {
+                missing_mods.push(missing);
+                continue;
+            };
+            let (http, cas, mods_dir) = (http.clone(), cas.clone(), mods_dir.clone());
+            let (project_id, file_id) = (file_ref.project_id, file_ref.file_id);
+            jobs.push((missing, async move {
+                fetch_curseforge_file(&http, &cas, &key, project_id, file_id, &mods_dir).await
+            }));
         }
-    }
+        missing_mods.extend(run_pack_jobs(jobs).await?);
 
-    let is_completed = missing_mods.is_empty();
-
-    Ok(ModpackImportResult {
-        instance_id: instance_id.clone(),
-        instance_name: name,
-        version: mc_version,
-        loader,
-        missing_mods,
-        is_completed,
+        Ok(ModpackImportResult {
+            instance_id: instance_id.clone(),
+            instance_name: name.clone(),
+            version: mc_version.clone(),
+            loader: loader.clone(),
+            is_completed: missing_mods.is_empty(),
+            missing_mods,
+        })
     })
-    }
-    .await;
-
-    // A failed import must not leave a half-made instance behind.
-    if outcome.is_err() {
-        let _ = std::fs::remove_dir_all(&inst_dir);
-    }
-    outcome
+    .await
 }
 
 #[tauri::command]
-pub fn rescan_instance_missing_mods(
+pub async fn rescan_instance_missing_mods(
     instance_id: String,
     missing_mods: Vec<MissingModItem>,
 ) -> Result<Vec<MissingModItem>, String> {
     validate_safe_id(&instance_id)?;
-    let mc_dir = get_instances_dir().join(&instance_id).join("minecraft");
-    let remaining = cf_rescan(&mc_dir, &missing_mods);
+    tokio::task::spawn_blocking(move || {
+        let mc_dir = get_instances_dir().join(&instance_id).join("minecraft");
+        let remaining = cf_rescan(&mc_dir, &missing_mods);
 
-    // Ingest all present mods into CAS for global deduplication
-    let mods_dir = mc_dir.join("mods");
-    if mods_dir.is_dir() {
-        let cas_dir = super::get_app_data_dir().join("cas");
-        let cas = CasManager::new(&cas_dir);
-        if let Ok(entries) = std::fs::read_dir(&mods_dir) {
+        // Ingest all present mods into CAS for global deduplication
+        let cas = cas();
+        if let Ok(entries) = std::fs::read_dir(mc_dir.join("mods")) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_file() {
@@ -612,9 +522,10 @@ pub fn rescan_instance_missing_mods(
                 }
             }
         }
-    }
-
-    Ok(remaining)
+        remaining
+    })
+    .await
+    .map_err(|e| format!("背景工作執行失敗：{}", e))
 }
 
 #[tauri::command]
@@ -658,5 +569,13 @@ mod tests {
         assert!(no_hash.unwrap_err().contains("SHA-1"));
         assert!(!target.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn curseforge_loader_ids_map_to_loader_and_version() {
+        assert_eq!(curseforge_loader("forge-47.2.0"), ("Forge".into(), Some("47.2.0".into())));
+        assert_eq!(curseforge_loader("neoforge-21.1.5"), ("NeoForge".into(), Some("21.1.5".into())));
+        assert_eq!(curseforge_loader("fabric-0.15.7"), ("Fabric".into(), Some("0.15.7".into())));
+        assert_eq!(curseforge_loader("unknown"), ("Vanilla".into(), None));
     }
 }

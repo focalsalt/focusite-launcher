@@ -1,6 +1,7 @@
 //! Live Mojang Version Manifest service communicating with official endpoints and BMCLAPI.
 
 import { invoke } from "@tauri-apps/api/core";
+import { isTauri } from "@/lib/tauri";
 
 export interface VersionSummary {
   id: string;
@@ -30,10 +31,6 @@ export interface VersionManifest {
   };
   assets?: string;
 }
-
-const isTauri = (): boolean => {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-};
 
 export const manifestService = {
   /**

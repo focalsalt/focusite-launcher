@@ -38,6 +38,9 @@ impl PrismInstanceCfg {
 }
 
 /// Extracts Prism/MultiMC icon or config from zip archive bytes.
+/// Size cap for the config and icon read from an untrusted archive.
+const MAX_SMALL_FILE: u64 = 8 * 1024 * 1024;
+
 pub fn extract_prism_metadata(archive_bytes: &[u8]) -> Result<(PrismInstanceCfg, Option<Vec<u8>>), ModpackError> {
     let mut zip = ZipArchive::new(std::io::Cursor::new(archive_bytes))
         .map_err(|e| ModpackError::InvalidArchive(format!("Failed to open zip archive: {}", e)))?;
@@ -55,14 +58,14 @@ pub fn extract_prism_metadata(archive_bytes: &[u8]) -> Result<(PrismInstanceCfg,
             let name = file.name().replace('\\', "/");
             if name.ends_with("instance.cfg") {
                 let mut content = String::new();
-                if file.read_to_string(&mut content).is_ok() {
+                if (&mut file).take(MAX_SMALL_FILE).read_to_string(&mut content).is_ok() {
                     cfg = PrismInstanceCfg::parse(&content);
                 }
             } else if (name.ends_with(".png") || name.ends_with(".jpg"))
                 && (name.contains("icon") || name.ends_with("/icon.png"))
             {
                 let mut buf = Vec::new();
-                if file.read_to_end(&mut buf).is_ok() {
+                if (&mut file).take(MAX_SMALL_FILE).read_to_end(&mut buf).is_ok() {
                     icon_bytes = Some(buf);
                 }
             }

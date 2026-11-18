@@ -1,5 +1,7 @@
 //! Live Mojang Official Launcher News and Java Patch Notes service fetching from Mojang content servers.
 
+import { isTauri } from "@/lib/tauri";
+
 export interface LauncherNewsItem {
   id: string;
   title: string;
@@ -116,9 +118,6 @@ function stripHtmlToSnippet(html?: string, maxLength = 120): string {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}...`;
 }
-
-const isTauri = (): boolean =>
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 export const newsService = {
   /** Returns the full HTML body of a patch note (inline for the legacy feed, fetched for v2). */

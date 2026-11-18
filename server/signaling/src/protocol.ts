@@ -71,6 +71,25 @@ export const parseClientMessage = (raw: string | ArrayBuffer): ClientMessage | n
   return null;
 };
 
+/** Messages one socket may send per window. Signaling is a handful of messages per connection setup. */
+export const MAX_MESSAGES_PER_WINDOW = 60;
+export const MESSAGE_WINDOW_MS = 10_000;
+
+export interface MessageBudget {
+  windowStart: number;
+  count: number;
+}
+
+/** Counts one message against the socket's budget; false once the socket sends too fast. */
+export const allowMessage = (budget: MessageBudget, now: number): boolean => {
+  if (now - budget.windowStart >= MESSAGE_WINDOW_MS) {
+    budget.windowStart = now;
+    budget.count = 0;
+  }
+  budget.count += 1;
+  return budget.count <= MAX_MESSAGES_PER_WINDOW;
+};
+
 export const sha256Hex = async (text: string): Promise<string> => {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");

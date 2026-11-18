@@ -61,13 +61,33 @@ impl ContentAddressableStorage {
             }
         }
 
-        let target_path = self.object_path(&calculated_sha1)?;
+        self.put(&calculated_sha1, |tmp| fs::write(tmp, data))?;
+        Ok(calculated_sha1)
+    }
+
+    /// Writes a new object through a temp file and a rename. An object that already exists is left
+    /// alone: its content is the same by definition, and it is hard-linked into instances, so rewriting
+    /// it in place could truncate those files (or fail while the game holds them open).
+    fn put(&self, sha1: &str, write: impl FnOnce(&Path) -> std::io::Result<()>) -> Result<(), CasError> {
+        let target_path = self.object_path(sha1)?;
+        if target_path.is_file() {
+            return Ok(());
+        }
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent)?;
         }
-
-        fs::write(&target_path, data)?;
-        Ok(calculated_sha1)
+        static NEXT_TMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = NEXT_TMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = target_path.with_extension(format!("{}-{}.tmp", std::process::id(), n));
+        let result = write(&tmp).and_then(|_| fs::rename(&tmp, &target_path));
+        if result.is_err() {
+            let _ = fs::remove_file(&tmp);
+            // Another writer may have stored the same object meanwhile; that is a success.
+            if target_path.is_file() {
+                return Ok(());
+            }
+        }
+        result.map_err(CasError::from)
     }
 
     /// Stores a file from an existing path into CAS by copying and validating its SHA-1 hash.
@@ -104,12 +124,7 @@ impl ContentAddressableStorage {
             }
         }
 
-        let target_path = self.object_path(&calculated_sha1)?;
-        if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        fs::copy(src_path.as_ref(), &target_path)?;
+        self.put(&calculated_sha1, |tmp| fs::copy(src_path.as_ref(), tmp).map(|_| ()))?;
         Ok(calculated_sha1)
     }
 
@@ -158,6 +173,21 @@ mod tests {
         assert!(cas.verify_object(&saved).unwrap());
 
         // Cleanup
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn existing_object_is_never_rewritten() {
+        let temp_dir = std::env::temp_dir().join(format!("fc_cas_keep_{}", std::process::id()));
+        let cas = ContentAddressableStorage::new(&temp_dir);
+        let hash = cas.store(b"jar bytes", None).unwrap();
+        let path = cas.object_path(&hash).unwrap();
+        let before = fs::metadata(&path).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(cas.store(b"jar bytes", None).unwrap(), hash);
+        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), before);
+        let leftovers = fs::read_dir(path.parent().unwrap()).unwrap().count();
+        assert_eq!(leftovers, 1, "no temp file is left behind");
         let _ = fs::remove_dir_all(&temp_dir);
     }
 

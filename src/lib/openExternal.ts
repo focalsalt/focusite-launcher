@@ -1,7 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-
-const isTauri = (): boolean =>
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+import { isTauri } from "@/lib/tauri";
 
 /**
  * Opens an http(s) link in the system browser. `window.open` does nothing useful inside the

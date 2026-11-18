@@ -1,5 +1,16 @@
 import { DurableObject } from "cloudflare:workers";
-import { cleanName, isId, MAX_MEMBERS, parseClientMessage, readTokenProtocol, sameHex, sha256Hex, type Share } from "./protocol.ts";
+import {
+  allowMessage,
+  cleanName,
+  isId,
+  MAX_MEMBERS,
+  type MessageBudget,
+  parseClientMessage,
+  readTokenProtocol,
+  sameHex,
+  sha256Hex,
+  type Share,
+} from "./protocol.ts";
 
 interface Env {
   GROUP: DurableObjectNamespace<GroupRoom>;
@@ -23,6 +34,12 @@ interface Member {
  * The first connection to a group id sets its token (only a hash is stored); later ones must match.
  */
 export class GroupRoom extends DurableObject<Env> {
+  /**
+   * Per-socket message budget. Kept in memory: when the object hibernates the budget restarts, which is
+   * fine because a flooding socket keeps the object awake.
+   */
+  private budgets = new WeakMap<WebSocket, MessageBudget>();
+
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get("Upgrade") !== "websocket") return new Response("Expected WebSocket", { status: 426 });
 
@@ -59,6 +76,13 @@ export class GroupRoom extends DurableObject<Env> {
   }
 
   webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): void {
+    let budget = this.budgets.get(ws);
+    if (!budget) this.budgets.set(ws, (budget = { windowStart: Date.now(), count: 0 }));
+    // Every message wakes this object and is billed, so one client must not be able to send without limit.
+    if (!allowMessage(budget, Date.now())) {
+      ws.close(4008, "Too many messages");
+      return;
+    }
     const me = ws.deserializeAttachment() as Member | null;
     const msg = parseClientMessage(raw);
     if (!me || !msg) return;

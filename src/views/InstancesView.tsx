@@ -534,6 +534,8 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                   clearCachedFiles(deleteTarget.id);
                   onInstanceDeleted?.(deleteTarget.id);
                   setDeleteTarget(null);
+                } catch (err) {
+                  toast(toUserMessage(err), "error");
                 } finally {
                   setIsDeleting(false);
                 }

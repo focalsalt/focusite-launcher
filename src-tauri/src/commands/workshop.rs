@@ -40,11 +40,12 @@ pub fn sanitize_safe_package_filename(filename: &str) -> Result<String, String> 
     Ok(trimmed.to_string())
 }
 
-/// Validates that a download URL strictly uses HTTPS/HTTP from approved reputable CDN domains.
+/// Validates that a download URL uses HTTPS from approved reputable CDN domains. Plain HTTP is refused:
+/// a file without a published hash could otherwise be swapped in transit.
 pub fn validate_download_url(url_str: &str) -> Result<(), String> {
     let parsed = url::Url::parse(url_str).map_err(|e| format!("無效的下載 URL: {}", e))?;
-    if parsed.scheme() != "https" && parsed.scheme() != "http" {
-        return Err("下載協定必須為 HTTP 或 HTTPS".into());
+    if parsed.scheme() != "https" {
+        return Err("下載協定必須為 HTTPS".into());
     }
     let host = parsed.host_str().unwrap_or("");
     let allowed_exact = [
@@ -162,7 +163,7 @@ pub async fn workshop_search_projects(
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<Vec<WorkshopProjectSummary>, String> {
-    let client = reqwest::Client::new();
+    let client = super::http().clone();
     search_projects(
         &client,
         &query,
@@ -179,14 +180,14 @@ pub async fn workshop_search_projects(
 
 #[tauri::command]
 pub async fn workshop_list_categories(project_type: String) -> Result<Vec<WorkshopCategory>, String> {
-    list_categories(&reqwest::Client::new(), &project_type)
+    list_categories(super::http(), &project_type)
         .await
         .map_err(super::ctx("載入分類失敗"))
 }
 
 #[tauri::command]
 pub async fn workshop_get_project(project_id: String) -> Result<WorkshopProjectDetail, String> {
-    get_project_detail(&reqwest::Client::new(), &project_id)
+    get_project_detail(super::http(), &project_id)
         .await
         .map_err(super::ctx("載入專案資訊失敗"))
 }
@@ -198,7 +199,7 @@ pub async fn workshop_list_versions(
     loader: Option<String>,
 ) -> Result<Vec<WorkshopVersionItem>, String> {
     list_project_versions(
-        &reqwest::Client::new(),
+        super::http(),
         &project_id,
         game_version.as_deref(),
         loader.as_deref(),
@@ -217,7 +218,7 @@ pub async fn workshop_resolve_install_plan(
     let cfg = read_instance_config(&inst_dir).map_err(super::ctx("無法讀取實例設定"))?;
     let mods_dir = inst_dir.join("minecraft").join("mods");
 
-    let client = reqwest::Client::new();
+    let client = super::http().clone();
     resolve_install_plan(
         &client,
         &selected_items,
@@ -399,7 +400,7 @@ pub async fn instance_plan_stack_migration(
         return Ok(no_mod_changes(&cfg.version, &cfg.loader, &target_version, &target_loader));
     }
 
-    let client = reqwest::Client::new();
+    let client = super::http().clone();
     plan_stack_migration(
         &client,
         &mods_dir,
@@ -444,7 +445,7 @@ pub async fn instance_execute_stack_migration(
     std::fs::create_dir_all(&mods_dir).map_err(super::ctx("無法建立 mods 資料夾"))?;
 
     // Authoritatively re-generate migration plan on backend to prevent client-side tampering
-    let client = reqwest::Client::new();
+    let client = super::http().clone();
     let is_custom = target_loader.eq_ignore_ascii_case("custom");
     if is_custom {
         let jar = target_loader_version.as_deref().map(str::trim).unwrap_or("");
@@ -614,6 +615,7 @@ mod tests {
         assert!(validate_download_url("https://github.com/evil/repo/releases/download/v1/x.jar").is_err());
         assert!(validate_download_url("https://evil-attacker.com/mod.jar").is_err());
         assert!(validate_download_url("file:///C:/secret.txt").is_err());
+        assert!(validate_download_url("http://cdn.modrinth.com/data/A/versions/B/mod.jar").is_err());
         assert!(validate_download_url("javascript:alert(1)").is_err());
     }
 }

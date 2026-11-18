@@ -30,7 +30,7 @@ pub struct Downloader {
 
 impl Default for Downloader {
     fn default() -> Self {
-        Self::new(Duration::from_secs(3), Duration::from_secs(15), 16)
+        Self::new(Duration::from_secs(10), Duration::from_secs(15), 16)
     }
 }
 
@@ -54,6 +54,7 @@ impl Downloader {
     ) -> Self {
         let client = reqwest::Client::builder()
             .pool_max_idle_per_host(32)
+            .connect_timeout(Duration::from_secs(15))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
@@ -116,7 +117,11 @@ impl Downloader {
             fs::create_dir_all(parent).await?;
         }
 
-        let temp_dest = PathBuf::from(format!("{}.download", dest.to_string_lossy()));
+        // Unique per call: two instances of the same version provisioning at once fetch the same library,
+        // and a shared temp name would let one download overwrite the other's half-written file.
+        static NEXT_TEMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = NEXT_TEMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temp_dest = PathBuf::from(format!("{}.{}-{}.download", dest.to_string_lossy(), std::process::id(), n));
         let candidates = self.get_candidate_urls(url);
         let mut last_error = None;
 
@@ -261,13 +266,7 @@ impl Downloader {
         progress_tx: Option<&mpsc::Sender<DownloadProgress>>,
         task_id: &str,
     ) -> Result<(), DownloadError> {
-        let resp = self
-            .client
-            .get(url)
-            .timeout(timeout)
-            .send()
-            .await?
-            .error_for_status()?;
+        let resp = crate::within(timeout, self.client.get(url).send()).await?.error_for_status()?;
 
         let total_bytes = resp.content_length();
         let mut file = File::create(temp_dest).await?;
@@ -277,7 +276,7 @@ impl Downloader {
         let mut last_report = Instant::now();
 
         let mut stream_resp = resp;
-        while let Some(chunk) = stream_resp.chunk().await? {
+        while let Some(chunk) = crate::within(timeout, stream_resp.chunk()).await? {
             hasher.update(&chunk);
             file.write_all(&chunk).await?;
             downloaded_bytes += chunk.len() as u64;
@@ -377,6 +376,34 @@ impl Downloader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn slow_but_steady_body_finishes_past_the_timeout() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = s.read(&mut buf).await;
+            s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\n").await.unwrap();
+            // 5 pieces 300 ms apart: 1.5 s in total, never more than 0.3 s without data.
+            for _ in 0..5 {
+                s.write_all(&[b'x'; 10]).await.unwrap();
+                s.flush().await.unwrap();
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            }
+        });
+
+        let dl = Downloader::new(Duration::from_secs(1), Duration::from_secs(1), 1);
+        let dest = std::env::temp_dir().join(format!("fc_slow_{}", std::process::id()));
+        let res = dl
+            .download_file_with_size(&format!("http://{addr}/f"), &dest, None, Some(50), None, "slow")
+            .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(std::fs::metadata(&dest).unwrap().len(), 50);
+        let _ = std::fs::remove_file(&dest);
+    }
 
     #[test]
     fn test_official_strict_isolation_no_fallback() {

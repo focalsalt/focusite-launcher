@@ -1,6 +1,7 @@
 //! Modpack import service communicating with Tauri IPC or simulating in development.
 
 import { invoke } from "@tauri-apps/api/core";
+import { isTauri } from "@/lib/tauri";
 
 export interface MissingModItem {
   projectId: number;
@@ -20,10 +21,6 @@ export interface ModpackImportResult {
   missingMods: MissingModItem[];
   isCompleted: boolean;
 }
-
-const isTauri = (): boolean => {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-};
 
 export const modpackService = {
   async importModpack(packPath: string, customName?: string): Promise<ModpackImportResult> {

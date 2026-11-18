@@ -197,6 +197,23 @@ pub async fn fetch_minecraft_profile(
     Ok(profile)
 }
 
+/// Full chain from a Microsoft access token to a Minecraft token and profile
+/// (Xbox Live -> XSTS -> Minecraft Services -> profile). Errors name the step that failed.
+pub async fn login_chain(
+    client: &reqwest::Client,
+    ms_access_token: &str,
+) -> Result<(MinecraftAuthResponse, MinecraftProfileResponse), AuthError> {
+    let step = |name: &'static str| move |e: AuthError| match e {
+        AuthError::NoMinecraftEntitlement => e,
+        other => AuthError::AuthFailed(format!("{name}: {other}")),
+    };
+    let (xbl, _) = authenticate_xbox_live(client, ms_access_token).await.map_err(step("Xbox Live"))?;
+    let (xsts, uhs) = obtain_xsts_token(client, &xbl).await.map_err(step("XSTS"))?;
+    let mc = login_minecraft_with_xbox(client, &uhs, &xsts).await.map_err(step("Minecraft Services"))?;
+    let profile = fetch_minecraft_profile(client, &mc.access_token).await.map_err(step("Minecraft profile"))?;
+    Ok((mc, profile))
+}
+
 /// Public profile model fetched directly from Mojang Session Server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicMinecraftProfile {

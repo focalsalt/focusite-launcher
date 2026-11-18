@@ -197,8 +197,9 @@ async fn handle_message(shared: &Arc<Shared>, bytes: &[u8]) {
             let existing = shared.conns.lock().unwrap().get(&id).map(|c| c.tx.clone());
             let tx = match (existing, shared.target_port) {
                 (Some(tx), _) => Some(tx),
-                // Host: the first frame of a new id opens a connection to the local game.
-                (None, Some(port)) => match shared.register(id) {
+                // Host: the first frame (seq 0) of a new id opens a connection to the local game. A later
+                // frame for an unknown id is a leftover of a connection already closed: it must not reopen it.
+                (None, Some(port)) if frame.seq == 0 => match shared.register(id) {
                     Some((tx, rx, cancel)) => {
                         let shared2 = shared.clone();
                         tokio::spawn(async move {
@@ -212,7 +213,7 @@ async fn handle_message(shared: &Arc<Shared>, bytes: &[u8]) {
                         None
                     }
                 },
-                (None, None) => None,
+                (None, _) => None,
             };
             if let Some(tx) = tx {
                 // A full queue means the local socket cannot keep up: end that connection instead of

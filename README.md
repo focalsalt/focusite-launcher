@@ -52,6 +52,12 @@ cargo test --workspace --manifest-path src-tauri/Cargo.toml
 cargo clippy --workspace --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings
 ```
 
+Microsoft login needs the Azure app's client ID. In development it is read from `MICROSOFT_CLIENT_ID` in `.env`; a release build bakes it in from the build environment, so set it before building:
+
+```powershell
+$env:MICROSOFT_CLIENT_ID = "<your Azure client ID>"; pnpm tauri build
+```
+
 ## Layout
 
 - `src/` – React UI (`views/`, `components/`, `services/` call the Rust commands, `i18n/` zh-TW and en-US)

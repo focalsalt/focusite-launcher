@@ -142,6 +142,14 @@ pub fn get_running_instances() -> Result<Vec<RunningProcessInfo>, String> {
     Ok(map.values().cloned().collect())
 }
 
+/// The UUID offline-mode servers give a player name (Java's `UUID.nameUUIDFromBytes("OfflinePlayer:" + name)`),
+/// so an offline player keeps the same identity, inventory and progress across launches.
+fn offline_uuid(name: &str) -> String {
+    use md5::{Digest, Md5};
+    let hash: [u8; 16] = Md5::digest(format!("OfflinePlayer:{name}")).into();
+    uuid::Builder::from_md5_bytes(hash).into_uuid().to_string()
+}
+
 pub fn get_instance_log_window_label(instance_id: &str) -> String {
     let mut hasher = Sha1::new();
     hasher.update(instance_id.as_bytes());
@@ -219,19 +227,6 @@ pub fn get_instance_log_buffer(instance_id: String) -> Result<Vec<InstanceLogPay
         }
     }
     Ok(Vec::new())
-}
-
-#[tauri::command]
-pub async fn open_instance_log_window(app_handle: AppHandle, instance_id: String) -> Result<(), String> {
-    validate_safe_id(&instance_id)?;
-    let base_dir = get_instances_dir().join(&instance_id);
-    let name = if let Ok(cfg) = super::instance::read_instance_config(&base_dir) {
-        cfg.name
-    } else {
-        instance_id.clone()
-    };
-    ensure_or_create_log_window(&app_handle, &instance_id, &name)?;
-    Ok(())
 }
 
 #[tauri::command]
@@ -440,7 +435,7 @@ pub async fn launch_instance(
             Ok(creds) => creds,
             Err(_) => {
                 if let Some(ref name) = account_name {
-                    (name.clone(), uuid::Uuid::new_v4().to_string(), "0".into(), "legacy".into())
+                    (name.clone(), offline_uuid(name), "0".into(), "legacy".into())
                 } else {
                     return Err("尚未登入微軟帳號，也未指定離線玩家名稱".to_string());
                 }
@@ -476,11 +471,7 @@ pub async fn launch_instance(
     let min_memory = instance_config.min_memory_mb;
     let max_memory = instance_config.max_memory_mb;
     let jvm_args_list: Vec<String> = if instance_config.jvm_args.is_empty() {
-        vec![
-            "-XX:+UseG1GC".into(),
-            "-XX:+ParallelRefProcEnabled".into(),
-            "-XX:MaxGCPauseMillis=200".into(),
-        ]
+        super::instance::default_jvm_args()
     } else {
         instance_config.jvm_args.clone()
     };
@@ -567,12 +558,17 @@ pub async fn launch_instance(
             inherits_from: None,
         };
 
+        // A version file that exists but cannot be read is an error: launching with an empty library
+        // list would only end in a ClassNotFoundException the user cannot act on.
+        let read_manifest = |path: &std::path::Path| -> Result<VersionManifest, String> {
+            let content = std::fs::read_to_string(path)
+                .map_err(|e| format!("無法讀取版本檔 {}：{}", path.display(), e))?;
+            serde_json::from_str(&content).map_err(|e| {
+                format!("版本檔 {} 已損毀（{}），請刪除後重新安裝此版本", path.display(), e)
+            })
+        };
         let mut manifest = if manifest_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(&manifest_path) {
-                serde_json::from_str::<VersionManifest>(&content).unwrap_or_else(|_| default_manifest())
-            } else {
-                default_manifest()
-            }
+            read_manifest(&manifest_path)?
         } else {
             default_manifest()
         };
@@ -584,11 +580,7 @@ pub async fn launch_instance(
                 .join(parent_id)
                 .join(format!("{}.json", parent_id));
             if parent_path.is_file() {
-                if let Ok(parent_content) = std::fs::read_to_string(&parent_path) {
-                    if let Ok(parent_manifest) = serde_json::from_str::<VersionManifest>(&parent_content) {
-                        manifest = manifest.merge_parent(&parent_manifest);
-                    }
-                }
+                manifest = manifest.merge_parent(&read_manifest(&parent_path)?);
             }
         }
 
@@ -773,6 +765,14 @@ pub async fn launch_instance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn offline_uuid_is_stable_name_based_v3() {
+        let a = offline_uuid("Steve");
+        assert_eq!(a, offline_uuid("Steve"));
+        assert_ne!(a, offline_uuid("Alex"));
+        assert_eq!(uuid::Uuid::parse_str(&a).unwrap().get_version_num(), 3);
+    }
 
     #[test]
     fn test_running_process_map_lifecycle() {

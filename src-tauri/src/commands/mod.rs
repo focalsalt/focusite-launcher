@@ -47,6 +47,30 @@ pub mod theme;
 pub mod workshop;
 pub mod world;
 
+/// Shared HTTP client: one connection pool, a User-Agent, and timeouts so a stalled server never hangs a
+/// command. There is no total time limit, so large but steady downloads still finish.
+pub fn http() -> &'static reqwest::Client {
+    static CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
+        reqwest::Client::builder()
+            .user_agent(concat!("Focusite-Launcher/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .read_timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_default()
+    });
+    &CLIENT
+}
+
+/// Runs blocking disk work on a worker thread. Synchronous Tauri commands run on the main thread,
+/// so long copies, deletes or image work there would freeze the window.
+pub async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| format!("背景工作執行失敗：{}", e))?
+}
+
 /// Builds a `map_err` adapter that prefixes a short Chinese action description to the cause.
 pub fn ctx<E: std::fmt::Display>(prefix: &'static str) -> impl Fn(E) -> String {
     move |e| format!("{}：{}", prefix, e)

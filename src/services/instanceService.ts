@@ -2,6 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { LoaderType, MinecraftInstance, PackFileInfo } from "@/types/navigation";
+import { isTauri } from "@/lib/tauri";
 
 export interface ModFileInfo {
   filename: string;
@@ -78,10 +79,6 @@ export interface ServerPingResult {
   favicon_base64?: string;
 }
 
-const isTauri = (): boolean => {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-};
-
 const LOCAL_STORAGE_KEY = "focusite_instances_v26";
 
 export const instanceService = {
@@ -90,11 +87,7 @@ export const instanceService = {
    */
   async listInstances(): Promise<MinecraftInstance[]> {
     if (isTauri()) {
-      try {
-        return await invoke<MinecraftInstance[]>("list_instances");
-      } catch (err) {
-        console.error("Tauri list_instances failed:", err);
-      }
+      return await invoke<MinecraftInstance[]>("list_instances");
     }
 
     // Browser development persistence (no fake seed data)
@@ -227,11 +220,7 @@ export const instanceService = {
     target: "mods" | "coremods" | "saves" | "screenshots" | "resourcepacks" | "texturepacks" | "shaderpacks" | "minecraft" | "root" = "root"
   ): Promise<void> {
     if (isTauri()) {
-      try {
-        await invoke("open_instance_directory", { instanceId, target });
-      } catch (err) {
-        console.error("Tauri open_instance_directory failed:", err);
-      }
+      await invoke("open_instance_directory", { instanceId, target });
     }
   },
 
@@ -257,12 +246,8 @@ export const instanceService = {
    */
   async deleteInstance(id: string): Promise<void> {
     if (isTauri()) {
-      try {
-        await invoke("delete_instance", { id });
-        return;
-      } catch (err) {
-        console.error("Tauri delete_instance failed:", err);
-      }
+      await invoke("delete_instance", { id });
+      return;
     }
 
     const current = await this.listInstances();
@@ -275,75 +260,33 @@ export const instanceService = {
    */
   async listInstanceMods(instanceId: string): Promise<ModFileInfo[]> {
     if (isTauri()) {
-      try {
-        return await invoke<ModFileInfo[]>("list_instance_mods", {
-          instanceId,
-        });
-      } catch (err) {
-        console.error("Tauri list_instance_mods failed:", err);
-      }
+      return await invoke<ModFileInfo[]>("list_instance_mods", {
+        instanceId,
+      });
     }
     return [];
   },
 
-  /**
-   * Scans and returns world saves names in the instance's saves directory.
-   */
-  async listInstanceSaves(instanceId: string): Promise<string[]> {
-    if (isTauri()) {
-      try {
-        return await invoke<string[]>("list_instance_saves", {
-          instanceId,
-        });
-      } catch (err) {
-        console.error("Tauri list_instance_saves failed:", err);
-      }
-    }
-    return [];
-  },
 
   /**
    * Scans and returns screenshots in the instance's screenshots directory.
    */
   async listInstanceScreenshots(instanceId: string): Promise<ScreenshotFileInfo[]> {
     if (isTauri()) {
-      try {
-        return await invoke<ScreenshotFileInfo[]>("list_instance_screenshots", {
-          instanceId,
-        });
-      } catch (err) {
-        console.error("Tauri list_instance_screenshots failed:", err);
-      }
+      return await invoke<ScreenshotFileInfo[]>("list_instance_screenshots", {
+        instanceId,
+      });
     }
     return [];
   },
 
-  /**
-   * Reads real logs from .minecraft/logs/latest.log.
-   */
-  async getInstanceLog(instanceId: string): Promise<string> {
-    if (isTauri()) {
-      try {
-        return await invoke<string>("get_instance_log", {
-          instanceId,
-        });
-      } catch (err) {
-        console.error("Tauri get_instance_log failed:", err);
-      }
-    }
-    return "";
-  },
 
   /**
    * Scans and returns detected system Java environments.
    */
   async listSystemJavas(): Promise<JavaInstallationDto[]> {
     if (isTauri()) {
-      try {
-        return await invoke<JavaInstallationDto[]>("list_system_javas");
-      } catch (err) {
-        console.error("Tauri list_system_javas failed:", err);
-      }
+      return await invoke<JavaInstallationDto[]>("list_system_javas");
     }
     return [];
   },
@@ -388,13 +331,9 @@ export const instanceService = {
     instanceId: string
   ): Promise<{ pid: number; instance_id: string; accountId?: string; accountName?: string } | null> {
     if (isTauri()) {
-      try {
-        return await invoke("get_instance_running_status", {
-          instanceId,
-        });
-      } catch (err) {
-        console.error("Tauri get_instance_running_status failed:", err);
-      }
+      return await invoke("get_instance_running_status", {
+        instanceId,
+      });
     }
     return null;
   },
@@ -406,11 +345,7 @@ export const instanceService = {
     Array<{ pid: number; instance_id: string; accountId?: string; accountName?: string }>
   > {
     if (isTauri()) {
-      try {
-        return await invoke("get_running_instances");
-      } catch (err) {
-        console.error("Tauri get_running_instances failed:", err);
-      }
+      return await invoke("get_running_instances");
     }
     return [];
   },
@@ -495,11 +430,7 @@ export const instanceService = {
    */
   async listInstanceCoremods(instanceId: string): Promise<ModFileInfo[]> {
     if (isTauri()) {
-      try {
-        return await invoke<ModFileInfo[]>("list_instance_coremods", { instanceId });
-      } catch (err) {
-        console.error("Tauri list_instance_coremods failed:", err);
-      }
+      return await invoke<ModFileInfo[]>("list_instance_coremods", { instanceId });
     }
     return [];
   },
@@ -518,11 +449,7 @@ export const instanceService = {
    */
   async listInstanceResourcepacks(instanceId: string): Promise<PackFileInfo[]> {
     if (isTauri()) {
-      try {
-        return await invoke<PackFileInfo[]>("list_instance_resourcepacks", { instanceId });
-      } catch (err) {
-        console.error("Tauri list_instance_resourcepacks failed:", err);
-      }
+      return await invoke<PackFileInfo[]>("list_instance_resourcepacks", { instanceId });
     }
     return [];
   },
@@ -532,54 +459,22 @@ export const instanceService = {
    */
   async listInstanceShaderpacks(instanceId: string): Promise<PackFileInfo[]> {
     if (isTauri()) {
-      try {
-        return await invoke<PackFileInfo[]>("list_instance_shaderpacks", { instanceId });
-      } catch (err) {
-        console.error("Tauri list_instance_shaderpacks failed:", err);
-      }
+      return await invoke<PackFileInfo[]>("list_instance_shaderpacks", { instanceId });
     }
     return [];
   },
 
-  /**
-   * Updates an instance's preference for showing the console window on launch.
-   */
-  async setInstanceShowLog(instanceId: string, showLog: boolean): Promise<void> {
-    if (isTauri()) {
-      try {
-        await invoke("set_instance_show_log", { instanceId, showLog });
-      } catch (err) {
-        console.error("Tauri set_instance_show_log failed:", err);
-      }
-    }
-  },
 
   /**
    * Fetches the in-memory buffered logs for a specific instance.
    */
   async getInstanceLogBuffer(instanceId: string): Promise<InstanceLogEvent[]> {
     if (isTauri()) {
-      try {
-        return await invoke<InstanceLogEvent[]>("get_instance_log_buffer", { instanceId });
-      } catch (err) {
-        console.error("Tauri get_instance_log_buffer failed:", err);
-      }
+      return await invoke<InstanceLogEvent[]>("get_instance_log_buffer", { instanceId });
     }
     return [];
   },
 
-  /**
-   * Opens or reveals the dedicated log window for a specific instance.
-   */
-  async openInstanceLogWindow(instanceId: string): Promise<void> {
-    if (isTauri()) {
-      try {
-        await invoke("open_instance_log_window", { instanceId });
-      } catch (err) {
-        console.error("Tauri open_instance_log_window failed:", err);
-      }
-    }
-  },
 
   /**
    * Sets instance icon from a local image file (PNG/JPG/WebP/ICO/GIF).

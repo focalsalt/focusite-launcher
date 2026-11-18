@@ -248,9 +248,7 @@ fn import_into(base: &Path, source: &Path, custom_name: Option<String>) -> Resul
 
 /// Copies a Prism / PCL instance folder into a new instance.
 pub async fn import_instance_dir(source: PathBuf, custom_name: Option<String>) -> Result<ModpackImportResult, String> {
-    tokio::task::spawn_blocking(move || import_blocking(&source, custom_name))
-        .await
-        .map_err(|e| format!("背景工作執行失敗：{e}"))?
+    super::blocking(move || import_blocking(&source, custom_name)).await
 }
 
 #[cfg(test)]

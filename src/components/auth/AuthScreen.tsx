@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ShieldCheck,
@@ -13,148 +13,41 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { authService, DeviceCodeInfo } from "@/services/authService";
 import { UserAccount } from "@/types/navigation";
-import { openExternal } from "@/lib/openExternal";
-import { toUserMessage } from "@/lib/errorMessage";
-import { toast } from "@/lib/toast";
 import { useAppVersion } from "@/lib/useAppVersion";
 import { useI18n } from "@/i18n";
+import { useDeviceCodeLogin } from "./useDeviceCodeLogin";
 
 interface AuthScreenProps {
   onLoginSuccess: (account: UserAccount) => void;
 }
 
-type ErrorCategory = "missing_config" | "expired" | "general";
-
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const { t } = useI18n();
   const appVersion = useAppVersion();
   const [stage, setStage] = useState<"welcome" | "device_code">("welcome");
-  const [deviceInfo, setDeviceInfo] = useState<DeviceCodeInfo | null>(null);
-  const [isStarting, setIsStarting] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [errorCategory, setErrorCategory] = useState<ErrorCategory | null>(null);
-  const [isCopied, setIsCopied] = useState<boolean>(false);
-  const [pollingStatus, setPollingStatus] = useState<string>(t.auth.waiting);
-  const pollTimerRef = useRef<number | null>(null);
-  // Only the newest request may show its code; a second start (double click, StrictMode) must not swap it.
-  const startSeqRef = useRef<number>(0);
+  const {
+    deviceInfo,
+    isStarting,
+    errorMessage,
+    errorCategory,
+    isCopied,
+    pollingStatus,
+    start,
+    reset,
+    copyCode: handleCopyCode,
+    openVerificationPage: handleOpenBrowser,
+  } = useDeviceCodeLogin(onLoginSuccess);
 
-  const startLoginFlow = async () => {
-    const seq = ++startSeqRef.current;
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
+  const startLoginFlow = () => {
     setStage("device_code");
-    setIsStarting(true);
-    setErrorMessage(null);
-    setErrorCategory(null);
-    setDeviceInfo(null);
-    setPollingStatus(t.auth.requestingCode);
-
-    try {
-      const info = await authService.startDeviceCode();
-      if (seq !== startSeqRef.current) return;
-      setDeviceInfo(info);
-      setPollingStatus(t.auth.waitingBrowser);
-      startPolling(info.device_code, info.interval || 5);
-    } catch (err: unknown) {
-      if (seq !== startSeqRef.current) return;
-      const msg = toUserMessage(err);
-      const isMissing =
-        msg.toLowerCase().includes("client_id") ||
-        msg.toLowerCase().includes("missingclientid");
-      setErrorCategory(isMissing ? "missing_config" : "general");
-      setErrorMessage(
-        isMissing
-          ? t.auth.missingClientId
-          : msg
-      );
-      setPollingStatus(t.auth.startFailed);
-    } finally {
-      if (seq === startSeqRef.current) setIsStarting(false);
-    }
-  };
-
-  const startPolling = (deviceCode: string, intervalSec: number) => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-    }
-
-    pollTimerRef.current = window.setInterval(async () => {
-      try {
-        const result = await authService.pollDeviceCode(deviceCode);
-        if (result.status === "success" && result.account) {
-          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-          onLoginSuccess(result.account);
-        } else if (result.status === "expired") {
-          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-          setErrorCategory("expired");
-          setErrorMessage(t.auth.codeExpired);
-        } else if (result.status === "error") {
-          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-          const msg = result.error_message || t.auth.authError;
-          const isMissing =
-            msg.toLowerCase().includes("client_id") ||
-            msg.toLowerCase().includes("missingclientid");
-          setErrorCategory(isMissing ? "missing_config" : "general");
-          setErrorMessage(msg);
-        } else if (result.status === "pending") {
-          setPollingStatus(t.auth.waitingConsent);
-        }
-      } catch (e: unknown) {
-        console.error("Polling error:", e);
-      }
-    }, Math.max(intervalSec, 3) * 1000);
-  };
-
-  const handleOpenBrowser = async () => {
-    if (!deviceInfo) return;
-    // 自動將驗證代碼寫入使用者剪貼簿
-    if (deviceInfo.user_code) {
-      navigator.clipboard.writeText(deviceInfo.user_code);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-      toast(t.common.copied, "success");
-    }
-
-    // 開啟微軟官方指定之驗證入口 (https://www.microsoft.com/link)，維持原生乾淨 URL 嚴禁附加 ?otc= 參數
-    const targetUrl = deviceInfo.verification_uri;
-
-    await openExternal(targetUrl).catch((err) => console.error("Failed to open link:", err));
-  };
-
-  const handleCopyCode = () => {
-    if (deviceInfo?.user_code) {
-      navigator.clipboard.writeText(deviceInfo.user_code);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-      toast(t.common.copied, "success");
-    }
+    void start();
   };
 
   const handleBackToWelcome = () => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
+    reset();
     setStage("welcome");
-    setErrorMessage(null);
-    setErrorCategory(null);
-    setDeviceInfo(null);
   };
-
-  useEffect(() => {
-    return () => {
-      startSeqRef.current++; // a code request still in flight must not start polling after unmount
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, []);
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-canvas via-slate-900 to-canvas select-none overflow-hidden relative">

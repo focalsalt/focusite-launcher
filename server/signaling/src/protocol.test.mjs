@@ -1,6 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanName, isId, isToken, parseClientMessage, readTokenProtocol, sameHex, sha256Hex } from "./protocol.ts";
+import {
+  allowMessage,
+  cleanName,
+  isId,
+  isToken,
+  MAX_MESSAGES_PER_WINDOW,
+  MESSAGE_WINDOW_MS,
+  parseClientMessage,
+  readTokenProtocol,
+  sameHex,
+  sha256Hex,
+} from "./protocol.ts";
+
+test("a socket that sends too fast runs out of budget until the window passes", () => {
+  const budget = { windowStart: 0, count: 0 };
+  for (let i = 0; i < MAX_MESSAGES_PER_WINDOW; i++) assert.ok(allowMessage(budget, 1000));
+  assert.equal(allowMessage(budget, 1000), false);
+  assert.ok(allowMessage(budget, MESSAGE_WINDOW_MS + 1));
+});
 
 const id = "a".repeat(32);
 

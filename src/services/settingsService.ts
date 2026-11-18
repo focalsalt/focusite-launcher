@@ -1,6 +1,7 @@
 //! Launcher settings service connecting to Tauri backend or localStorage.
 
 import { invoke } from "@tauri-apps/api/core";
+import { isTauri } from "@/lib/tauri";
 
 export interface LauncherSettingsDto {
   enableBmclapiMirror: boolean;
@@ -8,10 +9,6 @@ export interface LauncherSettingsDto {
   soundEnabled: boolean;
   instancesDir?: string | null;
 }
-
-const isTauri = (): boolean => {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-};
 
 const LOCAL_STORAGE_SETTINGS_KEY = "focusite_launcher_settings_v26";
 

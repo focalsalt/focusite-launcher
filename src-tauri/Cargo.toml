@@ -21,6 +21,8 @@ tauri-plugin-updater = "2"
 image = { version = "0.25", default-features = false, features = ["png", "webp", "ico", "jpeg"] }
 url = "2"
 sha1.workspace = true
+# Already in the dependency tree (webrtc); used for the standard offline-player UUID.
+md-5 = "0.10"
 zip.workspace = true
 serde.workspace = true
 serde_json.workspace = true

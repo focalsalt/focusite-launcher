@@ -34,22 +34,21 @@ fn get_accounts_file_path() -> PathBuf {
     base_dir.join("accounts.json")
 }
 
+/// Serialises read-modify-write cycles on `accounts.json`, so a background profile refresh cannot
+/// overwrite a login, removal or account switch made at the same time.
+static ACCOUNTS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn load_account_store() -> AccountStoreFile {
     let path = get_accounts_file_path();
-    if path.is_file() {
-        if let Ok(bytes) = fs::read(&path) {
-            if let Ok(decrypted_json) = focusite_auth::dpapi::decrypt_account_data(&bytes) {
-                if let Ok(store) = serde_json::from_str::<AccountStoreFile>(&decrypted_json) {
-                    return store;
-                }
+    if let Ok(bytes) = fs::read(&path) {
+        if let Ok(decrypted_json) = focusite_auth::dpapi::decrypt_account_data(&bytes) {
+            if let Ok(store) = serde_json::from_str::<AccountStoreFile>(&decrypted_json) {
+                return store;
             }
-            // Unreadable store: keep a copy so the next save cannot silently wipe every account.
-            let backup = path.with_extension(format!(
-                "json.bad-{}",
-                chrono::Utc::now().timestamp()
-            ));
-            let _ = fs::write(&backup, &bytes);
         }
+        // Unreadable store: move it aside once, so it is kept for recovery and not copied on every read.
+        let backup = path.with_extension(format!("json.bad-{}", chrono::Utc::now().timestamp()));
+        let _ = fs::rename(&path, &backup);
     }
     AccountStoreFile {
         active_account_id: None,
@@ -68,22 +67,37 @@ fn save_account_store(store: &AccountStoreFile) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub fn auth_check_client_id() -> Result<bool, String> {
-    let _ = dotenvy::dotenv();
-    Ok(oauth::get_microsoft_client_id().is_ok())
+/// Reads the store, applies `change`, and writes it back only when `change` succeeds, all under one lock.
+fn update_account_store<T>(
+    change: impl FnOnce(&mut AccountStoreFile) -> Result<T, String>,
+) -> Result<T, String> {
+    let _guard = ACCOUNTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut store = load_account_store();
+    let out = change(&mut store)?;
+    save_account_store(&store)?;
+    Ok(out)
+}
+
+/// Skin URL, skin model and the active cape URL of a profile.
+fn skin_fields(profile: &xbox::MinecraftProfileResponse) -> (Option<String>, Option<String>, Option<String>) {
+    let skin = profile.skins.first();
+    let model = if skin.is_some_and(|s| s.is_slim()) { "slim" } else { "default" };
+    let cape = profile.capes.iter().find(|c| c.state == "ACTIVE").map(|c| c.url.clone());
+    (skin.map(|s| s.url.clone()), Some(model.to_string()), cape)
 }
 
 #[tauri::command]
-pub async fn auth_start_device_code() -> Result<DeviceCodeResponse, String> {
-    let _ = dotenvy::dotenv();
-    let client_id = oauth::get_microsoft_client_id().map_err(|_| {
-        "未於 .env 設定 MICROSOFT_CLIENT_ID。請在專案根目錄建立 .env 並填寫 Azure Client ID。"
-            .to_string()
-    })?;
+pub fn auth_check_client_id() -> Result<bool, String> {
+    Ok(oauth::get_microsoft_client_id().is_ok())
+}
 
-    let client = reqwest::Client::new();
-    oauth::start_device_code(&client, &client_id)
+const MISSING_CLIENT_ID: &str =
+    "缺少 MICROSOFT_CLIENT_ID。開發時請寫在專案根目錄的 .env；發布版需在建置時設定此環境變數。";
+
+#[tauri::command]
+pub async fn auth_start_device_code() -> Result<DeviceCodeResponse, String> {
+    let client_id = oauth::get_microsoft_client_id().map_err(|_| MISSING_CLIENT_ID.to_string())?;
+    oauth::start_device_code(super::http(), &client_id)
         .await
         .map_err(|e| format!("啟動裝置登入失敗: {}", e))
 }
@@ -95,116 +109,69 @@ pub struct DevicePollResult {
     pub error_message: Option<String>,
 }
 
+impl DevicePollResult {
+    fn waiting(status: &str, error_message: Option<String>) -> Self {
+        Self { status: status.into(), account: None, error_message }
+    }
+}
+
 #[tauri::command]
 pub async fn auth_poll_device_code(device_code: String) -> Result<DevicePollResult, String> {
-    let client_id = match oauth::get_microsoft_client_id() {
-        Ok(id) => id,
-        Err(_) => return Err("未於 .env 設定 MICROSOFT_CLIENT_ID".into()),
-    };
-
-    let client = reqwest::Client::new();
-    let (status, maybe_token) = oauth::poll_device_code_once(&client, &client_id, &device_code)
+    let client_id = oauth::get_microsoft_client_id().map_err(|_| MISSING_CLIENT_ID.to_string())?;
+    let client = super::http();
+    let (status, maybe_token) = oauth::poll_device_code_once(client, &client_id, &device_code)
         .await
         .map_err(|e| format!("輪詢認證失敗: {}", e))?;
 
-    match status {
-        oauth::DeviceCodePollStatus::Pending => Ok(DevicePollResult {
-            status: "pending".into(),
-            account: None,
-            error_message: None,
-        }),
-        oauth::DeviceCodePollStatus::SlowDown => Ok(DevicePollResult {
-            status: "slow_down".into(),
-            account: None,
-            error_message: None,
-        }),
-        oauth::DeviceCodePollStatus::Expired => Ok(DevicePollResult {
-            status: "expired".into(),
-            account: None,
-            error_message: Some("裝置登入代碼已逾時，請重新獲取代碼".into()),
-        }),
-        oauth::DeviceCodePollStatus::Error(err) => Ok(DevicePollResult {
-            status: "error".into(),
-            account: None,
-            error_message: Some(err),
-        }),
-        oauth::DeviceCodePollStatus::Success => {
-            let token_resp = match maybe_token {
-                Some(t) => t,
-                None => return Err("登入回應缺少憑證，請重試".into()),
-            };
-
-            // Full Minecraft chain
-            let (xbl_token, _) = xbox::authenticate_xbox_live(&client, &token_resp.access_token)
-                .await
-                .map_err(|e| format!("Xbox Live 登入失敗: {}", e))?;
-
-            let (xsts_token, uhs) = xbox::obtain_xsts_token(&client, &xbl_token)
-                .await
-                .map_err(|e| format!("XSTS 權限交換失敗: {}", e))?;
-
-            let mc_auth = xbox::login_minecraft_with_xbox(&client, &uhs, &xsts_token)
-                .await
-                .map_err(|e| format!("Minecraft 服務驗證失敗: {}", e))?;
-
-            let profile = xbox::fetch_minecraft_profile(&client, &mc_auth.access_token)
-                .await
-                .map_err(|e| format!("獲取 Minecraft 個人檔案失敗: {}", e))?;
-
-            let skin_url = profile.skins.first().map(|s| s.url.clone());
-            let skin_model = if profile.skins.first().is_some_and(|s| s.is_slim()) {
-                Some("slim".to_string())
-            } else {
-                Some("default".to_string())
-            };
-            let cape_url = profile
-                .capes
-                .iter()
-                .find(|c| c.state == "ACTIVE")
-                .map(|c| c.url.clone());
-
-            // Save access token AND refresh token into OS native Keyring
-            if let Err(e) = focusite_auth::keyring_store::CredentialStore::save_credentials(
-                &profile.id,
-                &mc_auth.access_token,
-                token_resp.refresh_token.as_deref(),
-            ) {
-                tracing::warn!("Failed to save credentials to keyring: {}", e);
-            }
-
-            let mut store = load_account_store();
-            let new_account = UserAccountDto {
-                id: profile.id.clone(),
-                username: profile.name,
-                account_type: "microsoft".into(),
-                is_ready: true,
-                skin_url,
-                skin_model,
-                cape_url,
-                capes: profile.capes,
-                is_active: true,
-                has_valid_token: true,
-            };
-
-            // Set all existing accounts to inactive, then upsert
-            for acc in &mut store.accounts {
-                acc.is_active = false;
-            }
-            if let Some(pos) = store.accounts.iter().position(|a| a.id == new_account.id) {
-                store.accounts[pos] = new_account.clone();
-            } else {
-                store.accounts.push(new_account.clone());
-            }
-            store.active_account_id = Some(new_account.id.clone());
-            save_account_store(&store)?;
-
-            Ok(DevicePollResult {
-                status: "success".into(),
-                account: Some(new_account),
-                error_message: None,
-            })
+    let token_resp = match status {
+        oauth::DeviceCodePollStatus::Pending => return Ok(DevicePollResult::waiting("pending", None)),
+        oauth::DeviceCodePollStatus::SlowDown => return Ok(DevicePollResult::waiting("slow_down", None)),
+        oauth::DeviceCodePollStatus::Expired => {
+            return Ok(DevicePollResult::waiting("expired", Some("裝置登入代碼已逾時，請重新獲取代碼".into())))
         }
+        oauth::DeviceCodePollStatus::Error(err) => return Ok(DevicePollResult::waiting("error", Some(err))),
+        oauth::DeviceCodePollStatus::Success => maybe_token.ok_or("登入回應缺少憑證，請重試")?,
+    };
+
+    let (mc_auth, profile) = xbox::login_chain(client, &token_resp.access_token)
+        .await
+        .map_err(|e| format!("Minecraft 登入流程失敗：{}", e))?;
+
+    if let Err(e) = focusite_auth::keyring_store::CredentialStore::save_credentials(
+        &profile.id,
+        &mc_auth.access_token,
+        token_resp.refresh_token.as_deref(),
+    ) {
+        tracing::warn!("Failed to save credentials to keyring: {}", e);
     }
+
+    let (skin_url, skin_model, cape_url) = skin_fields(&profile);
+    let new_account = UserAccountDto {
+        id: profile.id.clone(),
+        username: profile.name,
+        account_type: "microsoft".into(),
+        is_ready: true,
+        skin_url,
+        skin_model,
+        cape_url,
+        capes: profile.capes,
+        is_active: true,
+        has_valid_token: true,
+    };
+
+    update_account_store(|store| {
+        for acc in &mut store.accounts {
+            acc.is_active = false;
+        }
+        match store.accounts.iter_mut().find(|a| a.id == new_account.id) {
+            Some(existing) => *existing = new_account.clone(),
+            None => store.accounts.push(new_account.clone()),
+        }
+        store.active_account_id = Some(new_account.id.clone());
+        Ok(())
+    })?;
+
+    Ok(DevicePollResult { status: "success".into(), account: Some(new_account), error_message: None })
 }
 
 #[tauri::command]
@@ -219,30 +186,28 @@ pub async fn auth_list_accounts() -> Result<Vec<UserAccountDto>, String> {
 
 #[tauri::command]
 pub fn auth_remove_account(id: String) -> Result<(), String> {
-    // Delete token from OS native Keyring
     let _ = focusite_auth::keyring_store::CredentialStore::delete_token(&id);
-
-    let mut store = load_account_store();
-    store.accounts.retain(|a| a.id != id);
-    if store.active_account_id.as_deref() == Some(&id) {
-        store.active_account_id = store.accounts.first().map(|a| a.id.clone());
-        if let Some(ref first_id) = store.active_account_id {
+    update_account_store(|store| {
+        store.accounts.retain(|a| a.id != id);
+        if store.active_account_id.as_deref() == Some(&id) {
+            store.active_account_id = store.accounts.first().map(|a| a.id.clone());
             for acc in &mut store.accounts {
-                acc.is_active = acc.id == *first_id;
+                acc.is_active = store.active_account_id.as_deref() == Some(&acc.id);
             }
         }
-    }
-    save_account_store(&store)
+        Ok(())
+    })
 }
 
 #[tauri::command]
 pub fn auth_set_active_account(id: String) -> Result<(), String> {
-    let mut store = load_account_store();
-    for acc in &mut store.accounts {
-        acc.is_active = acc.id == id;
-    }
-    store.active_account_id = Some(id);
-    save_account_store(&store)
+    update_account_store(|store| {
+        for acc in &mut store.accounts {
+            acc.is_active = acc.id == id;
+        }
+        store.active_account_id = Some(id);
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -251,135 +216,105 @@ pub fn auth_update_account_skin(
     skin_url: Option<String>,
     cape_url: Option<String>,
 ) -> Result<(), String> {
-    let mut store = load_account_store();
-    if let Some(acc) = store.accounts.iter_mut().find(|a| a.id == id) {
-        if skin_url.is_some() {
-            acc.skin_url = skin_url;
+    update_account_store(|store| {
+        if let Some(acc) = store.accounts.iter_mut().find(|a| a.id == id) {
+            if skin_url.is_some() {
+                acc.skin_url = skin_url;
+            }
+            acc.cape_url = cape_url;
         }
-        acc.cape_url = cape_url;
-        save_account_store(&store)?;
-    }
-    Ok(())
+        Ok(())
+    })
+}
+
+/// Trades a refresh token for a new Minecraft token and profile, saving the new credentials.
+async fn silent_refresh(
+    client: &reqwest::Client,
+    id: &str,
+    old_mc_token: &str,
+    refresh_token: &str,
+) -> Result<xbox::MinecraftProfileResponse, String> {
+    let client_id = oauth::get_microsoft_client_id().map_err(|e| e.to_string())?;
+    let new_oauth = oauth::refresh_oauth_token(client, &client_id, refresh_token)
+        .await
+        .map_err(|e| e.to_string())?;
+    let refresh = new_oauth.refresh_token.as_deref().unwrap_or(refresh_token);
+    // Microsoft rotates refresh tokens: keep the new one now, so a failure in a later step cannot lose it.
+    let _ = focusite_auth::keyring_store::CredentialStore::save_credentials(id, old_mc_token, Some(refresh));
+    let (mc, profile) = xbox::login_chain(client, &new_oauth.access_token)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = focusite_auth::keyring_store::CredentialStore::save_credentials(id, &mc.access_token, Some(refresh));
+    Ok(profile)
 }
 
 #[tauri::command]
 pub async fn auth_refresh_profile(id: String) -> Result<UserAccountDto, String> {
-    let client = reqwest::Client::new();
+    let client = super::http();
     let maybe_creds = focusite_auth::keyring_store::CredentialStore::get_credentials(&id)
         .map_err(|e| format!("讀取憑證失敗: {}", e))?;
-
-    let mut final_profile: Option<xbox::MinecraftProfileResponse> = None;
-    let mut has_token = false;
     let had_creds = maybe_creds.is_some();
 
+    // 1. The cached Minecraft token; when it has expired, a silent refresh with the Microsoft refresh token.
+    let mut profile = None;
     if let Some((mc_token, maybe_refresh)) = maybe_creds {
-        // 1. 嘗試以快取的 Minecraft Access Token 查詢官方完整個人檔案與持有披風
-        match xbox::fetch_minecraft_profile(&client, &mc_token).await {
-            Ok(p) => {
-                final_profile = Some(p);
-                has_token = true;
-            }
+        match xbox::fetch_minecraft_profile(client, &mc_token).await {
+            Ok(p) => profile = Some(p),
             Err(_) => {
-                // Token 已過期：若持有微軟 Refresh Token 則執行全自動靜默刷新
                 if let Some(refresh_token) = maybe_refresh {
-                    let _ = dotenvy::dotenv();
-                    if let Ok(client_id) = oauth::get_microsoft_client_id() {
-                        if let Ok(new_oauth) = oauth::refresh_oauth_token(&client, &client_id, &refresh_token).await {
-                            // Microsoft rotates refresh tokens: keep the new one now, so a failure
-                            // in a later step cannot lose it.
-                            if let Some(new_refresh) = new_oauth.refresh_token.as_deref() {
-                                let _ = focusite_auth::keyring_store::CredentialStore::save_credentials(
-                                    &id,
-                                    &mc_token,
-                                    Some(new_refresh),
-                                );
-                            }
-                            if let Ok((new_xbl, _)) = xbox::authenticate_xbox_live(&client, &new_oauth.access_token).await {
-                                if let Ok((new_xsts, uhs)) = xbox::obtain_xsts_token(&client, &new_xbl).await {
-                                    if let Ok(new_mc) = xbox::login_minecraft_with_xbox(&client, &uhs, &new_xsts).await {
-                                        if let Ok(p) = xbox::fetch_minecraft_profile(&client, &new_mc.access_token).await {
-                                            // 自動保存新憑證至 Keyring
-                                            let _ = focusite_auth::keyring_store::CredentialStore::save_credentials(
-                                                &id,
-                                                &new_mc.access_token,
-                                                new_oauth.refresh_token.as_deref().or(Some(&refresh_token)),
-                                            );
-                                            final_profile = Some(p);
-                                            has_token = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    match silent_refresh(client, &id, &mc_token, &refresh_token).await {
+                        Ok(p) => profile = Some(p),
+                        Err(e) => tracing::warn!("帳號 {} 靜默刷新失敗：{}", id, e),
                     }
                 }
             }
         }
     }
+    let has_token = profile.is_some();
 
-    let mut store = load_account_store();
-    let acc_pos = store.accounts.iter().position(|a| a.id == id);
+    // 2. Without a working token, refresh the public skin and cape from the Mojang session server.
+    let public_profile = match profile {
+        Some(_) => None,
+        None => xbox::fetch_public_session_profile(client, &id).await.ok(),
+    };
 
-    if let Some(profile) = final_profile {
-        let skin_url = profile.skins.first().map(|s| s.url.clone());
-        let skin_model = if profile.skins.first().is_some_and(|s| s.is_slim()) {
-            Some("slim".to_string())
-        } else {
-            Some("default".to_string())
-        };
-        let active_cape_url = profile
-            .capes
-            .iter()
-            .find(|c| c.state == "ACTIVE")
-            .map(|c| c.url.clone());
-
-        if let Some(pos) = acc_pos {
-            store.accounts[pos].username = profile.name;
-            store.accounts[pos].skin_url = skin_url;
-            store.accounts[pos].skin_model = skin_model;
-            if store.accounts[pos].cape_url.is_none() {
-                store.accounts[pos].cape_url = active_cape_url;
+    // The store is read after every network wait, under the lock, so changes made meanwhile are kept.
+    update_account_store(|store| {
+        let acc = store
+            .accounts
+            .iter_mut()
+            .find(|a| a.id == id)
+            .ok_or_else(|| "找不到對應帳號".to_string())?;
+        if let Some(p) = profile {
+            let (skin_url, skin_model, active_cape) = skin_fields(&p);
+            acc.username = p.name;
+            acc.skin_url = skin_url;
+            acc.skin_model = skin_model;
+            if acc.cape_url.is_none() {
+                acc.cape_url = active_cape;
             }
-            store.accounts[pos].capes = profile.capes;
-            store.accounts[pos].has_valid_token = true;
-            let updated = store.accounts[pos].clone();
-            save_account_store(&store)?;
-            return Ok(updated);
-        }
-    }
-
-    // 2. 查無 Token 或 Token 已完全過期無法自動刷新：從 Mojang Session Server 自動刷新公開資訊 (Skin & Model & Active Cape)
-    let public_profile = xbox::fetch_public_session_profile(&client, &id).await;
-
-    // Read the store again after the network wait, so a removal, switch or login made meanwhile is kept.
-    let mut store = load_account_store();
-    let acc_pos = store.accounts.iter().position(|a| a.id == id);
-
-    if let Some(pos) = acc_pos {
-        if let Ok(pub_p) = public_profile {
-            store.accounts[pos].username = pub_p.name;
+            acc.capes = p.capes;
+        } else if let Some(pub_p) = public_profile {
+            acc.username = pub_p.name;
             if pub_p.skin_url.is_some() {
-                store.accounts[pos].skin_url = pub_p.skin_url;
+                acc.skin_url = pub_p.skin_url;
             }
             if pub_p.skin_model.is_some() {
-                store.accounts[pos].skin_model = pub_p.skin_model;
+                acc.skin_model = pub_p.skin_model;
             }
-            if pub_p.cape_url.is_some() && store.accounts[pos].cape_url.is_none() {
-                store.accounts[pos].cape_url = pub_p.cape_url;
+            if pub_p.cape_url.is_some() && acc.cape_url.is_none() {
+                acc.cape_url = pub_p.cape_url;
             }
         }
         // Stored credentials that could not be checked (offline) are not proof of a dead login:
         // report "no valid token" for this launch, but do not write it to disk.
         if has_token || !had_creds {
-            store.accounts[pos].has_valid_token = has_token;
+            acc.has_valid_token = has_token;
         }
-        let mut updated = store.accounts[pos].clone();
+        let mut updated = acc.clone();
         updated.has_valid_token = has_token;
-        save_account_store(&store)?;
-        return Ok(updated);
-    }
-
-    Err("找不到對應帳號".to_string())
+        Ok(updated)
+    })
 }
 
 #[tauri::command]
@@ -496,16 +431,5 @@ mod tests {
         assert_eq!(restored.active_account_id.as_deref(), Some("test_acc_123"));
         assert_eq!(restored.accounts[0].username, "Tester");
         assert_eq!(restored.accounts[0].skin_model.as_deref(), Some("slim"));
-    }
-
-    #[test]
-    fn test_migrate_and_encrypt_existing_accounts_file() {
-        let store = load_account_store();
-        if !store.accounts.is_empty() {
-            save_account_store(&store).unwrap();
-            let path = get_accounts_file_path();
-            let bytes = fs::read(&path).unwrap();
-            assert!(bytes.starts_with(focusite_auth::dpapi::MAGIC_HEADER));
-        }
     }
 }

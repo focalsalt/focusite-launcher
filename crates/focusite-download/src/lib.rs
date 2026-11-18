@@ -32,6 +32,18 @@ pub enum DownloadError {
     },
 }
 
+/// Fails when `fut` makes no progress within `limit`. Applied per request and per body chunk (not to the
+/// whole download), so a slow but steady transfer finishes while a stalled one is abandoned.
+pub(crate) async fn within<T>(
+    limit: std::time::Duration,
+    fut: impl std::future::Future<Output = Result<T, reqwest::Error>>,
+) -> Result<T, DownloadError> {
+    tokio::time::timeout(limit, fut)
+        .await
+        .map_err(|_| DownloadError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut, "no data received in time")))?
+        .map_err(DownloadError::Network)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

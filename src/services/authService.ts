@@ -2,6 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { UserAccount } from "@/types/navigation";
+import { isTauri } from "@/lib/tauri";
 
 export interface DeviceCodeInfo {
   user_code: string;
@@ -17,10 +18,6 @@ export interface DevicePollResult {
   account?: UserAccount;
   error_message?: string;
 }
-
-const isTauri = (): boolean => {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-};
 
 const LOCAL_STORAGE_ACCOUNTS_KEY = "focusite_accounts_v26";
 
@@ -71,11 +68,7 @@ export const authService = {
    */
   async listAccounts(): Promise<UserAccount[]> {
     if (isTauri()) {
-      try {
-        return await invoke<UserAccount[]>("auth_list_accounts");
-      } catch (err) {
-        console.error("Tauri auth_list_accounts failed:", err);
-      }
+      return await invoke<UserAccount[]>("auth_list_accounts");
     }
 
     const saved = localStorage.getItem(LOCAL_STORAGE_ACCOUNTS_KEY);
@@ -94,12 +87,8 @@ export const authService = {
    */
   async removeAccount(id: string): Promise<void> {
     if (isTauri()) {
-      try {
-        await invoke("auth_remove_account", { id });
-        return;
-      } catch (err) {
-        console.error("Tauri auth_remove_account failed:", err);
-      }
+      await invoke("auth_remove_account", { id });
+      return;
     }
 
     const current = await this.listAccounts();
@@ -112,12 +101,8 @@ export const authService = {
    */
   async setActiveAccount(id: string): Promise<void> {
     if (isTauri()) {
-      try {
-        await invoke("auth_set_active_account", { id });
-        return;
-      } catch (err) {
-        console.error("Tauri auth_set_active_account failed:", err);
-      }
+      await invoke("auth_set_active_account", { id });
+      return;
     }
 
     const current = await this.listAccounts();
@@ -130,12 +115,8 @@ export const authService = {
    */
   async verifyOfflineLaunch(id: string): Promise<boolean> {
     if (isTauri()) {
-      try {
-        return await invoke<boolean>("auth_verify_offline_launch", { id });
-      } catch (err) {
-        console.error("Tauri auth_verify_offline_launch failed:", err);
-        return false;
-      }
+      // A failed check means offline play is not allowed.
+      return await invoke<boolean>("auth_verify_offline_launch", { id }).catch(() => false);
     }
     return false;
   },
@@ -145,12 +126,11 @@ export const authService = {
    */
   async refreshProfile(id: string): Promise<UserAccount | null> {
     if (isTauri()) {
-      try {
-        return await invoke<UserAccount>("auth_refresh_profile", { id });
-      } catch (err) {
+      // Best effort: the caller keeps the stored profile when the refresh fails.
+      return await invoke<UserAccount>("auth_refresh_profile", { id }).catch((err) => {
         console.warn("Tauri auth_refresh_profile:", err);
         return null;
-      }
+      });
     }
     return null;
   },
@@ -164,16 +144,12 @@ export const authService = {
     capeUrl?: string
   ): Promise<void> {
     if (isTauri()) {
-      try {
-        await invoke("auth_update_account_skin", {
-          id,
-          skinUrl,
-          capeUrl,
-        });
-        return;
-      } catch (err) {
-        console.error("Tauri auth_update_account_skin failed:", err);
-      }
+      await invoke("auth_update_account_skin", {
+        id,
+        skinUrl,
+        capeUrl,
+      });
+      return;
     }
 
     const current = await this.listAccounts();

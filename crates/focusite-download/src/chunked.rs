@@ -144,13 +144,7 @@ pub async fn download_file_chunked(
             file.seek(SeekFrom::Start(range.start)).await?;
 
             let range_header_val = format!("bytes={}-{}", range.start, range.end);
-            let resp = client_c
-                .get(&url_c)
-                .header(RANGE, range_header_val)
-                .timeout(timeout)
-                .send()
-                .await
-                .map_err(DownloadError::Network)?;
+            let resp = crate::within(timeout, client_c.get(&url_c).header(RANGE, range_header_val).send()).await?;
 
             let status = resp.status();
             if status == StatusCode::OK {
@@ -166,7 +160,7 @@ pub async fn download_file_chunked(
             let mut chunk_written: u64 = 0;
             let expected_len = range.end - range.start + 1;
 
-            while let Some(bytes) = stream.chunk().await.map_err(DownloadError::Network)? {
+            while let Some(bytes) = crate::within(timeout, stream.chunk()).await? {
                 let len = bytes.len() as u64;
                 if chunk_written + len > expected_len {
                     return Err(DownloadError::Io(std::io::Error::other(format!(

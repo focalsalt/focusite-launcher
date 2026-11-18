@@ -367,9 +367,7 @@ impl VersionManifest {
 
     /// Fetches a detailed VersionManifest from a remote URL.
     pub async fn fetch_remote(url: &str) -> Result<Self, CoreError> {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?;
+        let client = crate::http_client()?;
         let resp = client.get(url).send().await?.error_for_status()?;
         let manifest: VersionManifest = resp.json().await?;
         Ok(manifest)
@@ -379,9 +377,7 @@ impl VersionManifest {
 impl VersionManifestV2 {
     /// Fetches the VersionManifestV2 root metadata from a remote URL.
     pub async fn fetch_remote(url: &str) -> Result<Self, CoreError> {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?;
+        let client = crate::http_client()?;
         let resp = client.get(url).send().await?.error_for_status()?;
         let manifest: VersionManifestV2 = resp.json().await?;
         Ok(manifest)
@@ -618,9 +614,7 @@ impl LoaderVersionInfo {
         loader: LoaderKind,
         mc_version: &str,
     ) -> Result<Vec<Self>, CoreError> {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(8))
-            .build()?;
+        let client = crate::http_client()?;
 
         match loader {
             LoaderKind::Fabric => {

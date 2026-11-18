@@ -2,6 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { isTauri } from "@/lib/tauri";
 
 export interface DownloadProgressPayload {
   version_id: string;
@@ -9,10 +10,6 @@ export interface DownloadProgressPayload {
   total_bytes: number | null;
   speed_bytes_per_sec: number;
 }
-
-const isTauri = (): boolean => {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-};
 
 export const downloadService = {
   /**

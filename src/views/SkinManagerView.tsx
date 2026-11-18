@@ -30,6 +30,7 @@ import { SkinThumbnail } from "@/components/skin/SkinThumbnail";
 import { skinService, SkinItem } from "@/services/skinService";
 import { authService } from "@/services/authService";
 import { toUserMessage } from "@/lib/errorMessage";
+import { toAssetSrc } from "@/lib/assetUrl";
 import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
@@ -417,6 +418,13 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
 
   // 本機皮膚庫狀態 (%APPDATA%/focusite_launcher/skins/)
   const [localSkins, setLocalSkins] = useState<SkinItem[]>([]);
+  // Each listed skin holds a blob URL: release them all when the page closes.
+  const localSkinsRef = useRef(localSkins);
+  localSkinsRef.current = localSkins;
+  useEffect(
+    () => () => localSkinsRef.current.forEach((s) => s.blobUrl && URL.revokeObjectURL(s.blobUrl)),
+    [],
+  );
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
@@ -520,9 +528,13 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
   const handleSave = async () => {
     try {
       setIsSaving(true);
+      // A blob: URL of a local skin dies with this page; store the skin file's own URL instead.
+      const savedSkinUrl = previewSkinUrl?.startsWith("blob:")
+        ? toAssetSrc(localSkins.find((s) => s.blobUrl === previewSkinUrl)?.path) ?? previewSkinUrl
+        : previewSkinUrl;
       await authService.updateAccountSkin(
         activeAccount.id,
-        previewSkinUrl,
+        savedSkinUrl,
         previewCapeUrl
       );
 
@@ -530,13 +542,13 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
       setInitialSkinUrl(previewSkinUrl);
       setInitialCapeUrl(previewCapeUrl);
 
-      activeAccount.skinUrl = previewSkinUrl;
+      activeAccount.skinUrl = savedSkinUrl;
       activeAccount.capeUrl = previewCapeUrl;
 
       if (onAccountUpdated) {
         onAccountUpdated({
           ...activeAccount,
-          skinUrl: previewSkinUrl,
+          skinUrl: savedSkinUrl,
           capeUrl: previewCapeUrl,
           capes: accountCapes,
         });
@@ -595,7 +607,11 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
     e.stopPropagation();
     try {
       await skinService.deleteLocalSkin(filename);
-      setLocalSkins((prev) => prev.filter((s) => s.filename !== filename));
+      setLocalSkins((prev) => {
+        const gone = prev.find((s) => s.filename === filename);
+        if (gone?.blobUrl && gone.blobUrl !== previewSkinUrl) URL.revokeObjectURL(gone.blobUrl);
+        return prev.filter((s) => s.filename !== filename);
+      });
     } catch (err) {
       console.error("Failed to delete skin:", err);
       toast(t.errors.deleteSkinFailed(toUserMessage(err)), "error");

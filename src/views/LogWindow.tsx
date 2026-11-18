@@ -95,13 +95,13 @@ export const LogWindow: React.FC = () => {
           const lastTs = buffered[buffered.length - 1].timestamp;
           setLogs((prev) => [...buffered, ...prev.filter((l) => l.timestamp > lastTs)]);
         }
-      });
+      }).catch((err) => console.error("Failed to load buffered logs:", err));
       instanceService.getInstanceRunningStatus(activeInstanceId).then((proc) => {
         if (proc) {
           setStatus("running");
           setActivePid(proc.pid);
         }
-      });
+      }).catch((err) => console.error("Failed to read running status:", err));
     }
 
     // Listen to real-time log events filtered by this instance

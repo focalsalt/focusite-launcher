@@ -211,7 +211,6 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
   const handleToggleShowLog = async (checked: boolean) => {
     if (!instance) return;
     setShowLogOnLaunch(checked);
-    await instanceService.setInstanceShowLog(instance.id, checked);
     try {
       const updated = await instanceService.updateInstanceSettings(instance.id, {
         showLogOnLaunch: checked,
@@ -332,7 +331,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
         onGoToInstances();
       }
     } catch (err) {
-      console.error("刪除實例失敗:", err);
+      toast(toUserMessage(err), "error");
     } finally {
       setIsDeleting(false);
     }

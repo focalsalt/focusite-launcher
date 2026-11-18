@@ -2,15 +2,12 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { LoaderType } from "@/types/navigation";
+import { isTauri } from "@/lib/tauri";
 
 export interface LoaderVersionOption {
   version: string;
   isRecommended?: boolean;
 }
-
-const isTauri = (): boolean => {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-};
 
 // In-memory cache for (loader, mcVersion, mirror)
 const cache: Record<string, LoaderVersionOption[]> = {};

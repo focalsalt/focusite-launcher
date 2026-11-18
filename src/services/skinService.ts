@@ -1,6 +1,7 @@
 //! Local skin management service communicating with Tauri backend.
 
 import { invoke } from "@tauri-apps/api/core";
+import { isTauri } from "@/lib/tauri";
 
 export interface SkinItem {
   id: string;
@@ -10,10 +11,6 @@ export interface SkinItem {
   bytes: number[];
   blobUrl?: string;
 }
-
-const isTauri = (): boolean => {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-};
 
 export const skinService = {
   /**

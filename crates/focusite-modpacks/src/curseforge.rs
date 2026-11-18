@@ -2,10 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
-use zip::ZipArchive;
-use crate::mrpack::safe_extract_entry;
+use crate::mrpack::{extract_overrides, open_zip, read_text};
 use crate::ModpackError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,57 +83,32 @@ pub fn parse_modlist_html(html: &str) -> HashMap<String, String> {
     map
 }
 
-/// Unpacks a CurseForge modpack archive into `minecraft_dir`.
-/// Extracts `overrides/` (or custom overrides directory) with Zip-Slip protection.
-#[allow(clippy::type_complexity)]
-pub fn unpack_curseforge_pack(
+/// Reads `manifest.json` and the optional `modlist.html` (link -> mod name) without unpacking anything.
+pub fn read_curseforge_manifest(
     archive_bytes: &[u8],
+) -> Result<(CurseForgeManifest, HashMap<String, String>), ModpackError> {
+    let mut zip = open_zip(archive_bytes)?;
+    let content = read_text(&mut zip, "manifest.json")?
+        .ok_or_else(|| ModpackError::InvalidArchive("Missing manifest.json".into()))?;
+    let manifest: CurseForgeManifest = serde_json::from_str(&content)?;
+    let modlist = read_text(&mut zip, "modlist.html")
+        .ok()
+        .flatten()
+        .map(|html| parse_modlist_html(&html))
+        .unwrap_or_default();
+    Ok((manifest, modlist))
+}
+
+/// Unpacks the overrides folder of a CurseForge modpack (named by the manifest, `overrides` by default)
+/// into `minecraft_dir`, with Zip-Slip protection and the archive size limits.
+pub fn unpack_curseforge_overrides(
+    archive_bytes: &[u8],
+    manifest: &CurseForgeManifest,
     minecraft_dir: &Path,
-) -> Result<(CurseForgeManifest, HashMap<String, String>, Vec<PathBuf>), ModpackError> {
-    let mut zip = ZipArchive::new(Cursor::new(archive_bytes))
-        .map_err(|e| ModpackError::InvalidArchive(format!("Failed to open zip archive: {}", e)))?;
-
-    // 1. Read manifest.json
-    let manifest: CurseForgeManifest = {
-        let mut manifest_file = zip
-            .by_name("manifest.json")
-            .map_err(|_| ModpackError::InvalidArchive("Missing manifest.json".into()))?;
-        let mut content = String::new();
-        manifest_file.read_to_string(&mut content)?;
-        serde_json::from_str(&content)?
-    };
-
-    // 2. Read optional modlist.html
-    let mut modlist_map = HashMap::new();
-    if let Ok(mut modlist_file) = zip.by_name("modlist.html") {
-        let mut html = String::new();
-        if modlist_file.read_to_string(&mut html).is_ok() {
-            modlist_map = parse_modlist_html(&html);
-        }
-    }
-
-    let overrides_prefix = manifest.overrides.clone().unwrap_or_else(|| "overrides".into());
-    let overrides_prefix = format!("{}/", overrides_prefix.trim_end_matches('/'));
-
-    let mut extracted = Vec::new();
-
-    // 3. Extract overrides
-    for i in 0..zip.len() {
-        let mut file = zip
-            .by_index(i)
-            .map_err(|e| ModpackError::InvalidArchive(e.to_string()))?;
-        let name = file.name().to_string();
-
-        if let Some(rel_path) = name.strip_prefix(&overrides_prefix) {
-            if rel_path.is_empty() || file.is_dir() {
-                continue;
-            }
-            let path = safe_extract_entry(rel_path, &mut file, minecraft_dir)?;
-            extracted.push(path);
-        }
-    }
-
-    Ok((manifest, modlist_map, extracted))
+) -> Result<Vec<PathBuf>, ModpackError> {
+    let prefix = manifest.overrides.as_deref().unwrap_or("overrides");
+    let prefix = format!("{}/", prefix.trim_end_matches('/'));
+    extract_overrides(&mut open_zip(archive_bytes)?, &[prefix.as_str()], minecraft_dir)
 }
 
 /// Scans the instance's mods directory to determine which missing mods have been downloaded.
@@ -218,7 +191,7 @@ pub fn rescan_missing_mods(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use std::io::{Cursor, Write};
     use zip::write::SimpleFileOptions;
 
     #[test]
@@ -269,7 +242,8 @@ mod tests {
             zip.finish().unwrap();
         }
 
-        let (manifest, _, overrides) = unpack_curseforge_pack(&buf, &mc_dir).unwrap();
+        let (manifest, _) = read_curseforge_manifest(&buf).unwrap();
+        let overrides = unpack_curseforge_overrides(&buf, &manifest, &mc_dir).unwrap();
         assert_eq!(manifest.name, "Test CF Pack");
         assert_eq!(manifest.files.len(), 1);
         assert_eq!(overrides.len(), 1);
