@@ -164,7 +164,7 @@ export const newsService = {
 
         return {
           id: entry.id || `${entry.date}-${entry.title}`,
-          title: entry.title || "Minecraft 最新快訊",
+          title: entry.title || "Minecraft 新聞",
           category: entry.category || "Minecraft",
           date: entry.date || new Date().toISOString().split("T")[0],
           text: entry.text || "",

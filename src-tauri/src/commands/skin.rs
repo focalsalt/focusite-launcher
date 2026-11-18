@@ -118,8 +118,9 @@ async fn fresh_token(account_id: &str) -> Result<String, String> {
     if !acc.has_valid_token {
         return Err("此帳號登入已過期，請重新登入".to_string());
     }
-    focusite_auth::keyring_store::CredentialStore::get_token(account_id)
-        .map_err(|e| format!("讀取認證 Token 失敗: {}", e))?
+    focusite_auth::keyring_store::CredentialStore::get_credentials(account_id)
+        .map_err(|e| format!("讀取登入資料失敗: {}", e))?
+        .map(|(mc_token, _)| mc_token)
         .ok_or_else(|| "找不到此帳號的有效登入憑證，請重新登入".to_string())
 }
 

@@ -33,7 +33,7 @@ export const Toaster: React.FC = () => {
         <motion.div
           key={item.id}
           layout
-          initial={{ opacity: 0, x: 48, scale: 0.96 }}
+          initial={{ opacity: 0, x: 16, scale: 0.98 }}
           animate={{ opacity: 1, x: 0, scale: 1 }}
           exit={{ opacity: 0, x: 48, scale: 0.96 }}
           transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.7 }}

@@ -170,8 +170,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onSelectAccount={onSelectAccount}
           onAddAccount={onAddAccount}
           onOpenSkinManager={onOpenSkinManager}
-          onSignOut={onSignOut}
-        />
+          onSignOut={onSignOut}        />
       </div>
 
       {/* 2. 上方固定主要導覽區 (固定不滾動) */}

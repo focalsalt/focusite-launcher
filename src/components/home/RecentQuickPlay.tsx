@@ -3,56 +3,94 @@ import { Globe, Play, Server } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { instanceService, ServerEntry, WorldSummary } from "@/services/instanceService";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { instanceService } from "@/services/instanceService";
+import { MinecraftInstance } from "@/types/navigation";
 import { useI18n } from "@/i18n";
 
-const MAX_ITEMS = 4;
+const MAX_ITEMS = 100;
 
-interface RecentQuickPlayProps {
+type PlayType = "singleplayer" | "multiplayer";
+
+interface Item {
+  key: string;
   instanceId: string;
-  /** Shown under every row so it is clear which instance the click launches. */
   instanceName: string;
-  /** Re-read the lists whenever this flips (e.g. after the game exits). */
-  refreshKey: boolean;
-  disabled: boolean;
-  onPlay: (type: "singleplayer" | "multiplayer", target: string) => void;
+  name: string;
+  badge: string;
+  /** Sort key: world last-played time, or the instance's last-played time for servers. */
+  playedAt: number;
+  target: string;
 }
 
-/** One-click join for the most recently played worlds and the saved servers of the active instance. */
-export const RecentQuickPlay: React.FC<RecentQuickPlayProps> = ({ instanceId, instanceName, refreshKey, disabled, onPlay }) => {
+interface RecentQuickPlayProps {
+  instances: MinecraftInstance[];
+  /** Re-read the lists whenever this changes (e.g. after a game exits). */
+  refreshKey: string;
+  isBusy: (instanceId: string) => boolean;
+  onPlay: (instanceId: string, type: PlayType, target: string) => void;
+}
+
+/** One-click join for the most recently played worlds and saved servers across all instances. */
+export const RecentQuickPlay: React.FC<RecentQuickPlayProps> = ({ instances, refreshKey, isBusy, onPlay }) => {
   const { t } = useI18n();
-  const [worlds, setWorlds] = useState<WorldSummary[]>([]);
-  const [servers, setServers] = useState<ServerEntry[]>([]);
+  const [worlds, setWorlds] = useState<Item[]>([]);
+  const [servers, setServers] = useState<Item[]>([]);
+
+  const idsKey = instances.filter((i) => !i.needsSetup).map((i) => i.id).join(",");
 
   useEffect(() => {
     let alive = true;
-    instanceService
-      .listInstanceWorlds(instanceId)
-      .then((w) => alive && setWorlds([...w].sort((a, b) => b.last_played - a.last_played).slice(0, MAX_ITEMS)))
-      .catch(() => alive && setWorlds([]));
-    instanceService
-      .readInstanceServers(instanceId)
-      .then((s) => alive && setServers(s.slice(0, MAX_ITEMS)))
-      .catch(() => alive && setServers([]));
+    const usable = instances.filter((i) => !i.needsSetup);
+
+    Promise.all(
+      usable.map(async (inst) => {
+        const [w, s] = await Promise.all([
+          instanceService.listInstanceWorlds(inst.id).catch(() => []),
+          instanceService.readInstanceServers(inst.id).catch(() => []),
+        ]);
+        const base = { instanceId: inst.id, instanceName: inst.name };
+        const worldItems: Item[] = w.map((x) => ({
+          ...base,
+          key: `${inst.id}/${x.folder_name}`,
+          name: x.name || x.folder_name,
+          badge: x.last_played > 0 ? new Date(x.last_played).toLocaleString() : t.worlds.unknownTime,
+          playedAt: x.last_played,
+          target: x.folder_name,
+        }));
+        const serverItems: Item[] = s.map((x) => ({
+          ...base,
+          key: `${inst.id}/${x.ip}`,
+          name: x.name || x.ip,
+          badge: x.ip,
+          playedAt: inst.lastPlayedAt ?? 0,
+          target: x.ip,
+        }));
+        return { worldItems, serverItems };
+      }),
+    ).then((all) => {
+      if (!alive) return;
+      const top = (items: Item[]) => items.sort((a, b) => b.playedAt - a.playedAt).slice(0, MAX_ITEMS);
+      setWorlds(top(all.flatMap((r) => r.worldItems)));
+      setServers(top(all.flatMap((r) => r.serverItems)));
+    });
+
     return () => {
       alive = false;
     };
-  }, [instanceId, refreshKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey, refreshKey]);
 
-  const rows = (
-    title: string,
-    icon: React.ReactNode,
-    empty: string,
-    items: { key: string; name: string; badge: string; onClick: () => void }[],
-  ) => (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-100">
+  const rows = (title: string, icon: React.ReactNode, empty: string, items: Item[], type: PlayType) => (
+    <div className="flex min-h-0 min-w-0 flex-col rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="mb-3 flex shrink-0 items-center gap-2 text-sm font-semibold text-slate-100">
         {icon}
         {title}
       </div>
       {items.length === 0 ? (
         <p className="py-6 text-center text-xs text-slate-500">{empty}</p>
       ) : (
+        <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1.5">
           {items.map((it) => (
             <motion.div
@@ -68,12 +106,12 @@ export const RecentQuickPlay: React.FC<RecentQuickPlayProps> = ({ instanceId, in
                     {it.badge}
                   </Badge>
                 </div>
-                <p className="truncate text-[11px] text-slate-400">{t.home.usedInstance}{instanceName}</p>
+                <p className="truncate text-[11px] text-slate-400">{t.home.usedInstance}{it.instanceName}</p>
               </div>
               <Button
                 size="sm"
-                onClick={it.onClick}
-                disabled={disabled}
+                onClick={() => onPlay(it.instanceId, type, it.target)}
+                disabled={isBusy(it.instanceId)}
                 className="h-7 bg-brand px-3 text-xs font-medium text-white hover:bg-brand-light"
               >
                 <Play className="mr-1 h-3.5 w-3.5 fill-white" />
@@ -82,34 +120,15 @@ export const RecentQuickPlay: React.FC<RecentQuickPlayProps> = ({ instanceId, in
             </motion.div>
           ))}
         </div>
+        </ScrollArea>
       )}
     </div>
   );
 
   return (
-    <div className="space-y-5">
-      {rows(
-        t.home.recentWorlds,
-        <Globe className="h-4 w-4 text-brand-light" />,
-        t.home.noWorlds,
-        worlds.map((w) => ({
-          key: w.folder_name,
-          name: w.name || w.folder_name,
-          badge: w.last_played > 0 ? new Date(w.last_played).toLocaleString() : t.worlds.unknownTime,
-          onClick: () => onPlay("singleplayer", w.folder_name),
-        })),
-      )}
-      {rows(
-        t.home.recentServers,
-        <Server className="h-4 w-4 text-brand-light" />,
-        t.home.noServers,
-        servers.map((s) => ({
-          key: s.ip,
-          name: s.name || s.ip,
-          badge: s.ip,
-          onClick: () => onPlay("multiplayer", s.ip),
-        })),
-      )}
+    <div className="grid h-full grid-cols-1 grid-rows-[repeat(2,minmax(0,1fr))] gap-5 md:grid-cols-2 md:grid-rows-[minmax(0,1fr)]">
+      {rows(t.home.recentWorlds, <Globe className="h-4 w-4 text-brand-light" />, t.home.noWorlds, worlds, "singleplayer")}
+      {rows(t.home.recentServers, <Server className="h-4 w-4 text-brand-light" />, t.home.noServers, servers, "multiplayer")}
     </div>
   );
 };

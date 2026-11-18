@@ -628,7 +628,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
   // 水平分頁轉場 Variants 與輕量彈簧設定 (GEMINI.md Invariant)
   const tabVariants = {
     enter: (dir: number) => ({
-      x: dir * 32,
+      x: dir * 16,
       opacity: 0,
     }),
     center: {
@@ -636,7 +636,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
       opacity: 1,
     },
     exit: (dir: number) => ({
-      x: -dir * 32,
+      x: -dir * 16,
       opacity: 0,
     }),
   };

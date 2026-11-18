@@ -43,9 +43,7 @@ export const authService = {
     if (isTauri()) {
       return await invoke<DeviceCodeInfo>("auth_start_device_code");
     }
-    throw new Error(
-      "未於 .env 設定 MICROSOFT_CLIENT_ID。請在專案根目錄建立 .env 檔案並設定 Azure Client ID。"
-    );
+    throw new Error("MissingClientId");
   },
 
   /**
@@ -59,7 +57,7 @@ export const authService = {
     }
     return {
       status: "error",
-      error_message: "非 Tauri 環境無法執行真實 Microsoft 認證",
+      error_message: "此環境無法登入",
     };
   },
 
@@ -174,7 +172,7 @@ export const authService = {
         variant,
       });
     }
-    throw new Error("非 Tauri 環境無法上傳皮膚至 Mojang 官方 API");
+    throw new Error("此環境無法上傳皮膚");
   },
 
   /**
@@ -187,7 +185,7 @@ export const authService = {
         capeId,
       });
     }
-    throw new Error("非 Tauri 環境無法切換披風");
+    throw new Error("此環境無法切換披風");
   },
 
   /**
@@ -199,6 +197,6 @@ export const authService = {
         accountId,
       });
     }
-    throw new Error("非 Tauri 環境無法卸下披風");
+    throw new Error("此環境無法卸下披風");
   },
 };

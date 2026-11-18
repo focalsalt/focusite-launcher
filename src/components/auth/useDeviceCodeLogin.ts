@@ -73,7 +73,9 @@ export function useDeviceCodeLogin(onSuccess: (account: UserAccount) => void) {
         if (result?.status === "expired") return showError(t.auth.codeExpired, "expired");
         if (result?.status === "error") {
           const msg = result.error_message || t.auth.authError;
-          return showError(msg, isMissingClientId(msg) ? "missing_config" : "general");
+          return isMissingClientId(msg)
+            ? showError(t.auth.missingClientId, "missing_config")
+            : showError(toUserMessage(msg), "general");
         }
         if (result?.status === "pending") setPollingStatus(t.auth.waitingConsent);
         // RFC 8628: slow_down asks for 5 more seconds between polls.
@@ -83,9 +85,9 @@ export function useDeviceCodeLogin(onSuccess: (account: UserAccount) => void) {
       timerRef.current = window.setTimeout(poll, delayMs);
     } catch (err: unknown) {
       if (round !== roundRef.current) return;
-      const msg = toUserMessage(err);
-      if (isMissingClientId(msg)) showError(t.auth.missingClientId, "missing_config");
-      else showError(msg, "general");
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      if (isMissingClientId(rawMsg)) showError(t.auth.missingClientId, "missing_config");
+      else showError(toUserMessage(err), "general");
       setPollingStatus(t.auth.startFailed);
     } finally {
       if (round === roundRef.current) setIsStarting(false);

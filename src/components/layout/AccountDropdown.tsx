@@ -15,7 +15,6 @@ import { UserAccount } from "@/types/navigation";
 import { PlayerAvatar } from "@/components/ui/PlayerAvatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { preloadSkinManagerView, preloadMicrosoftLoginModal } from "@/lib/startupOrchestrator";
-import { authService } from "@/services/authService";
 import { useI18n } from "@/i18n";
 
 interface AccountDropdownProps {
@@ -36,8 +35,8 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
   onSignOut,
 }) => {
   const { t } = useI18n();
+  const isVerified = activeAccount.accountType === "microsoft" && activeAccount.hasValidToken !== false;
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ left: number; top: number; width: number } | null>(null);
@@ -62,19 +61,6 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
       updatePosition();
     }
     setIsOpen(!isOpen);
-  };
-
-  const handleRefreshCredentials = async () => {
-    if (isRefreshing || activeAccount.accountType !== "microsoft") return;
-    setIsRefreshing(true);
-    try {
-      await authService.refreshProfile(activeAccount.id);
-    } catch (e) {
-      console.error("Failed to refresh credentials:", e);
-    } finally {
-      setIsRefreshing(false);
-      setIsOpen(false);
-    }
   };
 
   useEffect(() => {
@@ -110,13 +96,13 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
         onClick={handleToggle}
         className="flex h-14 w-full select-none items-center justify-between px-4 transition-colors hover:bg-white/5 active:bg-white/10"
       >
-        <div className="flex items-center gap-3 overflow-hidden">
+        <div className="flex min-w-0 items-center gap-3">
           {/* Avatar / Head indicator in Focusite Green */}
           <div className="relative shrink-0">
             <PlayerAvatar username={activeAccount.username} size={32} />
             <span
-              className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-slate-900 ${
-                activeAccount.accountType === "microsoft"
+              className={`absolute bottom-0 right-0 h-2.5 w-2.5 translate-x-px translate-y-px rounded-full border-2 border-slate-900 ${
+                isVerified
                   ? "bg-emerald-400"
                   : "bg-amber-400"
               }`}
@@ -129,7 +115,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
               {activeAccount.username}
             </span>
             <div className="flex items-center gap-1 text-[10px]">
-              {activeAccount.accountType === "microsoft" ? (
+              {isVerified ? (
                 <>
                   <ShieldCheck className="h-3 w-3 text-emerald-400 shrink-0" />
                   <span className="text-emerald-400 font-medium truncate">
@@ -140,7 +126,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
                 <>
                   <ShieldAlert className="h-3 w-3 text-amber-400 shrink-0" />
                   <span className="text-amber-400 font-medium truncate">
-                    {t.account.offlineMode}
+                    {activeAccount.accountType === "microsoft" ? t.account.needsRelogin : t.account.offlineMode}
                   </span>
                 </>
               )}
@@ -241,15 +227,19 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
                     <span>{t.account.skinManager}</span>
                   </button>
 
-                  <button
-                    type="button"
-                    disabled={isRefreshing}
-                    onClick={handleRefreshCredentials}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 text-brand-light shrink-0 ${isRefreshing ? "animate-spin" : ""}`} />
-                    <span>{isRefreshing ? t.account.reverifying : t.account.reverify}</span>
-                  </button>
+                  {activeAccount.accountType === "microsoft" && !isVerified && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onAddAccount();
+                        setIsOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-amber-300 hover:bg-white/10 transition-colors"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                      <span>{t.account.relogin}</span>
+                    </button>
+                  )}
 
                   <button
                     type="button"

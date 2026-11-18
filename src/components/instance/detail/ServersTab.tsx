@@ -11,6 +11,26 @@ import type { ServerEntry, ServerPingResult } from "@/services/instanceService";
 import { FramelessEmptyState, tabContentVariants } from "./shared";
 import { useI18n } from "@/i18n";
 
+/** servers.dat stores the icon as bare base64, while a ping returns a full data URI. Falls back to a placeholder if it can't be decoded. */
+const ServerIcon: React.FC<{ icon?: string; alt: string }> = ({ icon, alt }) => {
+  const [failed, setFailed] = useState(false);
+  if (!icon || failed) {
+    return (
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10 border border-brand/20 text-brand-light shrink-0">
+        <Server className="h-5 w-5" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={icon.startsWith("data:") ? icon : `data:image/png;base64,${icon}`}
+      alt={alt}
+      onError={() => setFailed(true)}
+      className="h-10 w-10 rounded-lg object-cover bg-black/40 border border-white/10 shrink-0"
+    />
+  );
+};
+
 interface ServersTabProps {
   instance: MinecraftInstance;
   servers: ServerEntry[];
@@ -107,17 +127,11 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                           className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-all"
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            {server.icon_base64 || ping?.favicon_base64 ? (
-                              <img
-                                src={server.icon_base64 || ping?.favicon_base64}
-                                alt={server.name}
-                                className="h-10 w-10 rounded-lg object-cover bg-black/40 border border-white/10 shrink-0"
-                              />
-                            ) : (
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10 border border-brand/20 text-brand-light shrink-0">
-                                <Server className="h-5 w-5" />
-                              </div>
-                            )}
+                            <ServerIcon
+                              key={server.icon_base64 || ping?.favicon_base64}
+                              icon={server.icon_base64 || ping?.favicon_base64}
+                              alt={server.name}
+                            />
 
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">

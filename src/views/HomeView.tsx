@@ -3,6 +3,7 @@ import React, { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Plus, FolderDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { HomeSubNav, MinecraftInstance } from "@/types/navigation";
 import { useI18n } from "@/i18n";
@@ -22,10 +23,11 @@ interface HomeViewProps {
   onCreateInstance: () => void;
   onImportInstance?: () => void;
   direction?: number;
-  isLaunching?: boolean;
-  isRunning?: boolean;
+  instances: MinecraftInstance[];
+  /** Instance ids that are launching or running; their quick-play rows are disabled. */
+  busyIds: Record<string, unknown>;
   runningAccountName?: string | null;
-  onQuickPlay?: (type: "singleplayer" | "multiplayer", target: string) => void;
+  onQuickPlay?: (instanceId: string, type: "singleplayer" | "multiplayer", target: string) => void;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -34,8 +36,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onCreateInstance,
   onImportInstance,
   direction: directionProp,
-  isLaunching = false,
-  isRunning = false,
+  instances,
+  busyIds,
   runningAccountName = null,
   onQuickPlay,
 }) => {
@@ -58,13 +60,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
         initial="initial"
         animate="animate"
         exit="exit"
-        className="space-y-6 max-w-5xl w-full"
+        className="h-full w-full"
       >
         {/* 1. 主頁總覽 (Focusite 現代化高對比儀表板) */}
-        {subNav === "overview" && (
-          <>
-            {!activeInstance && (
-              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/80 via-slate-950/80 to-canvas p-8 shadow-2xl backdrop-blur-xl">
+        {subNav === "overview" && !activeInstance && (
+          <ScrollArea className="h-full">
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/80 via-slate-950/80 to-canvas p-8 shadow-2xl backdrop-blur-xl">
                 <div className="max-w-xl space-y-3">
                   <Badge variant="outline" className="border-brand-light/40 text-brand-light">
                     {t.home.quickStart}
@@ -110,22 +111,24 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   )}
                 </div>
               </div>
-            )}
+          </ScrollArea>
+        )}
 
-            {activeInstance && (
-              <RecentQuickPlay
-                instanceId={activeInstance.id}
-                instanceName={activeInstance.name}
-                refreshKey={isRunning}
-                disabled={isLaunching || isRunning}
-                onPlay={(type, target) => onQuickPlay?.(type, target)}
-              />
-            )}
-          </>
+        {subNav === "overview" && activeInstance && (
+          <RecentQuickPlay
+            instances={instances}
+            refreshKey={Object.keys(busyIds).filter((k) => busyIds[k]).join(",")}
+            isBusy={(id) => !!busyIds[id]}
+            onPlay={(id, type, target) => onQuickPlay?.(id, type, target)}
+          />
         )}
 
         {/* 2. 區域網路共遊 */}
-        {subNav === "p2p" && <LanSharePanel activeInstance={activeInstance} accountName={runningAccountName} />}
+        {subNav === "p2p" && (
+          <ScrollArea className="h-full">
+            <LanSharePanel activeInstance={activeInstance} accountName={runningAccountName} />
+          </ScrollArea>
+        )}
       </motion.div>
     </AnimatePresence>
   );

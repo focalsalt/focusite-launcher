@@ -9,6 +9,24 @@ import type { ScreenshotFileInfo } from "@/services/instanceService";
 import { FramelessEmptyState, tabContentVariants } from "./shared";
 import { useI18n } from "@/i18n";
 
+/** Shows a pulsing placeholder until the image has loaded, then fades it in. Only mounted for nearby cards. */
+const ShotImage: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <>
+      {!loaded && <div className="absolute inset-0 animate-pulse bg-white/10" />}
+      <img
+        src={src}
+        alt={alt}
+        draggable={false}
+        onLoad={() => setLoaded(true)}
+        onError={() => setLoaded(true)}
+        className={`h-full w-full object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+      />
+    </>
+  );
+};
+
 interface ScreenshotsTabProps {
   instance: MinecraftInstance;
   screenshots: ScreenshotFileInfo[];
@@ -36,6 +54,20 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
 
   // Wheel / trackpad swipe flips through the images; the cooldown keeps one gesture to one step.
   const lastWheelAt = useRef<number>(0);
+
+  // The card size follows the stage: as large as the height allows (16:9), never wider than the width allows.
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stage, setStage] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => setStage({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [screenshots.length === 0]);
+  const cardW = Math.max(160, Math.min(stage.w * 0.7, stage.h * 0.82 * (16 / 9)));
   const handleWheel = (e: React.WheelEvent) => {
     const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     const now = Date.now();
@@ -86,6 +118,7 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
 
                     {/* Shows n-1, n, n+1 (wrapping around); farther cards wait invisibly so they glide in */}
                     <div
+                      ref={stageRef}
                       onWheel={handleWheel}
                       className="relative flex h-full min-h-[240px] w-full items-center justify-center [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]"
                     >
@@ -104,18 +137,18 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
                             onClick={() => setCurrentScreenshotIdx(idx)}
                             initial={false}
                             animate={{
-                              x: diff * 300,
+                              x: diff * cardW * 0.58,
                               scale: isCurrent ? 1 : 0.78,
                               opacity: isCurrent ? 1 : distance === 1 ? 0.5 : 0,
                             }}
                             transition={{ type: "spring", stiffness: 380, damping: 34 }}
-                            style={{ zIndex: 10 - distance, pointerEvents: distance > 1 ? "none" : "auto" }}
-                            className={`absolute aspect-video w-[min(520px,70%)] cursor-pointer select-none overflow-hidden rounded-2xl border ${isCurrent
+                            style={{ width: cardW, zIndex: 10 - distance, pointerEvents: distance > 1 ? "none" : "auto" }}
+                            className={`absolute aspect-video cursor-pointer select-none overflow-hidden rounded-2xl border ${isCurrent
                               ? "border-brand-light/70 shadow-[0_0_36px_color-mix(in_srgb,var(--fc-highlight)_30%,transparent)]"
                               : "border-white/10"
                               }`}
                           >
-                            <img src={toAssetSrc(sc.path)} alt={sc.name} draggable={false} className="h-full w-full object-cover" />
+                            <ShotImage src={toAssetSrc(sc.path)} alt={sc.name} />
 
                             {isCurrent && (
                               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent p-4">

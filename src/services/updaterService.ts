@@ -32,7 +32,7 @@ export const updaterService = {
     onProgress?: (downloaded: number, total: number) => void
   ): Promise<void> => {
     if (!pendingUpdate) {
-      throw new Error("沒有待安裝的更新版本");
+      throw new Error("目前沒有可安裝的更新");
     }
 
     let downloaded = 0;

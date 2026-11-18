@@ -22,7 +22,7 @@ export const ProjectRow: React.FC<ProjectRowProps> = ({ project, active, checked
   <motion.button
     type="button"
     onClick={onClick}
-    initial={{ opacity: 0, y: 10 }}
+    initial={{ opacity: 0, y: 6 }}
     animate={{ opacity: 1, y: 0 }}
     whileTap={{ scale: 0.985 }}
     transition={{ type: "spring", stiffness: 500, damping: 36 }}

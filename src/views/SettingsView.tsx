@@ -230,7 +230,7 @@ export const SettingsView: React.FC = () => {
           </>
         }
       >
-        <div className="max-w-sm">
+        <div>
           <Select value={activeThemeId} onValueChange={handleSelectTheme}>
             <SelectTrigger>
               <SelectValue>{themes.find((p) => p.id === activeThemeId)?.name ?? activeThemeId}</SelectValue>

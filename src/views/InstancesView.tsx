@@ -227,11 +227,12 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                   </div>
 
                   {!isCollapsed && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    // At least 3 per row; wider windows fit more (each card is at least 380px unless that would drop below 3 columns).
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(380px,calc((100%-2.5rem)/3)),1fr))] gap-5">
                       {groupItems.map((inst) => (
             <Card
               key={inst.id}
-              className="group relative overflow-hidden border-white/10 bg-white/5 hover:border-brand-light/40 hover:bg-white/[0.07] transition-all cursor-pointer shadow-sm hover:shadow-lg hover:shadow-brand/5"
+              className="group relative flex h-full flex-col overflow-hidden border-white/10 bg-white/5 hover:border-brand-light/40 hover:bg-white/[0.07] transition-all cursor-pointer shadow-sm hover:shadow-lg hover:shadow-brand/5"
               onClick={() => onSelectInstance(inst.id)}
             >
               <CardHeader className="p-5 pb-3">
@@ -329,7 +330,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                 </div>
               </CardHeader>
 
-              <CardContent className="p-5 pt-2 space-y-4">
+              <CardContent className="mt-auto p-5 pt-2 space-y-4">
                 <div className="space-y-1.5 border-t border-white/5 pt-3 text-xs text-muted-foreground">
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1">

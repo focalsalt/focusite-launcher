@@ -369,9 +369,10 @@ pub async fn ensure_valid_minecraft_token(
         Ok(refreshed_acc) => {
             // A stale keyring token must not be passed off as a valid session.
             let token = if refreshed_acc.has_valid_token {
-                focusite_auth::keyring_store::CredentialStore::get_token(&refreshed_acc.id)
+                focusite_auth::keyring_store::CredentialStore::get_credentials(&refreshed_acc.id)
                     .ok()
                     .flatten()
+                    .map(|(mc_token, _)| mc_token)
                     .unwrap_or_else(|| "0".into())
             } else {
                 "0".into()

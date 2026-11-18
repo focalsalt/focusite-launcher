@@ -162,6 +162,7 @@ export default function App() {
     username: t.app.noAccount,
     accountType: "microsoft",
     isReady: false,
+    hasValidToken: false,
     isActive: true,
   };
 
@@ -223,6 +224,35 @@ export default function App() {
       isMounted = false;
     };
   }, []);
+
+  // The stored status is never proof of a live login: verify the active Microsoft account on start,
+  // on switch, when the window regains focus, and every 10 minutes (the backend refreshes silently).
+  const hasAccounts = accounts.length > 0;
+  // A check that started before a sign-in finished holds the old, expired login: its result must be dropped.
+  const loginEpochRef = useRef(0);
+  const loginOpenRef = useRef(false);
+  loginOpenRef.current = isLoginModalOpen;
+  useEffect(() => {
+    if (!hasAccounts || !activeAccountId) return;
+    let last = 0;
+    const verify = () => {
+      if (loginOpenRef.current || Date.now() - last < 60_000) return;
+      last = Date.now();
+      const epoch = loginEpochRef.current;
+      authService.refreshProfile(activeAccountId).then((updated) => {
+        if (updated && epoch === loginEpochRef.current) {
+          setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+        }
+      });
+    };
+    verify();
+    const timer = window.setInterval(verify, 10 * 60_000);
+    window.addEventListener("focus", verify);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", verify);
+    };
+  }, [activeAccountId, hasAccounts]);
 
   // 三階段漸進式掛載與無縫視窗交接：
   // 1. "window-reveal": 確保滿 400ms 最小展示時間且初始資料就緒後，呼叫 showMainWindow() 將視窗置為 visible。
@@ -664,22 +694,19 @@ export default function App() {
                     onImportInstance={handleImportInstance}
                     onCreateGroup={handleCreateGroup}
                   />
-                  <ScrollArea
-                    className="flex-1 min-h-0"
-                    viewportClassName="p-6"
-                  >
+                  <div className="flex-1 min-h-0 p-6">
                     <HomeView
                       subNav={homeNav}
                       direction={homeNavDirection}
                       activeInstance={homeInstance}
                       onCreateInstance={handleCreateInstance}
                       onImportInstance={handleImportInstance}
-                      isLaunching={!!(homeInstance && launchingInstanceIds[homeInstance.id])}
-                      isRunning={!!(homeInstance && runningInstances[homeInstance.id])}
+                      instances={instances}
+                      busyIds={{ ...launchingInstanceIds, ...runningInstances }}
                       runningAccountName={homeInstance ? runningInstances[homeInstance.id]?.accountName ?? null : null}
-                      onQuickPlay={(type, target) => handleLaunchGame(homeInstance?.id, type, target)}
+                      onQuickPlay={(instanceId, type, target) => handleLaunchGame(instanceId, type, target)}
                     />
-                  </ScrollArea>
+                  </div>
                 </motion.div>
               )}
 
@@ -842,6 +869,7 @@ export default function App() {
             isOpen={isLoginModalOpen}
             onClose={() => setIsLoginModalOpen(false)}
             onSuccess={(newAcc) => {
+              loginEpochRef.current++;
               setAccounts((prev) => {
                 const filtered = prev.filter((a) => a.id !== newAcc.id);
                 return [newAcc, ...filtered.map((a) => ({ ...a, isActive: false }))];

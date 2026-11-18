@@ -74,13 +74,6 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
               </div>
             </div>
 
-            {errorCategory === "missing_config" && (
-              <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-[11px] font-mono text-slate-300">
-                <p className="text-muted-foreground mb-1">{t.auth.envHint}</p>
-                <p className="text-brand-light">{t.auth.envLine}</p>
-              </div>
-            )}
-
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="glass" size="sm" onClick={onClose}>
                 {t.auth.closeForNow}

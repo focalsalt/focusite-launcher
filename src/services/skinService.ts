@@ -59,7 +59,7 @@ export const skinService = {
       };
     }
 
-    throw new Error("非 Tauri 環境無法儲存實體皮膚至 %APPDATA%");
+    throw new Error("此環境無法儲存皮膚");
   },
 
   /**
