@@ -1,4 +1,5 @@
 import * as skinview3d from "skinview3d";
+import { toHttps } from "@/lib/assetUrl";
 
 export interface ThumbnailOptions {
   skinUrl?: string;
@@ -79,7 +80,7 @@ class SkinThumbnailService {
         try {
           // 載入皮膚或重設
           if (opts.skinUrl) {
-            await viewer.loadSkin(opts.skinUrl, {
+            await viewer.loadSkin(toHttps(opts.skinUrl), {
               model: opts.model ?? "auto-detect",
             });
           } else {
@@ -88,7 +89,7 @@ class SkinThumbnailService {
 
           // 載入披風或重設
           if (opts.capeUrl) {
-            await viewer.loadCape(opts.capeUrl, {
+            await viewer.loadCape(toHttps(opts.capeUrl), {
               backEquipment: opts.backEquipment ?? "cape",
             });
           } else {

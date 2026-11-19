@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as skinview3d from "skinview3d";
+import { toHttps } from "@/lib/assetUrl";
 
 export interface Skin3DViewerProps {
   skinUrl?: string;
@@ -179,7 +180,7 @@ export const Skin3DViewer: React.FC<Skin3DViewerProps> = ({
 
     if (skinUrl) {
       viewer
-        .loadSkin(skinUrl, {
+        .loadSkin(toHttps(skinUrl), {
           model: modelVariant ?? "auto-detect",
         })
         .then(() => {
@@ -206,7 +207,7 @@ export const Skin3DViewer: React.FC<Skin3DViewerProps> = ({
 
     if (capeUrl) {
       viewer
-        .loadCape(capeUrl, { backEquipment })
+        .loadCape(toHttps(capeUrl), { backEquipment })
         .then(() => {
           if (renderPaused) {
             viewer.playerObject.rotation.y = initialRotationY;

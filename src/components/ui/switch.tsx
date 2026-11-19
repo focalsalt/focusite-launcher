@@ -25,13 +25,13 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
           className
         )}
       >
+        {/* Animates x directly with initial={false}: the knob starts at its final spot, and unlike a `layout`
+            animation it is not thrown off when an ancestor is still sliding or scaling in. */}
         <motion.span
-          layout
+          initial={false}
+          animate={{ x: checked ? 16 : 0 }}
           transition={{ type: "spring", stiffness: 600, damping: 30 }}
-          className={cn(
-            "pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm",
-            checked ? "translate-x-4" : "translate-x-0"
-          )}
+          className="pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm"
         />
       </button>
     );

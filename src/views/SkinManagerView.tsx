@@ -889,7 +889,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(230px,calc((100%-1.75rem)/3)),1fr))] gap-3.5">
                         {/* 上傳卡片 */}
                         <div
                           onClick={() => fileInputRef.current?.click()}
@@ -1007,7 +1007,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(230px,calc((100%-1.75rem)/3)),1fr))] gap-3.5">
                         {OFFICIAL_9_SKINS.map((defSkin) => {
                           const isSelected = previewSkinUrl === defSkin.texturePath;
                           return (
@@ -1088,7 +1088,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                       </div>
 
                       {isRefreshingCapes ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(230px,calc((100%-1.75rem)/3)),1fr))] gap-3.5">
                           <CapeCardSkeleton />
                           <CapeCardSkeleton />
                           <CapeCardSkeleton />
@@ -1097,7 +1097,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                           <CapeCardSkeleton />
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(230px,calc((100%-1.75rem)/3)),1fr))] gap-3.5">
                           {/* 不裝備披風選項 */}
                           <div
                             onClick={() => setPreviewCapeUrl("")}
@@ -1148,8 +1148,8 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                             );
 
                             return (
-                              <Tooltip key={cape.id}>
-                                <TooltipTrigger asChild>
+                              <Tooltip key={cape.id} className="flex w-full min-w-0">
+                                <TooltipTrigger asChild className="flex w-full min-w-0">
                                   <div
                                     onClick={() => setPreviewCapeUrl(cape.url)}
                                     className={`group relative flex flex-col justify-between p-3.5 rounded-xl border transition-all cursor-pointer min-h-[120px] w-full ${

@@ -1,5 +1,8 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 
+/** Mojang returns texture URLs as http://, which the app's CSP blocks; the same host serves https. */
+export const toHttps = (url: string): string => url.replace(/^http:\/\/textures\.minecraft\.net/i, "https://textures.minecraft.net");
+
 /**
  * Converts a local file path to a URL the webview can load.
  * `updatedAt` busts the webview cache when the file is overwritten in place (e.g. icon.png).
