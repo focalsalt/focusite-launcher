@@ -2,7 +2,6 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 /// Builder for launching Minecraft child processes.
@@ -39,15 +38,6 @@ impl ProcessLauncher {
         cmd.spawn()
     }
 
-    /// Spawns a child process with a flat list of arguments (pre-built from build_launch_arguments).
-    pub fn spawn_direct(
-        java_path: &Path,
-        working_dir: &Path,
-        arguments: &[String],
-    ) -> Result<tokio::process::Child, std::io::Error> {
-        Self::spawn_direct_with_env(java_path, working_dir, arguments, None)
-    }
-
     /// Spawns a child process with a flat list of arguments and custom environment variables.
     pub fn spawn_direct_with_env(
         java_path: &Path,
@@ -68,18 +58,6 @@ impl ProcessLauncher {
 
         cmd.spawn()
     }
-}
-
-/// Helper to read output lines asynchronously from a process stream.
-pub async fn read_stream_lines<R: tokio::io::AsyncRead + Unpin, F: Fn(String) + Send + 'static>(
-    stream: R,
-    callback: F,
-) -> Result<(), std::io::Error> {
-    let mut reader = BufReader::new(stream).lines();
-    while let Some(line) = reader.next_line().await? {
-        callback(line);
-    }
-    Ok(())
 }
 
 /// Terminates a process tree cleanly given its process ID.

@@ -111,12 +111,6 @@ fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Backward compatibility alias for show_main_window.
-#[tauri::command]
-fn expand_main_window(app: tauri::AppHandle) -> Result<(), String> {
-    show_main_window(app)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = dotenvy::dotenv();
@@ -234,7 +228,6 @@ pub fn run() {
             get_launcher_info,
             show_splash_window,
             show_main_window,
-            expand_main_window,
             commands::manifest::get_version_manifest,
             commands::manifest::get_version_detail,
             commands::manifest::get_loader_versions,
@@ -258,7 +251,6 @@ pub fn run() {
             commands::instance::set_instance_icon_from_file,
             commands::instance::set_instance_preset_icon,
             commands::instance::reset_instance_icon,
-            commands::download::download_version_client,
             commands::auth::auth_check_client_id,
             commands::auth::auth_start_device_code,
             commands::auth::auth_poll_device_code,
@@ -268,6 +260,7 @@ pub fn run() {
             commands::auth::auth_update_account_skin,
             commands::auth::auth_refresh_profile,
             commands::auth::auth_verify_offline_launch,
+            commands::friends::friends_list_xuids,
             commands::skin::skin_list_local,
             commands::skin::skin_save_local,
             commands::skin::skin_delete_local,

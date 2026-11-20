@@ -5,9 +5,9 @@ import { Plus, FolderDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { HomeSubNav, MinecraftInstance } from "@/types/navigation";
+import { HomeSubNav, MinecraftInstance, UserAccount } from "@/types/navigation";
 import { useI18n } from "@/i18n";
-import { LanSharePanel } from "@/components/home/LanSharePanel";
+import { PartyView } from "@/components/party/PartyView";
 import { RecentQuickPlay } from "@/components/home/RecentQuickPlay";
 
 const HOME_SUB_NAV_ORDER: Record<HomeSubNav, number> = {
@@ -26,7 +26,7 @@ interface HomeViewProps {
   instances: MinecraftInstance[];
   /** Instance ids that are launching or running; their quick-play rows are disabled. */
   busyIds: Record<string, unknown>;
-  runningAccountName?: string | null;
+  account: UserAccount | null;
   onQuickPlay?: (instanceId: string, type: "singleplayer" | "multiplayer", target: string) => void;
 }
 
@@ -38,7 +38,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   direction: directionProp,
   instances,
   busyIds,
-  runningAccountName = null,
+  account,
   onQuickPlay,
 }) => {
   const { t } = useI18n();
@@ -124,11 +124,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         )}
 
         {/* 2. 區域網路共遊 */}
-        {subNav === "p2p" && (
-          <ScrollArea className="h-full">
-            <LanSharePanel activeInstance={activeInstance} accountName={runningAccountName} />
-          </ScrollArea>
-        )}
+        {subNav === "p2p" && <PartyView account={account} />}
       </motion.div>
     </AnimatePresence>
   );

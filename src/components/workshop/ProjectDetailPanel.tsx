@@ -15,7 +15,7 @@ import { openExternal } from "@/lib/openExternal";
 import { formatCategory } from "@/lib/plainMarkdown";
 import { useI18n } from "@/i18n";
 
-export const DETAIL_WIDTH = 440;
+const DETAIL_WIDTH = 440;
 
 interface ProjectDetailPanelProps {
   project: WorkshopProjectSummary;

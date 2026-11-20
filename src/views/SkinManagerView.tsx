@@ -35,7 +35,7 @@ import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 
-export interface DefaultSkinPreset {
+interface DefaultSkinPreset {
   id: string;
   name: string;
   model: "default" | "slim"; // 寬版 (4px) 或 苗條 (3px)
@@ -43,7 +43,7 @@ export interface DefaultSkinPreset {
 }
 
 // 依據 Minecraft Wiki 官方預設外觀對照表收錄之 9 款角色
-export const OFFICIAL_9_SKINS: DefaultSkinPreset[] = [
+const OFFICIAL_9_SKINS: DefaultSkinPreset[] = [
   {
     id: "steve",
     name: "Steve",
@@ -100,7 +100,7 @@ export const OFFICIAL_9_SKINS: DefaultSkinPreset[] = [
   },
 ];
 
-export interface KnownCapeDef {
+interface KnownCapeDef {
   id: string;
   name: string;
   enName: string;
@@ -112,7 +112,7 @@ export interface KnownCapeDef {
 }
 
 // 依據 Minecraft Wiki 披風專題完整收錄之 21 款官方正統披風（全數經 Mojang 官方 CDN 探測返回 HTTP 200 OK）
-export const OFFICIAL_KNOWN_CAPES: KnownCapeDef[] = [
+const OFFICIAL_KNOWN_CAPES: KnownCapeDef[] = [
   {
     id: "15th-anniversary",
     name: "15th Anniversary Cape",

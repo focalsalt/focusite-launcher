@@ -70,40 +70,6 @@ pub async fn install_meta_loader(
     Ok(merged)
 }
 
-/// Extracts Forge or NeoForge version manifest from an installer jar archive.
-pub fn extract_installer_profile(
-    installer_jar: &Path,
-) -> Result<VersionManifest, CoreError> {
-    let file = std::fs::File::open(installer_jar)?;
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| CoreError::InvalidManifest(format!("Installer JAR zip error: {}", e)))?;
-
-    // Check version.json in root of installer
-    if let Ok(mut version_entry) = archive.by_name("version.json") {
-        let manifest: VersionManifest = serde_json::from_reader(&mut version_entry)
-            .map_err(|e| CoreError::InvalidManifest(format!("Failed to parse installer version.json: {}", e)))?;
-        return Ok(manifest);
-    }
-
-    // Check install_profile.json
-    if let Ok(mut profile_entry) = archive.by_name("install_profile.json") {
-        #[derive(Deserialize)]
-        struct RawInstallProfile {
-            #[serde(rename = "versionInfo")]
-            version_info: Option<VersionManifest>,
-        }
-
-        let raw: RawInstallProfile = serde_json::from_reader(&mut profile_entry)
-            .map_err(|e| CoreError::InvalidManifest(format!("Failed to parse install_profile.json: {}", e)))?;
-
-        if let Some(info) = raw.version_info {
-            return Ok(info);
-        }
-    }
-
-    Err(CoreError::InvalidManifest("No version.json or install_profile.json found in installer JAR".into()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

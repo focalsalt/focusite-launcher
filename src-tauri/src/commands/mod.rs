@@ -30,6 +30,7 @@ pub fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path, skip_links: bo
 }
 
 pub mod auth;
+pub mod friends;
 pub mod diagnostic;
 pub mod download;
 pub mod instance;

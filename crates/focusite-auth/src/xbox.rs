@@ -112,12 +112,21 @@ pub async fn obtain_xsts_token(
     client: &reqwest::Client,
     xbl_token: &str,
 ) -> Result<(String, String), AuthError> {
+    obtain_xsts_token_for(client, xbl_token, "rp://api.minecraftservices.com/").await
+}
+
+/// Exchanges an Xbox Live Token for an XSTS Token issued for `relying_party`.
+pub async fn obtain_xsts_token_for(
+    client: &reqwest::Client,
+    xbl_token: &str,
+    relying_party: &str,
+) -> Result<(String, String), AuthError> {
     let payload = serde_json::json!({
         "Properties": {
             "SandboxId": "RETAIL",
             "UserTokens": [xbl_token]
         },
-        "RelyingParty": "rp://api.minecraftservices.com/",
+        "RelyingParty": relying_party,
         "TokenType": "JWT"
     });
 
@@ -143,6 +152,41 @@ pub async fn obtain_xsts_token(
         .ok_or_else(|| AuthError::AuthFailed("Missing UHS claim in XSTS response".into()))?;
 
     Ok((xsts_resp.token, uhs))
+}
+
+/// XUIDs on the caller's Xbox people list (`GET social.xboxlive.com/users/me/people`).
+/// Names and presence are not in this response; they need a separate Xbox service call.
+pub async fn fetch_xbox_people_xuids(
+    client: &reqwest::Client,
+    userhash: &str,
+    xsts_token: &str,
+) -> Result<Vec<String>, AuthError> {
+    let resp = client
+        .get("https://social.xboxlive.com/users/me/people")
+        .header("Authorization", format!("XBL3.0 x={};{}", userhash, xsts_token))
+        // Contract version 2 is what third-party Xbox clients send; the Microsoft page lists no value.
+        .header("x-xbl-contract-version", "2")
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        return Err(AuthError::AuthFailed(format!(
+            "Xbox people list failed with HTTP {}",
+            resp.status()
+        )));
+    }
+
+    #[derive(Deserialize)]
+    struct PeopleList {
+        people: Vec<Person>,
+    }
+    #[derive(Deserialize)]
+    struct Person {
+        xuid: String,
+    }
+
+    let list: PeopleList = resp.json().await?;
+    Ok(list.people.into_iter().map(|p| p.xuid).collect())
 }
 
 /// Exchanges XSTS Token for Minecraft Java Services Token.

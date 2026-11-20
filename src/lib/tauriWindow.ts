@@ -26,24 +26,6 @@ export async function hideWindow(): Promise<void> {
 }
 
 /**
- * Reveals and centers the splash window once its DOM is painted.
- */
-export async function showSplashWindow(): Promise<void> {
-  try {
-    await invoke("show_splash_window");
-  } catch (err) {
-    console.warn("show_splash_window invoke error:", err);
-  }
-}
-
-/**
- * Expands the window or reveals the 1280x720 main workspace (alias for showMainWindow).
- */
-export async function expandMainWindow(): Promise<void> {
-  await showMainWindow();
-}
-
-/**
  * Reveals and focuses the 1280x720 main window once initial UI is painted,
  * gracefully destroying the startup splash window.
  */

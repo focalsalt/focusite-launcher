@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { HomeView } from "@/views/HomeView";
 import { EMPTY_FILES, setCachedFiles } from "@/lib/instanceFilesCache";
 import { AuthScreen } from "@/components/auth/AuthScreen";
+import { FriendsPanel } from "@/components/party/FriendsPanel";
 import { OnboardingGuide, isOnboardingDone, markOnboardingDone, REPLAY_ONBOARDING_EVENT } from "@/components/onboarding/OnboardingGuide";
 import { ExitConfirmationDialog } from "@/components/layout/ExitConfirmationDialog";
 import {
@@ -613,6 +614,8 @@ export default function App() {
           <div className="absolute -bottom-[15%] -right-[10%] h-[450px] w-[450px] rounded-full bg-brand-dark/20 blur-[130px]" />
         </div>
 
+        <FriendsPanel account={activeAccount ?? null} />
+
         {/* Sidebar */}
         <Sidebar
           currentView={currentView}
@@ -703,7 +706,7 @@ export default function App() {
                       onImportInstance={handleImportInstance}
                       instances={instances}
                       busyIds={{ ...launchingInstanceIds, ...runningInstances }}
-                      runningAccountName={homeInstance ? runningInstances[homeInstance.id]?.accountName ?? null : null}
+                      account={activeAccount ?? null}
                       onQuickPlay={(instanceId, type, target) => handleLaunchGame(instanceId, type, target)}
                     />
                   </div>
