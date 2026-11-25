@@ -105,7 +105,7 @@ export const LaunchInstallModal: React.FC<LaunchInstallModalProps> = ({
                 ) : (
                   <Icon className={`h-4 w-4 ${isCurrent ? "text-brand-light animate-bounce" : ""}`} />
                 )}
-                <span className="text-[10px] font-medium leading-none">{t.install[s.labelKey]}</span>
+                <span className="text-3xs font-medium leading-none">{t.install[s.labelKey]}</span>
               </div>
             );
           })}
@@ -130,7 +130,7 @@ export const LaunchInstallModal: React.FC<LaunchInstallModalProps> = ({
             />
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1">
+          <div className="flex items-center justify-between text-2xs text-slate-400 font-mono pt-1">
             <span>
               {progress.total > 0
                 ? `${progress.current} / ${progress.total}`

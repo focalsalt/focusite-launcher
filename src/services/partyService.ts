@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { SIGNALING_SERVER } from "@/lib/signalingServer";
 import { p2pService, type TurnServer } from "@/services/p2pService";
 
-export const MAX_PARTY_MEMBERS = 8;
 export const MAX_CHAT_LINES = 100;
 
 export interface PartyMember {

@@ -122,13 +122,13 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
           <div className="space-y-4">
             {/* 衝突警告區塊 */}
             {plan.conflict_warnings.length > 0 && (
-              <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 space-y-1">
-                <div className="flex items-center gap-2 text-amber-400 text-xs font-semibold">
+              <div className="rounded-lg bg-warning-500/10 border border-warning-500/30 p-3 space-y-1">
+                <div className="flex items-center gap-2 text-warning-400 text-xs font-semibold">
                   <AlertTriangle className="w-4 h-4" />
                   <span>{t.installPlan.conflicts}</span>
                 </div>
                 {plan.conflict_warnings.map((w, i) => (
-                  <p key={i} className="text-xs text-amber-200/80 leading-relaxed pl-6">
+                  <p key={i} className="text-xs text-warning-200/80 leading-relaxed pl-6">
                     • {w}
                   </p>
                 ))}
@@ -157,7 +157,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {item.already_installed ? (
-                        <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 text-[10px]">
+                        <Badge variant="outline" className="border-success-500/40 text-success-400 text-3xs">
                           <CheckCircle2 className="w-3 h-3 mr-1" /> {t.installPlan.exists}
                         </Badge>
                       ) : (
@@ -195,11 +195,11 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {dep.already_installed ? (
-                          <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 text-[10px]">
+                          <Badge variant="outline" className="border-success-500/40 text-success-400 text-3xs">
                             <CheckCircle2 className="w-3 h-3 mr-1" /> {t.installPlan.existsNoDownload}
                           </Badge>
                         ) : (
-                          <span className="text-xs font-mono text-emerald-300/80">
+                          <span className="text-xs font-mono text-success-300/80">
                             {formatBytes(dep.size)}
                           </span>
                         )}
@@ -244,7 +244,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           {opt.already_installed ? (
-                            <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 text-[10px]">
+                            <Badge variant="outline" className="border-success-500/40 text-success-400 text-3xs">
                               {t.workshop.installed}
                             </Badge>
                           ) : (

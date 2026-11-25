@@ -185,6 +185,9 @@ pub fn ensure_or_create_log_window(
     .min_inner_size(1072.0, 603.0)
     .decorations(false)
     .resizable(true)
+    // Created hidden: index.html ships the main window's boot screen, so LogWindow reveals the window
+    // itself once its first frame has painted.
+    .visible(false)
     // Dark backdrop so the window is not white before the page has painted.
     .background_color(tauri::window::Color(10, 15, 29, 255));
 
@@ -196,9 +199,6 @@ pub fn ensure_or_create_log_window(
     .build()
     .map_err(super::ctx("無法開啟控制台視窗"))?;
 
-    let _ = win.show();
-    let _ = win.unminimize();
-    let _ = win.set_focus();
     Ok(win)
 }
 

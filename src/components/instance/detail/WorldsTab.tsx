@@ -158,7 +158,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                                 </h4>
                                 <Badge
                                   variant="outline"
-                                  className={`text-[10px] py-0 px-1.5 ${
+                                  className={`text-3xs py-0 px-1.5 ${
                                     world.is_hardcore
                                       ? "border-red-500/40 text-red-400"
                                       : "border-emerald-500/30 text-emerald-400"
@@ -170,7 +170,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                               <p className="text-xs text-white/40 font-mono mt-0.5 truncate">
                                 {world.folder_name} • {world.version_name}
                               </p>
-                              <p className="text-[11px] text-white/50 mt-1">
+                              <p className="text-2xs text-white/50 mt-1">
                                 {t.worlds.seedLabel}<span className="font-mono text-white/70">{world.seed}</span> • {t.worlds.playedLabel}{lastPlayedStr}
                               </p>
                             </div>

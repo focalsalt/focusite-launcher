@@ -48,18 +48,18 @@ export const ProjectRow: React.FC<ProjectRowProps> = ({ project, active, checked
     <div className="min-w-0 flex-1">
       <div className="flex items-baseline gap-2">
         <h4 className="truncate text-sm font-semibold text-slate-100">{project.title}</h4>
-        <span className="shrink-0 text-[11px] text-slate-500">by {project.author}</span>
+        <span className="shrink-0 text-2xs text-slate-500">by {project.author}</span>
       </div>
       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-400">{project.description}</p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {project.categories.slice(0, 3).map((c) => (
-          <Badge key={c} variant="outline" className="border-white/10 px-1.5 py-0 text-[10px] font-normal text-slate-400">
+          <Badge key={c} variant="outline" className="border-white/10 px-1.5 py-0 text-3xs font-normal text-slate-400">
             {formatCategory(c)}
           </Badge>
         ))}
       </div>
     </div>
-    <div className="flex shrink-0 flex-col items-end gap-1 text-[11px] text-slate-500">
+    <div className="flex shrink-0 flex-col items-end gap-1 text-2xs text-slate-500">
       <span className="flex items-center gap-1">
         <Download className="h-3 w-3" />
         {compact(project.downloads)}

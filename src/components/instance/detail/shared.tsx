@@ -58,17 +58,17 @@ export function PackItem({
         <div>
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-200">{pack.filename}</span>
-            <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-white/10 text-slate-300">
+            <Badge variant="outline" className="text-3xs py-0 px-1.5 border-white/10 text-slate-300">
               {sizeStr}
             </Badge>
           </div>
           {pack.description && (
-            <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{pack.description}</p>
+            <p className="text-2xs text-slate-400 mt-0.5 line-clamp-1">{pack.description}</p>
           )}
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-slate-500 font-mono">
+        <span className="text-2xs text-slate-500 font-mono">
           {pack.modified ? new Date(pack.modified * 1000).toLocaleDateString("zh-TW") : t.shared.localPackage}
         </span>
         {action}
@@ -96,14 +96,14 @@ export function ModItem({
       <div>
         <div className="flex items-center gap-2">
           <span className="font-semibold text-slate-200">{name}</span>
-          <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-white/10 text-slate-300">
+          <Badge variant="outline" className="text-3xs py-0 px-1.5 border-white/10 text-slate-300">
             {version}
           </Badge>
         </div>
-        <p className="text-[11px] text-slate-400 mt-0.5">{desc}</p>
+        <p className="text-2xs text-slate-400 mt-0.5">{desc}</p>
       </div>
       <div className="flex items-center gap-2.5">
-        <span className="text-[11px] text-slate-400 font-medium">
+        <span className="text-2xs text-slate-400 font-medium">
           {enabled ? t.common.enabled : t.common.disabled}
         </span>
         <Switch checked={enabled} onCheckedChange={onToggle} />

@@ -153,7 +153,7 @@ export const ExportInstanceDialog: React.FC<ExportInstanceDialogProps> = ({ isOp
               {e.name}
               {e.isDir ? "/" : ""}
             </span>
-            <span className="shrink-0 font-mono text-[11px] text-slate-400">{formatBytes(e.sizeBytes)}</span>
+            <span className="shrink-0 font-mono text-2xs text-slate-400">{formatBytes(e.sizeBytes)}</span>
           </label>
         </div>
         {expanded.has(e.path) &&
@@ -248,7 +248,7 @@ export const ExportInstanceDialog: React.FC<ExportInstanceDialogProps> = ({ isOp
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-300">{t.exportInst.content}</span>
-            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <div className="flex items-center gap-3 text-2xs text-slate-400">
               <button type="button" className="hover:text-white" onClick={() => setSelected(new Set(rootEntries.map((e) => e.path)))}>
                 {t.exportInst.selectAll}
               </button>
@@ -268,10 +268,10 @@ export const ExportInstanceDialog: React.FC<ExportInstanceDialogProps> = ({ isOp
               </ScrollArea>
             )}
           </div>
-          <p className="text-[11px] text-slate-500">{t.exportInst.always}</p>
-          <p className="text-[11px] text-slate-400">{t.exportInst.selected(selected.size, formatBytes(selectedSize))}</p>
+          <p className="text-2xs text-slate-500">{t.exportInst.always}</p>
+          <p className="text-2xs text-slate-400">{t.exportInst.selected(selected.size, formatBytes(selectedSize))}</p>
           {selectedSize > IMPORT_CONFIRM_BYTES && (
-            <p className="flex items-start gap-1.5 text-[11px] text-amber-300">
+            <p className="flex items-start gap-1.5 text-2xs text-amber-300">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               {selectedSize > IMPORT_HARD_BYTES ? t.exportInst.tooLargeHard : t.exportInst.tooLarge}
             </p>

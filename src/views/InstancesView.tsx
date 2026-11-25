@@ -217,7 +217,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                       <span className="text-xs font-bold text-white tracking-wide">
                         {groupName}
                       </span>
-                      <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-white/10 text-white/50">
+                      <Badge variant="outline" className="text-3xs py-0 px-1.5 border-white/10 text-white/50">
                         {groupItems.length}
                       </Badge>
                     </div>
@@ -260,7 +260,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                           className="h-full w-full object-cover"
                         />
                       ) : inst.needsSetup ? (
-                        <AlertTriangle className="h-6 w-6 text-amber-400" />
+                        <AlertTriangle className="h-6 w-6 text-warning-400" />
                       ) : (
                         <Box className="h-6 w-6" />
                       )}
@@ -271,23 +271,23 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                       </CardTitle>
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         {inst.needsSetup ? (
-                          <Badge variant="outline" className="whitespace-nowrap border-amber-500/40 text-[10px] py-0 px-1.5 text-amber-400">
+                          <Badge variant="outline" className="whitespace-nowrap border-warning-500/40 text-3xs py-0 px-1.5 text-warning-400">
                             {t.common.unknown}
                           </Badge>
                         ) : (
                           <>
-                            <Badge variant="outline" className="whitespace-nowrap text-[10px] py-0 px-1.5">
+                            <Badge variant="outline" className="whitespace-nowrap text-3xs py-0 px-1.5">
                               {inst.loader}
                               {inst.loaderVersion ? ` ${inst.loaderVersion}` : ""}
                             </Badge>
-                            <Badge variant="secondary" className="whitespace-nowrap text-[10px] py-0 px-1.5">
+                            <Badge variant="secondary" className="whitespace-nowrap text-3xs py-0 px-1.5">
                               MC {inst.version}
                             </Badge>
                           </>
                         )}
                       </div>
                       {inst.description && (
-                        <p className="text-[11px] text-slate-400 mt-1 line-clamp-1 max-w-xs">
+                        <p className="text-2xs text-slate-400 mt-1 line-clamp-1 max-w-xs">
                           {inst.description}
                         </p>
                       )}
@@ -298,7 +298,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
               </CardHeader>
 
               <CardContent className="mt-auto p-5 pt-2 space-y-4">
-                <div className="space-y-1.5 border-t border-white/5 pt-3 text-xs text-muted-foreground">
+                <div className="space-y-1.5 border-t border-white/5 pt-3 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
@@ -324,7 +324,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                         e.stopPropagation();
                         onKillInstance?.(inst.id);
                       }}
-                      className="flex-1 gap-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold h-8 rounded-lg shadow-sm shadow-rose-900/30"
+                      className="flex-1 gap-1.5 bg-danger-600 hover:bg-danger-700 text-white text-xs font-semibold h-8 rounded-lg shadow-sm shadow-danger-900/30"
                     >
                       <Square className="h-3 w-3 fill-current" />
                       <span>
@@ -380,7 +380,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setDeleteTarget(inst)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-danger-400 hover:bg-danger-500/10 transition-colors"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -434,7 +434,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
               />
             </div>
 
-            <p className="text-[11px] text-slate-400 leading-relaxed">{t.instances.groupHint}</p>
+            <p className="text-2xs text-slate-400 leading-relaxed">{t.instances.groupHint}</p>
 
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="outline" size="sm" onClick={() => setGroupDialogOpen(false)} className="text-xs">
@@ -462,7 +462,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
           </DialogHeader>
 
           {duplicateError && (
-            <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 px-3 py-2 text-xs text-rose-400">
+            <div className="rounded-lg bg-danger-500/10 border border-danger-500/20 px-3 py-2 text-xs text-danger-400">
               {duplicateError}
             </div>
           )}
@@ -477,7 +477,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                 autoFocus
               />
             </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
+            <p className="text-2xs text-slate-400 leading-relaxed">
               {t.inst.dupHint}
             </p>
             <div className="flex justify-end gap-2 pt-2">
@@ -510,8 +510,8 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
       >
         <DialogContent onClose={() => setDeleteTarget(null)} className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-rose-400">
-              <Trash2 className="h-4 w-4 text-rose-400" />
+            <DialogTitle className="flex items-center gap-2 text-danger-400">
+              <Trash2 className="h-4 w-4 text-danger-400" />
               {t.instances.confirmDeleteTitle}
             </DialogTitle>
           </DialogHeader>
@@ -520,7 +520,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
             {t.instances.deleteNotice(shownDeleteTarget?.name ?? "")}
           </p>
           {shownDeleteTarget?.needsSetup && (
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs leading-relaxed text-amber-300">
+            <p className="rounded-lg border border-warning-500/30 bg-warning-500/10 p-2 text-xs leading-relaxed text-warning-300">
               {t.instances.deleteForeignNotice}
             </p>
           )}
@@ -554,7 +554,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                   setIsDeleting(false);
                 }
               }}
-              className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold"
+              className="bg-danger-600 hover:bg-danger-700 text-white text-xs font-semibold"
             >
               {isDeleting ? t.inst.deleting : t.instances.confirmDeleteBtn}
             </Button>

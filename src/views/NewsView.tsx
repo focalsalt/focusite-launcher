@@ -233,7 +233,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                     <div className="absolute top-2.5 left-2.5">
                       <Badge
                         variant="outline"
-                        className="border-black/50 bg-black/75 backdrop-blur-md text-[10px] text-white px-2 py-0.5"
+                        className="border-black/50 bg-black/75 backdrop-blur-md text-3xs text-white px-2 py-0.5"
                       >
                         {item.category}
                       </Badge>
@@ -250,13 +250,13 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                           {item.title}
                         </h3>
                       </Tip>
-                      <p className="text-[11px] text-slate-400 line-clamp-3 leading-relaxed">
+                      <p className="text-2xs text-slate-400 line-clamp-3 leading-relaxed">
                         {item.text}
                       </p>
                     </div>
 
                     {/* 卡片底部：日期與外部連結 */}
-                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-500">
+                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-3xs text-slate-500">
                       <span className="flex items-center gap-1 font-mono">
                         <Calendar className="h-3 w-3" />
                         {item.date}
@@ -328,8 +328,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                         variant="outline"
                         className={
                           patch.type === "release"
-                            ? "border-brand-light/50 bg-brand/85 backdrop-blur-md text-[10px] text-white px-2 py-0.5"
-                            : "border-white/20 bg-black/75 backdrop-blur-md text-[10px] text-slate-300 px-2 py-0.5"
+                            ? "border-brand-light/50 bg-brand/85 backdrop-blur-md text-3xs text-white px-2 py-0.5"
+                            : "border-white/20 bg-black/75 backdrop-blur-md text-3xs text-slate-300 px-2 py-0.5"
                         }
                       >
                         {patch.type === "release" ? t.common.release : t.common.snapshot}
@@ -348,18 +348,18 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                         </h3>
                       </Tip>
                       {patch.snippet ? (
-                        <p className="text-[11px] text-slate-400 line-clamp-3 leading-relaxed">
+                        <p className="text-2xs text-slate-400 line-clamp-3 leading-relaxed">
                           {patch.snippet}
                         </p>
                       ) : (
-                        <p className="text-[11px] text-slate-500 italic">
+                        <p className="text-2xs text-slate-500 italic">
                           {t.news.patchHint}
                         </p>
                       )}
                     </div>
 
                     {/* 卡片底部：版本與連結 */}
-                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-500">
+                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-3xs text-slate-500">
                       <span className="font-mono text-slate-400">
                         MC {patch.version}
                       </span>

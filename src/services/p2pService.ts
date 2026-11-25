@@ -14,14 +14,6 @@ export interface P2pSessionDto {
   createdAt: number;
 }
 
-export interface P2pHandshakeResult {
-  sessionId: string;
-  success: boolean;
-  latencyMs: number;
-  motd: string;
-  serverVersion: string;
-}
-
 export interface TunnelCodeDto {
   session: P2pSessionDto;
   /** Offer code (host) or answer code (guest) to hand to the friend. */
@@ -36,8 +28,6 @@ export interface TurnServer {
 }
 
 export const p2pService = {
-  startHost: (instanceId: string, hostPort: number, alias: string): Promise<P2pSessionDto> =>
-    invoke<P2pSessionDto>("start_p2p_host", { instanceId, hostPort, alias }),
 
   stopSession: async (sessionId: string): Promise<void> => {
     await invoke("stop_p2p_session", { sessionId });
@@ -51,26 +41,6 @@ export const p2pService = {
   /** Downloads a file the peer serves; rejects unless size and sha1 match. */
   fetchFile: async (sessionId: string, sha1: string, size: number, dest: string): Promise<void> => {
     await invoke("p2p_fetch_file", { sessionId, sha1, size, dest });
-  },
-
-  listSessions: (): Promise<P2pSessionDto[]> => invoke<P2pSessionDto[]>("list_p2p_sessions"),
-
-  /** The handshake result is serialized with snake_case field names by the Rust crate. */
-  verifyHandshake: async (sessionId: string): Promise<P2pHandshakeResult> => {
-    const raw = await invoke<{
-      session_id: string;
-      success: boolean;
-      latency_ms: number;
-      motd: string;
-      server_version: string;
-    }>("p2p_verify_handshake", { sessionId });
-    return {
-      sessionId: raw.session_id,
-      success: raw.success,
-      latencyMs: raw.latency_ms,
-      motd: raw.motd,
-      serverVersion: raw.server_version,
-    };
   },
 
   /** Host: opens a WebRTC tunnel to the local game port and returns the invite code. */
@@ -97,12 +67,4 @@ export const p2pService = {
   /** TURN relays for this account; empty when the Worker has none. */
   iceServers: (accountId: string, server: string, name: string): Promise<TurnServer[]> =>
     invoke<TurnServer[]>("party_ice_servers", { accountId, launcher: { server, name } }),
-
-  /** Whether Windows Firewall already allows this app (always true elsewhere). */
-  firewallStatus: (): Promise<boolean> => invoke<boolean>("p2p_firewall_status"),
-
-  /** Creates the firewall rule; Windows shows one administrator prompt. */
-  firewallSetup: async (): Promise<void> => {
-    await invoke("p2p_firewall_setup");
-  },
 };

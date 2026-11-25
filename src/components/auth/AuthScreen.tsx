@@ -80,7 +80,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                   <h1 className="text-2xl font-black tracking-tight text-slate-100">
                     Focusite Launcher
                   </h1>
-                  <Badge variant="outline" className="text-[10px] border-brand-light/40 text-brand-light">
+                  <Badge variant="outline" className="text-3xs border-brand-light/40 text-brand-light">
                     {appVersion ? `v${appVersion}` : ""}
                   </Badge>
                 </div>
@@ -108,7 +108,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                   <span>{t.auth.loginButton}</span>
                 </Button>
 
-                <div className="text-[11px] text-muted-foreground text-center leading-relaxed">
+                <div className="text-2xs text-center leading-relaxed">
                   {t.auth.loginNote}
                 </div>
               </CardContent>
@@ -189,7 +189,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                     {isStarting && !deviceInfo && (
                       <div className="flex flex-col items-center justify-center py-8 space-y-3">
                         <RefreshCw className="h-6 w-6 animate-spin text-brand-light" />
-                        <p className="text-xs text-muted-foreground">{pollingStatus}</p>
+                        <p className="text-xs">{pollingStatus}</p>
                       </div>
                     )}
 
@@ -233,18 +233,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                               <ExternalLink className="h-3 w-3" />
                             </Button>
                           </div>
-                          <p className="text-[11px] text-muted-foreground">
+                          <p className="text-2xs">
                             {t.auth.openPageHint}
                             <span className="text-slate-400 block mt-0.5 font-mono">
                               {deviceInfo.verification_uri}
                             </span>
                           </p>
-                          <p className="text-[11px] text-slate-300">
+                          <p className="text-2xs text-slate-300">
                             {t.auth.step2}
                           </p>
                         </div>
 
-                        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground pt-1">
+                        <div className="flex items-center justify-center gap-2 text-xs pt-1">
                           <RefreshCw className="h-3.5 w-3.5 animate-spin text-brand-light" />
                           <span>{pollingStatus}</span>
                         </div>

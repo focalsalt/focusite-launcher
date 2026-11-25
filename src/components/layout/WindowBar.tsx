@@ -78,7 +78,7 @@ export const WindowBar: React.FC<WindowBarProps> = ({
           {title || "Focusite Launcher"}
         </span>
         {shownBadge && (
-          <span className="rounded bg-brand/20 px-1.5 py-0.2 text-[10px] text-brand-light border border-brand-light/30 font-mono font-medium shrink-0">
+          <span className="rounded bg-brand/20 px-1.5 py-0.2 text-3xs text-brand-light border border-brand-light/30 font-mono font-medium shrink-0">
             {shownBadge}
           </span>
         )}

@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { listenSafe } from "@/lib/listenSafe";
+import { revealCurrentWindow } from "@/lib/tauriWindow";
 import {
   instanceService,
   InstanceLogEvent,
@@ -144,6 +145,12 @@ export const LogWindow: React.FC = () => {
       setIsDiagnosing(false);
     }
   };
+
+  // The window is created hidden; reveal it once the first frame has painted to avoid a flash.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => void revealCurrentWindow()));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   useEffect(() => {
     // Load initial in-memory buffered logs for this specific instance
@@ -283,7 +290,7 @@ export const LogWindow: React.FC = () => {
                     key={`${f.kind}:${f.name}`}
                     value={`${f.kind}:${f.name}`}
                     extraRight={
-                      <span className={`text-[10px] ${f.kind === "crash" ? "text-rose-400" : "text-slate-400"}`}>
+                      <span className={`text-3xs ${f.kind === "crash" ? "text-danger-400" : "text-slate-400"}`}>
                         {f.kind === "crash" ? t.logWin.groupCrash : t.logWin.groupLogs}
                       </span>
                     }
@@ -305,8 +312,8 @@ export const LogWindow: React.FC = () => {
             </Badge>
           )}
           {status === "launching" && (
-            <Badge className="bg-amber-500/20 border-amber-500/40 text-amber-400 gap-1.5 py-0.5 px-2">
-              <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping" />
+            <Badge className="bg-warning-500/20 border-warning-500/40 text-warning-400 gap-1.5 py-0.5 px-2">
+              <span className="h-2 w-2 rounded-full bg-warning-400 animate-ping" />
               {t.logWin.starting}
             </Badge>
           )}
@@ -317,7 +324,7 @@ export const LogWindow: React.FC = () => {
             </Badge>
           )}
           {status === "crashed" && (
-            <Badge className="bg-rose-500/20 border-rose-500/40 text-rose-400 gap-1.5 py-0.5 px-2">
+            <Badge className="bg-danger-500/20 border-danger-500/40 text-danger-400 gap-1.5 py-0.5 px-2">
               <AlertTriangle className="h-3 w-3" />
               {t.logWin.abnormalExit(exitCode ?? "N/A")}
             </Badge>
@@ -328,7 +335,7 @@ export const LogWindow: React.FC = () => {
               size="sm"
               variant="destructive"
               onClick={handleKill}
-              className="h-7 text-xs gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-medium px-2.5"
+              className="h-7 text-xs gap-1.5 bg-danger-600 hover:bg-danger-700 text-white font-medium px-2.5"
             >
               <Square className="h-3 w-3 fill-current" />
               {t.logWin.forceStop}
@@ -362,7 +369,7 @@ export const LogWindow: React.FC = () => {
             variant="outline"
             onClick={() => runDiagnosis()}
             disabled={isDiagnosing || shownLogs.length === 0}
-            className="h-8 text-xs gap-1.5 border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300"
+            className="h-8 text-xs gap-1.5 border-success-500/30 bg-success-500/10 text-success-400 hover:bg-success-500/20 hover:text-success-300"
           >
             <Sparkles className={`h-3.5 w-3.5 ${isDiagnosing ? "animate-spin" : ""}`} />
             {isDiagnosing ? t.logWin.diagnosing : t.logWin.diagnose}
@@ -395,7 +402,7 @@ export const LogWindow: React.FC = () => {
             variant="outline"
             disabled={viewingHistory}
             onClick={handleClearLogs}
-            className="h-8 text-xs gap-1.5 border-white/10 text-slate-400 hover:text-rose-400"
+            className="h-8 text-xs gap-1.5 border-white/10 text-slate-400 hover:text-danger-400"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {t.logWin.clear}
@@ -423,9 +430,9 @@ export const LogWindow: React.FC = () => {
 
       {/* Crash Alert Banner */}
       {status === "crashed" && !diagnosticResult?.hasCrash && (
-        <div className="flex items-center justify-between px-4 py-2.5 bg-rose-950/60 border-b border-rose-500/30 text-rose-200 shrink-0">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-danger-950/60 border-b border-danger-500/30 text-danger-200 shrink-0">
           <div className="flex items-center gap-2 text-xs">
-            <XCircle className="h-4 w-4 text-rose-400 shrink-0" />
+            <XCircle className="h-4 w-4 text-danger-400 shrink-0" />
             <span>
               {t.logWin.crashNotice(exitCode)}
               {t.logWin.diagnoseHint}
@@ -436,17 +443,17 @@ export const LogWindow: React.FC = () => {
 
       {/* Structured Diagnostic Result Card */}
       {diagnosticResult && diagnosticResult.hasCrash && !dismissDiagnosis && (
-        <div className="mx-4 my-2.5 p-3.5 bg-slate-900/90 border border-emerald-500/30 rounded-xl shadow-xl backdrop-blur-md shrink-0">
+        <div className="mx-4 my-2.5 p-3.5 bg-slate-900/90 border border-success-500/30 rounded-xl shadow-xl backdrop-blur-md shrink-0">
           <div className="flex items-center justify-between pb-2 border-b border-white/10">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-brand-light" />
               <span className="font-semibold text-slate-100 text-xs">
                 {t.logWin.diagnoseResult}
               </span>
-              <Badge className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400 text-[10px] py-0 px-1.5 font-mono">
+              <Badge className="bg-success-500/10 border-success-500/30 text-success-400 text-3xs py-0 px-1.5 font-mono">
                 {((diagnosticResult.executionTimeMicros ?? 0) / 1000).toFixed(2)} ms
               </Badge>
-              <Badge className="bg-amber-500/10 border-amber-500/30 text-amber-300 text-[10px] py-0 px-1.5 font-mono">
+              <Badge className="bg-warning-500/10 border-warning-500/30 text-warning-300 text-3xs py-0 px-1.5 font-mono">
                 {diagnosticResult.rootCauseType}
               </Badge>
             </div>
@@ -465,20 +472,20 @@ export const LogWindow: React.FC = () => {
             </div>
 
             {diagnosticResult.details.length > 0 && (
-              <div className="bg-black/30 rounded-lg p-2 space-y-1 border border-white/5 font-mono text-[11px] text-slate-300">
+              <div className="bg-black/30 rounded-lg p-2 space-y-1 border border-white/5 font-mono text-2xs text-slate-300">
                 {diagnosticResult.details.map((detail, idx) => (
                   <div key={idx} className="flex items-start gap-1.5">
-                    <span className="text-emerald-500 select-none">•</span>
+                    <span className="text-success-500 select-none">•</span>
                     <span>{detail}</span>
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="flex items-start gap-2 text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 text-[11px]">
-              <Lightbulb className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 text-warning-300/90 bg-warning-500/10 border border-warning-500/20 rounded-lg p-2 text-2xs">
+              <Lightbulb className="h-4 w-4 text-warning-400 shrink-0 mt-0.5" />
               <div className="leading-relaxed">
-                <span className="font-semibold text-amber-400">{t.logWin.suggestions}</span>
+                <span className="font-semibold text-warning-400">{t.logWin.suggestions}</span>
                 {diagnosticResult.suggestion}
               </div>
             </div>
@@ -487,7 +494,7 @@ export const LogWindow: React.FC = () => {
       )}
 
       {/* Main Terminal Viewport (Shadcn ScrollArea, 0px 排版位移) */}
-      <ScrollArea className="flex-1 min-h-0 w-full" viewportClassName="p-4 space-y-1 font-mono text-[11px] leading-relaxed">
+      <ScrollArea className="flex-1 min-h-0 w-full" viewportClassName="p-4 space-y-1 font-mono text-2xs leading-relaxed">
         {filteredLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-slate-500 space-y-2">
             <Terminal className="h-8 w-8 stroke-1" />
@@ -510,11 +517,11 @@ export const LogWindow: React.FC = () => {
             let tagColor = "text-slate-500 border-slate-700 bg-slate-800/40";
 
             if (log.stream === "system") {
-              streamColor = "text-emerald-400 font-semibold";
-              tagColor = "text-emerald-400 border-emerald-500/30 bg-emerald-500/10";
+              streamColor = "text-success-400 font-semibold";
+              tagColor = "text-success-400 border-success-500/30 bg-success-500/10";
             } else if (log.stream === "stderr") {
-              streamColor = "text-rose-400";
-              tagColor = "text-rose-400 border-rose-500/30 bg-rose-500/10";
+              streamColor = "text-danger-400";
+              tagColor = "text-danger-400 border-danger-500/30 bg-danger-500/10";
             }
 
             return (

@@ -159,7 +159,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                                 </span>
                                 <Badge
                                   variant="outline"
-                                  className={`text-[11px] font-mono ${
+                                  className={`text-2xs font-mono ${
                                     ping.latency_ms < 80
                                       ? "border-emerald-500/40 text-emerald-400"
                                       : ping.latency_ms < 180

@@ -248,7 +248,7 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
           </div>
 
           {needsLoaderVersion && (
-            <p className="text-[11px] text-amber-300">
+            <p className="text-2xs text-amber-300">
               {t.changeVer.needLoaderVersion(targetLoader)}
             </p>
           )}
@@ -268,7 +268,7 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
                       {migrationPlan.target_version} ({migrationPlan.target_loader})
                     </span>
                   </div>
-                  <div className="flex gap-2 text-[11px]">
+                  <div className="flex gap-2 text-2xs">
                     <Badge variant="outline" className="border-emerald-500/30 text-emerald-400">
                       {t.changeVer.upgradable(migrationPlan.upgradable.length)}
                     </Badge>
@@ -293,7 +293,7 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
                         <span className="text-white/90 font-medium">
                           {item.mod_name}
                         </span>
-                        <div className="flex items-center gap-1.5 text-white/50 text-[11px]">
+                        <div className="flex items-center gap-1.5 text-white/50 text-2xs">
                           <span className="line-through">{item.original_filename}</span>
                           <ArrowRight className="w-3 h-3 text-emerald-400" />
                           <span className="text-emerald-300 font-mono">{item.new_filename}</span>
@@ -312,7 +312,7 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
                     </h4>
                     <div className="p-2.5 rounded bg-amber-500/[0.04] border border-amber-500/20 text-xs space-y-1">
                       {migrationPlan.incompatible.map((filename, i) => (
-                        <p key={i} className="text-amber-200/80 font-mono text-[11px]">
+                        <p key={i} className="text-amber-200/80 font-mono text-2xs">
                           • {filename}
                         </p>
                       ))}

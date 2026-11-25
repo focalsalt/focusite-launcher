@@ -2,6 +2,7 @@ import * as React from "react";
 import { motion, AnimatePresence, type HTMLMotionProps } from "motion/react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { DURATION, SPRING_DIALOG } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 interface DialogProps {
@@ -32,7 +33,7 @@ export const Dialog: React.FC<DialogProps> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: DURATION.base }}
             onClick={() => {
               if (!preventBackdropClose) {
                 onOpenChange(false);
@@ -66,7 +67,7 @@ export const DialogContent = React.forwardRef<
       initial={{ opacity: 0, scale: 0.95, y: 8 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: 8 }}
-      transition={{ type: "spring", stiffness: 450, damping: 30 }}
+      transition={SPRING_DIALOG}
       className={cn(
         "relative z-10 w-full max-w-md max-h-full overflow-y-auto rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl space-y-4",
         className

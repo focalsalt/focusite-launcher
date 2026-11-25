@@ -216,7 +216,7 @@ const TourStep: React.FC<TourStepProps> = ({ index, onBack, onNext, onSkip }) =>
         style={{ top, left }}
       >
         <div className="space-y-1">
-          <p className="text-[11px] font-semibold text-brand-light">
+          <p className="text-2xs font-semibold text-brand-light">
             {index + 1} / {total}
           </p>
           <h3 className="text-sm font-bold text-white">{step.title}</h3>

@@ -1,7 +1,9 @@
 import { useInstanceFiles } from "@/lib/useInstanceFiles";
-import { clearCachedFiles } from "@/lib/instanceFilesCache";
 import { TabSkeleton } from "@/components/instance/detail/shared";
 import { InstanceSetupPanel } from "@/components/instance/InstanceSetupPanel";
+import { RenameInstanceDialog } from "@/components/instance/detail/RenameInstanceDialog";
+import { DeleteInstanceDialog } from "@/components/instance/detail/DeleteInstanceDialog";
+import { InstanceIconDialog } from "@/components/instance/detail/InstanceIconDialog";
 import React, { useState, useEffect, useMemo } from "react";
 import { AnimatePresence } from "motion/react";
 import {
@@ -19,15 +21,12 @@ import {
   Square,
   RefreshCw,
   Pencil,
-  AlertTriangle,
   Terminal,
   PackageOpen,
 } from "lucide-react";
 import { ChangeVersionLoaderDialog } from "@/components/instance/ChangeVersionLoaderDialog";
 import { ExportInstanceDialog } from "@/components/instance/ExportInstanceDialog";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toAssetSrc } from "@/lib/assetUrl";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
@@ -49,21 +48,7 @@ import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 import { Tip } from "@/components/ui/tooltip";
-import { presetIconPngBytes, presetIconUrl, type PresetIconId } from "@/lib/presetIcons";
 
-
-const PRESET_ICONS = [
-  { id: "grass", labelKey: "presetGrass" },
-  { id: "crafting_table", labelKey: "presetCraftingTable" },
-  { id: "furnace", labelKey: "presetFurnace" },
-  { id: "diamond", labelKey: "presetDiamond" },
-  { id: "redstone", labelKey: "presetRedstone" },
-  { id: "creeper", labelKey: "presetCreeper" },
-  { id: "tnt", labelKey: "presetTnt" },
-  { id: "bookshelf", labelKey: "presetBookshelf" },
-  { id: "ender_chest", labelKey: "presetEnderChest" },
-  { id: "sword", labelKey: "presetSword" },
-] as const;
 
 // 水平分頁空間索引映射 (六大子分頁)
 const SUB_TAB_ORDER: Record<InstanceDetailSubNav, number> = {
@@ -114,11 +99,9 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
     useState<InstanceDetailSubNav>("screenshots");
   const [tabDirection, setTabDirection] = useState<number>(1);
   const tabLine = useSlidingIndicator(activeSubTab);
-  const setRenameError = (msg: string) => toast(msg, "error");
   const [resourceShaderTab, setResourceShaderTab] = useState<"packs" | "shaders">("packs");
   const [resourceShaderDir, setResourceShaderDir] = useState<number>(1);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
-  const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [maxRam, setMaxRam] = useState<number>(instance?.maxMemoryMb ?? 4096);
   const [minRam, setMinRam] = useState<number>(instance?.minMemoryMb ?? 1024);
   const [systemJavas, setSystemJavas] = useState<JavaInstallationDto[]>([]);
@@ -127,75 +110,10 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
     instance?.showLogOnLaunch ?? false
   );
 
-  // 實例圖示狀態
   const [isIconModalOpen, setIsIconModalOpen] = useState<boolean>(false);
-  const [isSettingIcon, setIsSettingIcon] = useState<boolean>(false);
 
   // 變更版本與 Loader 對話框狀態
   const [isChangeVersionOpen, setIsChangeVersionOpen] = useState<boolean>(false);
-
-  const handleSelectFileIcon = async () => {
-    if (!instance) return;
-    try {
-      const selected = await openFileDialog({
-        multiple: false,
-        filters: [
-          {
-            name: t.inst.imageFiles,
-            extensions: ["png", "jpg", "jpeg", "webp", "ico"],
-          },
-        ],
-      });
-      if (selected && typeof selected === "string") {
-        setIsSettingIcon(true);
-        const updated = await instanceService.setInstanceIconFromFile(instance.id, selected);
-        if (onInstanceUpdated) {
-          onInstanceUpdated(updated);
-        }
-        setIsIconModalOpen(false);
-      }
-    } catch (err) {
-      console.error("Failed to set icon from file:", err);
-    } finally {
-      setIsSettingIcon(false);
-    }
-  };
-
-  const handleSelectPresetIcon = async (presetId: string) => {
-    if (!instance) return;
-    setIsSettingIcon(true);
-    try {
-      const updated = await instanceService.setInstancePresetIcon(
-        instance.id,
-        presetId,
-        await presetIconPngBytes(presetId as PresetIconId)
-      );
-      if (onInstanceUpdated) {
-        onInstanceUpdated(updated);
-      }
-      setIsIconModalOpen(false);
-    } catch (err) {
-      console.error("Failed to set preset icon:", err);
-    } finally {
-      setIsSettingIcon(false);
-    }
-  };
-
-  const handleResetIcon = async () => {
-    if (!instance) return;
-    setIsSettingIcon(true);
-    try {
-      const updated = await instanceService.resetInstanceIcon(instance.id);
-      if (onInstanceUpdated) {
-        onInstanceUpdated(updated);
-      }
-      setIsIconModalOpen(false);
-    } catch (err) {
-      console.error("Failed to reset icon:", err);
-    } finally {
-      setIsSettingIcon(false);
-    }
-  };
 
   useEffect(() => {
     if (instance) {
@@ -263,55 +181,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
     }
   };
 
-  // 重新命名實例狀態
   const [isRenameOpen, setIsRenameOpen] = useState<boolean>(false);
-  const [renameInput, setRenameInput] = useState<string>("");
-  const [showFolderRenamePrompt, setShowFolderRenamePrompt] = useState<boolean>(false);
-  const [isRenaming, setIsRenaming] = useState<boolean>(false);
-
-  const openRenameModal = () => {
-    if (!instance) return;
-    setRenameInput(instance.name);
-    setShowFolderRenamePrompt(false);
-    setIsRenameOpen(true);
-  };
-
-  const handleRenameNext = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!instance) return;
-    const trimmed = renameInput.trim();
-    if (!trimmed) {
-      setRenameError(t.inst.nameEmpty);
-      return;
-    }
-    if (trimmed === instance.name) {
-      setIsRenameOpen(false);
-      return;
-    }
-    setShowFolderRenamePrompt(true);
-  };
-
-  const executeRename = async (renameFolder: boolean) => {
-    if (!instance) return;
-    setIsRenaming(true);
-    try {
-      const updated = await instanceService.renameInstance(
-        instance.id,
-        renameInput.trim(),
-        renameFolder
-      );
-      if (onInstanceUpdated) {
-        onInstanceUpdated(updated);
-      }
-      setIsRenameOpen(false);
-      setShowFolderRenamePrompt(false);
-    } catch (err: unknown) {
-      const msg = toUserMessage(err);
-      setRenameError(msg);
-    } finally {
-      setIsRenaming(false);
-    }
-  };
 
   // 處理水平物理方向的子分頁切換
   const handleSelectSubTab = (newTab: InstanceDetailSubNav) => {
@@ -326,23 +196,6 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
     const dir = tab === "shaders" ? 1 : -1;
     setResourceShaderDir(dir);
     setResourceShaderTab(tab);
-  };
-
-  const handleDeleteInstance = async () => {
-    if (!instance) return;
-    setIsDeleting(true);
-    try {
-      await instanceService.deleteInstance(instance.id);
-      clearCachedFiles(instance.id);
-      setIsDeleteDialogOpen(false);
-      if (onGoToInstances) {
-        onGoToInstances();
-      }
-    } catch (err) {
-      toast(toUserMessage(err), "error");
-    } finally {
-      setIsDeleting(false);
-    }
   };
 
   // 真實磁碟模組、核心模組、材質包、光影包、存檔與截圖：依實例快取，第二次開啟不再顯示 Skeleton
@@ -584,7 +437,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
               <h1 className="text-xl font-black tracking-tight text-white drop-shadow-md">
                 <button
                   type="button"
-                  onClick={openRenameModal}
+                  onClick={() => setIsRenameOpen(true)}
                   aria-label={t.inst.renameAttr}
                   className="-mx-1.5 rounded-md px-1.5 text-left transition-colors hover:bg-white/10"
                 >
@@ -593,10 +446,10 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
               </h1>
             </Tip>
             <div className="flex items-center gap-2">
-              <p className="text-[11px] text-slate-400 drop-shadow">
+              <p className="text-2xs text-slate-400 drop-shadow">
                 Minecraft {instance.version} - {instance.loader}{instance.loaderVersion ? ` ${instance.loaderVersion}` : ""}
                 {instance.description && (
-                  <span className="text-[11px] text-slate-300 drop-shadow line-clamp-1">
+                  <span className="text-2xs text-slate-300 drop-shadow line-clamp-1">
                     ｜{instance.description}
                   </span>
                 )}
@@ -605,7 +458,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsChangeVersionOpen(true)}
-                  className="text-[10px] text-brand-light hover:text-brand-light/80 hover:underline flex items-center gap-1 font-medium bg-black/40 px-1.5 py-0.5 rounded border border-brand-light/30 transition-all"
+                  className="text-3xs text-brand-light hover:text-brand-light/80 hover:underline flex items-center gap-1 font-medium bg-black/40 px-1.5 py-0.5 rounded border border-brand-light/30 transition-all"
                 >
                   <RefreshCw className="w-2.5 h-2.5" />
                   {t.inst.changeVersionBtn}
@@ -723,236 +576,6 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
     </div>
   );
 
-  const renameDialog = (
-    <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>
-      <DialogContent onClose={() => setIsRenameOpen(false)} className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {showFolderRenamePrompt ? t.inst.confirmFolderRename : t.inst.renameTitle}
-          </DialogTitle>
-        </DialogHeader>
-
-        {!showFolderRenamePrompt ? (
-          <form onSubmit={handleRenameNext} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t.inst.displayName}</label>
-              <Input
-                value={renameInput}
-                onChange={(e) => setRenameInput(e.target.value)}
-                placeholder={t.inst.newNamePlaceholder}
-                autoFocus
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsRenameOpen(false)}
-                className="text-xs"
-              >
-                {t.common.cancel}
-              </Button>
-              <Button
-                type="submit"
-                size="sm"
-                className="bg-brand hover:bg-brand-light text-white text-xs font-semibold"
-              >
-                {t.inst.saveChanges}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-xs text-slate-300 leading-relaxed">
-              {t.inst.renameNotice(renameInput.trim())}
-              <br />
-              {t.inst.syncFolderQuestion}
-            </p>
-            <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs space-y-1">
-              <div className="text-slate-400">{t.inst.currentFolder}<span className="font-mono text-slate-200">{instance.id}</span></div>
-              <div className="text-slate-400">{t.inst.newFolder}<span className="font-mono text-brand-light">{renameInput.trim()}</span></div>
-            </div>
-            <div className="flex flex-col gap-2 pt-2">
-              <Button
-                type="button"
-                size="sm"
-                disabled={isRenaming}
-                onClick={() => executeRename(true)}
-                className="bg-brand hover:bg-brand-light text-white text-xs font-semibold"
-              >
-                {isRenaming ? t.inst.renaming : t.inst.syncFolderRename}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isRenaming}
-                onClick={() => executeRename(false)}
-                className="text-xs border-white/15 bg-white/5 hover:bg-white/10 text-slate-300"
-              >
-                {t.inst.displayOnly}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={isRenaming}
-                onClick={() => setIsRenameOpen(false)}
-                className="text-xs text-slate-400 hover:text-white"
-              >
-                {t.common.cancel}
-              </Button>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-
-  const deleteDialog = (
-    <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-      <DialogContent className="border border-white/10 bg-slate-950/95 text-slate-100 backdrop-blur-xl sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base font-bold text-rose-400">
-            <AlertTriangle className="h-5 w-5 text-rose-500 shrink-0" />
-            {t.inst.deleteTitle(instance?.name ?? "")}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2 text-xs text-slate-300 leading-relaxed">
-          <p>
-            {t.inst.deleteBody1}{" "}
-            <span className="font-mono text-rose-300 bg-rose-950/40 px-1.5 py-0.5 rounded border border-rose-900/40">
-              instances/{instance?.id}
-            </span>{" "}
-            {t.inst.deleteBody2}
-          </p>
-          <p className="text-slate-400">{t.inst.casNotAffected}</p>
-        </div>
-        <div className="flex justify-end gap-2 pt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isDeleting}
-            onClick={() => setIsDeleteDialogOpen(false)}
-            className="border-white/10 text-xs"
-          >
-            {t.common.cancel}
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={isDeleting}
-            onClick={handleDeleteInstance}
-            className="gap-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs"
-          >
-            {isDeleting ? t.inst.deleting : t.inst.confirmDelete}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-
-  const iconDialog = (
-    <Dialog open={isIconModalOpen} onOpenChange={setIsIconModalOpen}>
-      <DialogContent onClose={() => setIsIconModalOpen(false)} className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ImageIcon className="h-4 w-4 text-brand-light" />
-            {t.inst.iconDialogTitle}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 pt-2">
-          {/* 本機上傳與目前圖示預覽 */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5">
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-brand to-brand-dark text-white shadow-md border border-white/20 overflow-hidden">
-                {instance.hasIcon && instance.iconPath ? (
-                  <img
-                    src={toAssetSrc(instance.iconPath, instance.iconUpdatedAt)}
-                    alt={instance.name}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <Package className="h-6 w-6" />
-                )}
-              </div>
-              <div className="space-y-0.5">
-                <span className="text-xs font-semibold text-white">{t.inst.customIconFile}</span>
-                <p className="text-[11px] text-slate-400">{t.inst.iconFormats}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isSettingIcon}
-                onClick={handleSelectFileIcon}
-                className="gap-1.5 text-xs h-8 border-white/10 bg-white/5 hover:bg-white/10 text-white"
-              >
-                <FolderOpen className="h-3.5 w-3.5 text-brand-light" />
-                {t.inst.browseEllipsis}
-              </Button>
-              {instance.hasIcon && (
-                <Tip label={t.inst.resetIconAttr}>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={isSettingIcon}
-                    onClick={handleResetIcon}
-                    className="text-xs h-8 border-white/10 hover:border-rose-500/30 text-slate-400 hover:text-rose-400"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </Button>
-                </Tip>
-              )}
-            </div>
-          </div>
-
-          {/* 預設圖示選擇網格 */}
-          <div className="space-y-2">
-            <span className="text-xs font-semibold text-slate-300">{t.inst.presetIcons}</span>
-            <div className="grid grid-cols-5 gap-2">
-              {PRESET_ICONS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  disabled={isSettingIcon}
-                  onClick={() => handleSelectPresetIcon(preset.id)}
-                  className="flex flex-col items-center gap-1 p-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-brand-light/50 transition-all text-center group cursor-pointer"
-                >
-                  <img
-                    src={presetIconUrl(preset.id)}
-                    alt=""
-                    className="h-9 w-9 rounded-lg shadow-inner group-hover:scale-105 transition-transform [image-rendering:pixelated]"
-                  />
-                  <span className="text-[10px] text-slate-300 group-hover:text-white font-medium truncate max-w-full">
-                    {t.inst[preset.labelKey]}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setIsIconModalOpen(false)}
-              className="text-xs"
-            >
-              {t.common.close}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-
   // A folder without our config must be set up before anything else on the page can work.
   if (instance.needsSetup) {
     return (
@@ -1015,9 +638,24 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
           </AnimatePresence>
         </div>
 
-        {renameDialog}
-        {deleteDialog}
-        {iconDialog}
+        <RenameInstanceDialog
+          instance={instance}
+          open={isRenameOpen}
+          onOpenChange={setIsRenameOpen}
+          onUpdated={onInstanceUpdated}
+        />
+        <DeleteInstanceDialog
+          instance={instance}
+          open={isDeleteDialogOpen}
+          onOpenChange={setIsDeleteDialogOpen}
+          onDeleted={onGoToInstances}
+        />
+        <InstanceIconDialog
+          instance={instance}
+          open={isIconModalOpen}
+          onOpenChange={setIsIconModalOpen}
+          onUpdated={onInstanceUpdated}
+        />
         <ChangeVersionLoaderDialog
           open={isChangeVersionOpen}
           onOpenChange={setIsChangeVersionOpen}

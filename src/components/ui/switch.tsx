@@ -1,5 +1,6 @@
 import * as React from "react";
 import { motion } from "motion/react";
+import { SPRING_TOGGLE } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 interface SwitchProps {
@@ -30,7 +31,7 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
         <motion.span
           initial={false}
           animate={{ x: checked ? 16 : 0 }}
-          transition={{ type: "spring", stiffness: 600, damping: 30 }}
+          transition={SPRING_TOGGLE}
           className="pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm"
         />
       </button>

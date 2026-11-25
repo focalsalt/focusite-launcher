@@ -25,7 +25,7 @@ export const LocationConsentDialog: React.FC<LocationConsentDialogProps> = ({ op
           </div>
           <DialogDescription className="mt-2 text-xs leading-relaxed text-slate-300">{t.location.body}</DialogDescription>
         </DialogHeader>
-        <p className="text-[11px] text-slate-400">{t.location.note}</p>
+        <p className="text-2xs text-slate-400">{t.location.note}</p>
         <DialogFooter className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-end">
           <Button
             type="button"

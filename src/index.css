@@ -1,61 +1,11 @@
 @import "tailwindcss";
 @import "./styles/theme-tokens.css";
 
+/* index.html pins the "dark" class, so there is a single palette. */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-
-  /* Focusite Brand Green Palette (#3C8527 / #52A43A) */
-  --primary: var(--fc-primary);
-  --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #1e293b;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #52A43A;
-  --accent-foreground: #ffffff;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #3C8527;
-  --radius: 0.75rem;
-
-  /* Focusite Glassmorphism Variables */
-  --launcher-glass: rgba(255, 255, 255, 0.7);
-  --launcher-glass-border: rgba(255, 255, 255, 0.35);
-  --launcher-sidebar: rgba(248, 250, 252, 0.85);
-  --launcher-accent: #3C8527;
-}
-
-.dark {
-  --background: #090d16;
-  --foreground: #f8fafc;
-  --card: #0f172a;
-  --card-foreground: #f8fafc;
-
-  /* Focusite Brand Green in Dark Mode */
-  --primary: var(--fc-highlight);
-  --primary-foreground: #071304;
-  --secondary: #1e293b;
-  --secondary-foreground: #f8fafc;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #3C8527;
-  --accent-foreground: #f8fafc;
-  --destructive: #7f1d1d;
-  --destructive-foreground: #f8fafc;
-  --border: #1e293b;
-  --input: #1e293b;
-  --ring: #52A43A;
-
-  /* Focusite Glassmorphism Variables Dark */
-  --launcher-glass: rgba(15, 23, 42, 0.75);
-  --launcher-glass-border: rgba(255, 255, 255, 0.08);
-  --launcher-sidebar: rgba(9, 13, 22, 0.85);
-  --launcher-accent: #52A43A;
+  --background: var(--fc-bg-canvas);
+  --foreground: var(--fc-neutral-50);
+  --border: var(--fc-neutral-800);
 }
 
 * {
@@ -102,5 +52,5 @@ body {
 }
 
 .scrollbar-stable-overlay::-webkit-scrollbar-thumb:hover {
-  background: rgba(82, 164, 58, 0.5);
+  background: color-mix(in srgb, var(--fc-highlight) 50%, transparent);
 }

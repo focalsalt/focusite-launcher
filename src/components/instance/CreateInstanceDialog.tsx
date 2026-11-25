@@ -344,7 +344,7 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                               <p className="font-mono font-semibold text-slate-200 text-xs truncate">
                                 {customJar.name}
                               </p>
-                              <p className="text-[10px] text-slate-400">{customJar.sizeStr}</p>
+                              <p className="text-3xs text-slate-400">{customJar.sizeStr}</p>
                             </div>
                           </div>
                           <button
@@ -363,7 +363,7 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                           <p className="font-medium text-slate-300 text-xs">
                             {t.create.dropJar}
                           </p>
-                          <p className="text-[10px] text-slate-500">
+                          <p className="text-3xs text-slate-500">
                             {t.create.customLoaderNote}
                           </p>
                         </div>

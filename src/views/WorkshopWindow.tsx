@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { Search, Sparkles, Plus, Minus, Trash2, Loader2, FileBox } from "lucide-react";
+import { AnimatePresence } from "motion/react";
+import { Search, Plus, Minus, Loader2, FileBox } from "lucide-react";
 import { WindowBar } from "@/components/layout/WindowBar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { InstallListBar } from "@/components/workshop/InstallListBar";
+import { useInstallPlan } from "@/components/workshop/useInstallPlan";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Toaster } from "@/components/ui/Toaster";
 import { instanceService } from "@/services/instanceService";
 import { MinecraftInstance } from "@/types/navigation";
@@ -13,8 +14,6 @@ import {
   workshopService,
   WorkshopProjectSummary,
   WorkshopCategory,
-  InstallPlan,
-  InstallPlanItem,
 } from "@/services/workshopService";
 import { InstallPlanConfirmDialog } from "@/components/workshop/InstallPlanConfirmDialog";
 import { ProjectRow } from "@/components/workshop/ProjectRow";
@@ -80,12 +79,6 @@ export const WorkshopWindow: React.FC = () => {
 
   // Install list + dependency confirmation
   const [selected, setSelected] = useState<Map<string, SelectedEntry>>(new Map());
-  const [planDialogOpen, setPlanDialogOpen] = useState<boolean>(false);
-  const [installPlan, setInstallPlan] = useState<InstallPlan | null>(null);
-  const [isResolvingPlan, setIsResolvingPlan] = useState<boolean>(false);
-  const [isInstalling, setIsInstalling] = useState<boolean>(false);
-
-  // The window is created hidden; reveal it once the first frame has painted to avoid a flash.
   useEffect(() => {
     const id = requestAnimationFrame(() => requestAnimationFrame(() => void revealCurrentWindow()));
     return () => cancelAnimationFrame(id);
@@ -203,34 +196,7 @@ export const WorkshopWindow: React.FC = () => {
     }
   };
 
-  const handleOpenPlanDialog = async () => {
-    if (selected.size === 0 || !instanceId) return;
-    setIsResolvingPlan(true);
-    try {
-      const pairs: [string, string][] = [...selected.entries()].map(([pid, e]) => [pid, e.versionId]);
-      setInstallPlan(await workshopService.resolveInstallPlan(instanceId, pairs));
-      setPlanDialogOpen(true);
-    } catch (err) {
-      toast(t.errors.resolveFailed(toUserMessage(err)), "error");
-    } finally {
-      setIsResolvingPlan(false);
-    }
-  };
-
-  const handleExecuteInstall = async (finalItems: InstallPlanItem[]) => {
-    if (!instanceId) return;
-    setIsInstalling(true);
-    try {
-      const count = await workshopService.executeInstallPlan(instanceId, projectType, finalItems);
-      setPlanDialogOpen(false);
-      setSelected(new Map());
-      toast(t.workshopWin.installedCount(count), "success");
-    } catch (err) {
-      toast(t.errors.installFailed(toUserMessage(err)), "error");
-    } finally {
-      setIsInstalling(false);
-    }
-  };
+  const installFlow = useInstallPlan(instanceId, projectType, selected, () => setSelected(new Map()));
 
   const typeName =
     projectType === "mod"
@@ -377,59 +343,19 @@ export const WorkshopWindow: React.FC = () => {
         </AnimatePresence>
       </div>
 
-      {/* Install list bar */}
-      <div className="flex h-14 shrink-0 items-center justify-between border-t border-white/10 bg-slate-950/80 px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <Badge variant="outline" className="shrink-0 border-brand-light/40 px-2.5 py-1 text-brand-light">
-            {t.workshopWin.selectedCount(selected.size)}
-          </Badge>
-          <span className="truncate text-[11px] text-slate-500">
-            {[...selected.values()].map((e) => `${e.title} ${e.versionNumber}`).join(" · ")}
-          </span>
-          <AnimatePresence>
-            {selected.size > 0 && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ type: "spring", stiffness: 500, damping: 34 }}
-                className="shrink-0"
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelected(new Map())}
-                  className="h-7 px-2 text-xs text-slate-400 hover:text-rose-400"
-                >
-                  <Trash2 className="mr-1 h-3.5 w-3.5" />
-                  {t.workshopWin.clearSelection}
-                </Button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <Button disabled={selected.size === 0 || isResolvingPlan} onClick={handleOpenPlanDialog}>
-          {isResolvingPlan ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t.workshopWin.resolving}
-            </>
-          ) : (
-            <>
-              <Sparkles className="mr-1.5 h-4 w-4" />
-              {t.workshopWin.reviewInstall(selected.size)}
-            </>
-          )}
-        </Button>
-      </div>
+      <InstallListBar
+        entries={[...selected.values()]}
+        isResolving={installFlow.isResolvingPlan}
+        onClear={() => setSelected(new Map())}
+        onReview={installFlow.openPlanDialog}
+      />
 
       <InstallPlanConfirmDialog
-        open={planDialogOpen}
-        onOpenChange={setPlanDialogOpen}
-        plan={installPlan}
-        onConfirm={handleExecuteInstall}
-        isInstalling={isInstalling}
+        open={installFlow.planDialogOpen}
+        onOpenChange={installFlow.setPlanDialogOpen}
+        plan={installFlow.installPlan}
+        onConfirm={installFlow.executeInstall}
+        isInstalling={installFlow.isInstalling}
       />
       <Toaster />
     </div>

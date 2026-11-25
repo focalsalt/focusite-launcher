@@ -107,7 +107,7 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
             {isStarting && !deviceInfo && (
               <div className="flex flex-col items-center justify-center py-8 space-y-3">
                 <RefreshCw className="h-6 w-6 animate-spin text-brand-light" />
-                <p className="text-xs text-muted-foreground">{pollingStatus}</p>
+                <p className="text-xs">{pollingStatus}</p>
               </div>
             )}
 
@@ -147,13 +147,13 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
                       <ExternalLink className="h-3 w-3" />
                     </Button>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs">
                     {t.auth.verifyEntry(deviceInfo.verification_uri)}
                   </p>
                   <p>{t.auth.step2b}</p>
                 </div>
 
-                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground pt-1">
+                <div className="flex items-center justify-center gap-2 text-xs pt-1">
                   <RefreshCw className="h-3.5 w-3.5 animate-spin text-brand-light" />
                   <span>{pollingStatus}</span>
                 </div>

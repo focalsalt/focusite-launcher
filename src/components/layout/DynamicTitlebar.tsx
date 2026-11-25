@@ -23,7 +23,6 @@ interface DynamicTitlebarProps {
   onSearchChange: (query: string) => void;
   onCreateInstance: () => void;
   onImportInstance?: () => void;
-  onCreateGroup?: () => void;
 }
 
 export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({

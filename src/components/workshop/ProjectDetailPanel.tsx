@@ -135,7 +135,7 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
                       key={v.id}
                       value={v.id}
                       extraRight={
-                        <span className="font-mono text-[10px] text-slate-400">{typeLabel(v.version_type)}</span>
+                        <span className="font-mono text-3xs text-slate-400">{typeLabel(v.version_type)}</span>
                       }
                     >
                       {v.version_number}
@@ -145,13 +145,13 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
               </Select>
             )}
             {current && (
-              <p className="truncate font-mono text-[10px] text-slate-500">
+              <p className="truncate font-mono text-3xs text-slate-500">
                 {current.game_versions.slice(-4).join(", ")}
                 {current.loaders.length > 0 && ` · ${current.loaders.join(", ")}`}
               </p>
             )}
             {current && warnGameVersion && !current.game_versions.includes(warnGameVersion) && (
-              <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300">
+              <p className="flex items-start gap-1.5 text-2xs leading-relaxed text-amber-300">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 {t.workshopWin.versionMismatch(warnGameVersion)}
               </p>
@@ -163,7 +163,7 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
             <motion.div
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              className="grid grid-cols-2 gap-2 text-[11px] text-slate-400"
+              className="grid grid-cols-2 gap-2 text-2xs text-slate-400"
             >
               <span className="flex items-center gap-1.5">
                 <Download className="h-3.5 w-3.5" />
@@ -183,7 +183,7 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
               </span>
               <div className="col-span-2 flex flex-wrap gap-1.5 pt-1">
                 {detail.categories.map((c) => (
-                  <Badge key={c} variant="outline" className="border-white/10 px-1.5 py-0 text-[10px] font-normal">
+                  <Badge key={c} variant="outline" className="border-white/10 px-1.5 py-0 text-3xs font-normal">
                     {formatCategory(c)}
                   </Badge>
                 ))}

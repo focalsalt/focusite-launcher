@@ -1,7 +1,7 @@
 import { sortForSidebar } from "@/lib/instanceOrder";
 import { scaleVariants, slideVariants } from "@/lib/motion";
 import { useExitMount } from "@/lib/useExitMount";
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { WindowBar } from "@/components/layout/WindowBar";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -12,35 +12,24 @@ import { HomeView } from "@/views/HomeView";
 import { EMPTY_FILES, setCachedFiles } from "@/lib/instanceFilesCache";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import { FriendsPanel } from "@/components/party/FriendsPanel";
-import { OnboardingGuide, isOnboardingDone, markOnboardingDone, REPLAY_ONBOARDING_EVENT } from "@/components/onboarding/OnboardingGuide";
+import { OnboardingGuide } from "@/components/onboarding/OnboardingGuide";
 import { ExitConfirmationDialog } from "@/components/layout/ExitConfirmationDialog";
-import {
-  HomeSubNav,
-  MainView,
-  MinecraftInstance,
-  NewsSubNav,
-  SettingsSubNav,
-  RunningInstanceInfo,
-  UserAccount,
-} from "@/types/navigation";
-import { instanceService, InstanceStatusEvent } from "@/services/instanceService";
+import { MinecraftInstance } from "@/types/navigation";
+import { instanceService } from "@/services/instanceService";
 import { authService } from "@/services/authService";
-import { closeWindow, exitApp, showMainWindow, hideWindow } from "@/lib/tauriWindow";
+import { closeWindow, exitApp, hideWindow } from "@/lib/tauriWindow";
 import { listenSafe } from "@/lib/listenSafe";
-import {
-  computeRemainingSplashDelay,
-  runSequentialPrefetch,
-  SECONDARY_2D_PREFETCH_TASKS,
-} from "@/lib/startupOrchestrator";
-import { useI18n } from "@/i18n";
 import { themeService } from "@/services/themeService";
-import { settingsService } from "@/services/settingsService";
 import { LocationConsentDialog } from "@/components/layout/LocationConsentDialog";
-import { toUserMessage } from "@/lib/errorMessage";
-import { toast } from "@/lib/toast";
 import { Toaster } from "@/components/ui/Toaster";
+import { useAccounts } from "@/hooks/useAccounts";
+import { useBootSequence } from "@/hooks/useBootSequence";
+import { useFirstRun } from "@/hooks/useFirstRun";
+import { useInstances } from "@/hooks/useInstances";
+import { useNavigation } from "@/hooks/useNavigation";
+import { useRunningInstances } from "@/hooks/useRunningInstances";
 
-// 路由級延遲載入非首屏視圖，分離 Three.js 3D 引擎與次要頁面 Bundle
+// Views outside the first screen load lazily, which keeps the Three.js engine out of the main bundle.
 const NewsView = lazy(() => import("@/views/NewsView").then((m) => ({ default: m.NewsView })));
 const InstancesView = lazy(() => import("@/views/InstancesView").then((m) => ({ default: m.InstancesView })));
 const InstanceDetailView = lazy(() => import("@/views/InstanceDetailView").then((m) => ({ default: m.InstanceDetailView })));
@@ -53,177 +42,69 @@ const ImportModpackDialog = lazy(() => import("@/components/instance/ImportModpa
 const MicrosoftLoginModal = lazy(() => import("@/components/auth/MicrosoftLoginModal").then((m) => ({ default: m.MicrosoftLoginModal })));
 const LaunchInstallModal = lazy(() => import("@/components/instance/LaunchInstallModal").then((m) => ({ default: m.LaunchInstallModal })));
 
-// 垂直頁面層級空間索引映射，用於雙向物理位移動畫
-const VIEW_INDEX: Record<MainView, number> = {
-  news: 0,
-  home: 1,
-  instances: 2,
-  "instance-detail": 3,
-  settings: 4,
-  skins: 5,
-};
-
-/** +1 / -1 from the order of the views; 0 (a plain fade) when the skin manager is on either side. */
-const viewDirectionFor = (from: MainView, to: MainView): number =>
-  from === "skins" || to === "skins" ? 0 : VIEW_INDEX[to] > VIEW_INDEX[from] ? 1 : -1;
-
 const pageVariants = slideVariants("y", 12);
 
+/** Picks the window this webview hosts. The kind never changes at runtime, and each kind owns its hooks. */
 export default function App() {
-  const { t } = useI18n();
   useEffect(() => {
     const cleanup = themeService.initListeners();
     return cleanup;
   }, []);
 
   const isLogWindow =
-    typeof window !== "undefined" &&
-    (window.location.hash.startsWith("#/log-window") ||
-      window.location.search.includes("window=log"));
-
-  if (isLogWindow) {
-    return (
-        <Suspense fallback={null}>
-          <LogWindow />
-        </Suspense>
-    );
-  }
-
+    window.location.hash.startsWith("#/log-window") || window.location.search.includes("window=log");
   const isWorkshopWindow =
-    typeof window !== "undefined" &&
-    (window.location.hash.startsWith("#/workshop") ||
-      window.location.search.includes("window=workshop"));
+    window.location.hash.startsWith("#/workshop") || window.location.search.includes("window=workshop");
 
-  if (isWorkshopWindow) {
-    return (
-        <Suspense fallback={null}>
-          <WorkshopWindow />
-        </Suspense>
-    );
+  if (isLogWindow || isWorkshopWindow) {
+    return <Suspense fallback={null}>{isLogWindow ? <LogWindow /> : <WorkshopWindow />}</Suspense>;
   }
+  return <MainApp />;
+}
 
-  // 三階段無縫漸進式掛載狀態機：
-  // 1. "window-reveal": DOM 僅掛載 WindowBar + 極簡 MainBootOverlay，0ms 揭示視窗杜絕 Win32 黑屏
-  // 2. "workspace-mount": 視窗顯示且雙重 rAF 確認遮罩已顯示後，在遮罩下方掛載完整工作區 DOM
-  // 3. "ready": 待工作區首幀合成穩定後，MainBootOverlay 平滑淡出 (220ms)
-  type BootStage = "window-reveal" | "workspace-mount" | "ready";
-  const [bootStage, setBootStage] = useState<BootStage>("window-reveal");
+function MainApp() {
   const [isInitialDataLoaded, setIsInitialDataLoaded] = useState<boolean>(false);
-  const bootStartTimeRef = useRef<number>(performance.now());
-  const hasRevealedWindowRef = useRef<boolean>(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const [currentView, setCurrentView] = useState<MainView>("home");
-  const [viewDirection, setViewDirection] = useState<number>(1);
-  const [newsNav, setNewsNav] = useState<NewsSubNav>("official");
-  const [newsNavDirection, setNewsNavDirection] = useState<number>(1);
-  const [homeNav, setHomeNav] = useState<HomeSubNav>("overview");
-  const [homeNavDirection, setHomeNavDirection] = useState<number>(1);
+  const bootStage = useBootSequence(isInitialDataLoaded);
+  const { currentView, viewDirection, setViewDirection, showView, navigate, news, home, settings } = useNavigation();
+  const {
+    instances,
+    setInstances,
+    selectedInstanceId,
+    setSelectedInstanceId,
+    activeInstance,
+    refreshInstances,
+  } = useInstances();
+  const {
+    accounts,
+    setAccounts,
+    setActiveAccountId,
+    activeAccount,
+    updateAccount,
+    signInFirstAccount,
+    addAccount,
+    selectAccount,
+    signOut,
+    isLoginModalOpen,
+    setIsLoginModalOpen,
+  } = useAccounts();
+  const { runningInstances, launchingInstanceIds, launchGame, killGame } = useRunningInstances(
+    activeAccount,
+    selectedInstanceId || activeInstance?.id
+  );
+  const { showOnboarding, closeOnboarding, skipOnboarding, askLocation, answerLocation } = useFirstRun();
 
-  const handleNewsNavChange = (nav: NewsSubNav) => {
-    if (nav === newsNav) return;
-    const order: Record<NewsSubNav, number> = { official: 0, changelog: 1, announcements: 2 };
-    setNewsNavDirection(order[nav] > order[newsNav] ? 1 : -1);
-    setNewsNav(nav);
-  };
-
-  const [settingsNav, setSettingsNav] = useState<SettingsSubNav>("general");
-  const [settingsNavDirection, setSettingsNavDirection] = useState<number>(1);
-  const handleSettingsNavChange = (nav: SettingsSubNav) => {
-    if (nav === settingsNav) return;
-    setSettingsNavDirection(nav === "privacy" ? 1 : -1);
-    setSettingsNav(nav);
-  };
-
-  const handleHomeNavChange = (nav: HomeSubNav) => {
-    if (nav === homeNav) return;
-    const order: Record<HomeSubNav, number> = { overview: 0, p2p: 1 };
-    setHomeNavDirection(order[nav] > order[homeNav] ? 1 : -1);
-    setHomeNav(nav);
-  };
-  const [instances, setInstances] = useState<MinecraftInstance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
-
-  // 多實例並發執行與互斥狀態字典
-  const [runningInstances, setRunningInstances] = useState<Record<string, RunningInstanceInfo>>({});
-  const [launchingInstanceIds, setLaunchingInstanceIds] = useState<Record<string, boolean>>({});
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState<boolean>(false);
-
-  // Account states
-  const [accounts, setAccounts] = useState<UserAccount[]>([]);
-  const [activeAccountId, setActiveAccountId] = useState<string>("");
-
-  // Microsoft Device Code Login modal state (for adding accounts when already logged in)
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
-
-  // Instance creation modal state
   const [isCreateInstanceOpen, setIsCreateInstanceOpen] = useState<boolean>(false);
-  const [showOnboarding, setShowOnboarding] = useState<boolean>(() => !isOnboardingDone());
-
-  useEffect(() => {
-    const replay = () => setShowOnboarding(true);
-    window.addEventListener(REPLAY_ONBOARDING_EVENT, replay);
-    return () => window.removeEventListener(REPLAY_ONBOARDING_EVENT, replay);
-  }, []);
   const [isImportModpackOpen, setIsImportModpackOpen] = useState<boolean>(false);
   // Keep modals mounted briefly after closing so their exit animation can play.
   const loginMounted = useExitMount(isLoginModalOpen);
   const createMounted = useExitMount(isCreateInstanceOpen);
   const importMounted = useExitMount(isImportModpackOpen);
 
-  // First launch: ask once whether the camp may use the user's coarse location (real sunrise, sunset and weather).
-  const [askLocation, setAskLocation] = useState<boolean>(false);
-  useEffect(() => {
-    settingsService
-      .getSettings()
-      .then((cfg) => setAskLocation(cfg.locationEnabled == null))
-      .catch(() => {});
-  }, []);
-  const answerLocation = (allow: boolean) => {
-    setAskLocation(false);
-    settingsService.updateSettings({ locationEnabled: allow }).catch((err) => console.error("Failed to save location choice:", err));
-  };
-
-  // Theme state
-  const [isDark, setIsDark] = useState<boolean>(true);
-
-  const fallbackAccount: UserAccount = {
-    id: "guest",
-    username: t.app.noAccount,
-    accountType: "microsoft",
-    isReady: false,
-    hasValidToken: false,
-    isActive: true,
-  };
-
-  const activeAccount =
-    accounts.find((a) => a.id === activeAccountId) || accounts[0] || fallbackAccount;
-  // Read by the long-lived instance-status listener so it does not resubscribe on every account change.
-  const activeAccountRef = useRef(activeAccount);
-  activeAccountRef.current = activeAccount;
-
-  const activeInstance =
-    instances.find((i) => i.id === selectedInstanceId) || instances[0] || null;
   // QuickPlay never targets an instance that still needs setup.
   const homeInstance =
     (activeInstance && !activeInstance.needsSetup ? activeInstance : instances.find((i) => !i.needsSetup)) || null;
-
-  const refreshInstances = async () => {
-    try {
-      const list = await instanceService.listInstances();
-      // Keep the previous array when the poll found nothing new, so the whole tree does not re-render.
-      setInstances((prev) => (JSON.stringify(prev) === JSON.stringify(list) ? prev : list));
-      setSelectedInstanceId((currentId) => {
-        if (!currentId && list.length > 0) return list[0].id;
-        if (currentId && !list.some((i) => i.id === currentId)) {
-          return list.length > 0 ? list[0].id : "";
-        }
-        return currentId;
-      });
-    } catch (err) {
-      console.error("Failed to sync instances from disk:", err);
-    }
-  };
 
   useEffect(() => {
     let isMounted = true;
@@ -240,9 +121,7 @@ export default function App() {
 
           setAccounts(accList);
           if (accList.length > 0) {
-            // Someone who already has an account is not a first-time user: no guide on upgrade.
-            markOnboardingDone();
-            setShowOnboarding(false);
+            skipOnboarding();
             const active = accList.find((a) => a.isActive) || accList[0];
             setActiveAccountId(active.id);
           }
@@ -259,267 +138,14 @@ export default function App() {
     };
   }, []);
 
-  // The stored status is never proof of a live login: verify the active Microsoft account on start,
-  // on switch, when the window regains focus, and every 10 minutes (the backend refreshes silently).
-  const hasAccounts = accounts.length > 0;
-  // A check that started before a sign-in finished holds the old, expired login: its result must be dropped.
-  const loginEpochRef = useRef(0);
-  const loginOpenRef = useRef(false);
-  loginOpenRef.current = isLoginModalOpen;
-  useEffect(() => {
-    if (!hasAccounts || !activeAccountId) return;
-    let last = 0;
-    const verify = () => {
-      if (loginOpenRef.current || Date.now() - last < 60_000) return;
-      last = Date.now();
-      const epoch = loginEpochRef.current;
-      authService.refreshProfile(activeAccountId).then((updated) => {
-        if (updated && epoch === loginEpochRef.current) {
-          setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-        }
-      });
-    };
-    verify();
-    const timer = window.setInterval(verify, 10 * 60_000);
-    window.addEventListener("focus", verify);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", verify);
-    };
-  }, [activeAccountId, hasAccounts]);
-
-  // 三階段漸進式掛載與無縫視窗交接：
-  // 1. "window-reveal": 確保滿 400ms 最小展示時間且初始資料就緒後，呼叫 showMainWindow() 將視窗置為 visible。
-  //    此時 DOM 僅有 WindowBar 與極簡 MainBootOverlay，0ms 即時光柵化，絕不暴露 Win32 空視窗。
-  // 2. "workspace-mount": 視窗顯示且雙重 rAF 確認遮罩已呈現在螢幕後，轉入 "workspace-mount"，於遮罩下方掛載完整工作區。
-  // 3. "ready": 工作區完成初始光柵化 (延遲 260ms + rAF)，轉入 "ready"，MainBootOverlay 平滑淡出 (220ms)。
-  useEffect(() => {
-    if (!isInitialDataLoaded || hasRevealedWindowRef.current) {
-      return;
-    }
-
-    const remainingDelay = computeRemainingSplashDelay({
-      bootStartTimeMs: bootStartTimeRef.current,
-      nowMs: performance.now(),
-      minSplashDurationMs: 400,
-    });
-
-    let mountTimer: number | undefined;
-    let rafId1 = 0;
-    let rafId2 = 0;
-    let rafId3 = 0;
-
-    const timer = window.setTimeout(() => {
-      if (hasRevealedWindowRef.current) return;
-      hasRevealedWindowRef.current = true;
-
-      void showMainWindow().then(() => {
-        // 強制進行一次同步排版重排 (Layout Reflow)，確保視窗由隱藏切換為顯示時，
-        // DOM 與 MainBootOverlay 樣式計算立即生效，加速 DirectComposition 表面首幀提交。
-        void document.body.offsetHeight;
-
-        // 當視窗轉為 visible: true 時，以雙重 rAF 確認 MainBootOverlay 首幀已送出至螢幕
-        rafId1 = window.requestAnimationFrame(() => {
-          rafId2 = window.requestAnimationFrame(() => {
-            // 進入階段 2：在遮罩下方開始掛載工作區
-            setBootStage("workspace-mount");
-
-            // 給予工作區 260ms 加上額外幀合成時間，確保底層複雜 DOM、陰影與文字光柵化完畢
-            mountTimer = window.setTimeout(() => {
-              rafId3 = window.requestAnimationFrame(() => {
-                // 進入階段 3：工作區準備就緒，啟動遮罩平滑淡出
-                setBootStage("ready");
-
-                // 遮罩淡出後延遲 1500ms，在背景以序列式（逐一間隔 150ms）預載常規 2D 頁面
-                const ac = new AbortController();
-                abortControllerRef.current = ac;
-                window.setTimeout(() => {
-                  void runSequentialPrefetch(SECONDARY_2D_PREFETCH_TASKS, 150, ac.signal);
-                }, 1500);
-              });
-            }, 260);
-          });
-        });
-      });
-    }, remainingDelay);
-
-    return () => {
-      window.clearTimeout(timer);
-      if (mountTimer) window.clearTimeout(mountTimer);
-      if (rafId1) window.cancelAnimationFrame(rafId1);
-      if (rafId2) window.cancelAnimationFrame(rafId2);
-      if (rafId3) window.cancelAnimationFrame(rafId3);
-    };
-  }, [isInitialDataLoaded]);
-
-  useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort();
-    };
-  }, []);
-
-  // 實例磁碟資料夾即時更新：視窗焦點與 3 秒輪詢同步
-  useEffect(() => {
-    const handleFocus = () => {
-      refreshInstances();
-    };
-    window.addEventListener("focus", handleFocus);
-    // Skip polling while the window is not focused; the focus handler catches up.
-    const interval = setInterval(() => {
-      if (document.hasFocus()) refreshInstances();
-    }, 3000);
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      clearInterval(interval);
-    };
-  }, []);
-
-  // 初始同步背景運行中的遊戲進程
-  useEffect(() => {
-    instanceService.getRunningInstances().then((list) => {
-      const map: Record<string, RunningInstanceInfo> = {};
-      for (const item of list) {
-        map[item.instance_id] = {
-          pid: item.pid,
-          instanceId: item.instance_id,
-          accountId: item.accountId,
-          accountName: item.accountName,
-        };
-      }
-      setRunningInstances(map);
-    }).catch((err) => console.error("Failed to list running instances:", err));
-  }, []);
-
-  // 監聽後端遊戲進程狀態變更事件與退出二次確認請求
-  useEffect(() => {
-    const unlistenStatus = listenSafe<InstanceStatusEvent>("instance-status", (event) => {
-      const id = event.payload.instance_id;
-      if (event.payload.status === "running") {
-        const account = activeAccountRef.current;
-        setRunningInstances((prev) => ({
-          ...prev,
-          [id]: {
-            pid: event.payload.pid ?? 0,
-            instanceId: id,
-            accountId: account?.id,
-            accountName: account?.username,
-          },
-        }));
-        setLaunchingInstanceIds((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
-      } else if (
-        event.payload.status === "stopped" ||
-        event.payload.status === "crashed"
-      ) {
-        setRunningInstances((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
-        setLaunchingInstanceIds((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
-      } else if (event.payload.status === "launching") {
-        setLaunchingInstanceIds((prev) => ({ ...prev, [id]: true }));
-      }
-    });
-
-    const unlistenExit = listenSafe("request-exit-confirmation", () => {
-      setIsExitConfirmOpen(true);
-    });
-
-    return () => {
-      unlistenStatus();
-      unlistenExit();
-    };
-  }, []);
-
-  const handleLaunchGame = async (
-    id?: string,
-    quickPlayType?: "singleplayer" | "multiplayer",
-    quickPlayTarget?: string
-  ) => {
-    const targetId = id || selectedInstanceId || activeInstance?.id;
-    if (!targetId) return;
-
-    // 單實例互斥鎖保護：同實例嚴禁被同時啟動兩次
-    if (runningInstances[targetId]) {
-      console.warn(`實例 '${targetId}' 已在運行中，拒絕重複啟動`);
-      return;
-    }
-
-    setLaunchingInstanceIds((prev) => ({ ...prev, [targetId]: true }));
-    try {
-      const pid = await instanceService.launchInstance(
-        targetId,
-        activeAccount?.id,
-        activeAccount?.username,
-        quickPlayType,
-        quickPlayTarget
-      );
-      setRunningInstances((prev) => ({
-        ...prev,
-        [targetId]: {
-          pid,
-          instanceId: targetId,
-          accountId: activeAccount?.id,
-          accountName: activeAccount?.username,
-        },
-      }));
-    } catch (err) {
-      console.error("Launch instance error:", err);
-      toast(t.errors.launchFailed(toUserMessage(err)), "error");
-      setLaunchingInstanceIds((prev) => {
-        const next = { ...prev };
-        delete next[targetId];
-        return next;
-      });
-    }
-  };
-
-  const handleKillGame = async (id?: string) => {
-    const targetId = id || selectedInstanceId || activeInstance?.id;
-    if (!targetId || !runningInstances[targetId]) return;
-    try {
-      await instanceService.killInstance(targetId);
-      setRunningInstances((prev) => {
-        const next = { ...prev };
-        delete next[targetId];
-        return next;
-      });
-    } catch (err) {
-      console.error("Kill instance error:", err);
-    }
-  };
+  useEffect(() => listenSafe("request-exit-confirmation", () => setIsExitConfirmOpen(true)), []);
 
   const handleWindowClose = () => {
-    const runningCount = Object.keys(runningInstances).length;
-    if (runningCount > 0) {
+    if (Object.keys(runningInstances).length > 0) {
       setIsExitConfirmOpen(true);
     } else {
       closeWindow();
     }
-  };
-
-  const toggleTheme = () => {
-    setIsDark(!isDark);
-    if (!isDark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  };
-
-  const handleNavigate = (newView: MainView) => {
-    if (newView === currentView) return;
-    const dir = viewDirectionFor(currentView, newView);
-    setViewDirection(dir);
-    setCurrentView(newView);
   };
 
   const handleSelectInstance = (instanceId: string) => {
@@ -531,62 +157,16 @@ export default function App() {
       if (from !== -1 && to !== -1) setViewDirection(to > from ? 1 : -1);
     }
     setSelectedInstanceId(instanceId);
-    if (currentView !== "instance-detail") {
-      const dir = viewDirectionFor(currentView, "instance-detail");
-      setViewDirection(dir);
-      setCurrentView("instance-detail");
-    }
+    navigate("instance-detail");
   };
 
-  const handleSelectAccount = (id: string) => {
-    setActiveAccountId(id);
-    authService.setActiveAccount(id).catch((err) => toast(toUserMessage(err), "error"));
-    setAccounts((prev) =>
-      prev.map((acc) => ({
-        ...acc,
-        isActive: acc.id === id,
-      }))
-    );
-  };
-
-  const handleAddAccount = () => {
-    setIsLoginModalOpen(true);
-  };
-
-  const handleSignOut = async (id: string) => {
-    try {
-      await authService.removeAccount(id);
-    } catch (err) {
-      toast(toUserMessage(err), "error");
-      return;
-    }
-    const remaining = accounts.filter((a) => a.id !== id);
-    setAccounts(remaining);
-    if (activeAccountId === id) {
-      if (remaining.length > 0) {
-        setActiveAccountId(remaining[0].id);
-        authService.setActiveAccount(remaining[0].id).catch((err) => toast(toUserMessage(err), "error"));
-      } else {
-        setActiveAccountId("");
-        setIsLoginModalOpen(true);
-      }
-    }
-  };
-
-  const handleCreateInstance = () => {
-    setIsCreateInstanceOpen(true);
-  };
-
-  const handleImportInstance = () => {
-    setIsImportModpackOpen(true);
-  };
+  const handleCreateInstance = () => setIsCreateInstanceOpen(true);
+  const handleImportInstance = () => setIsImportModpackOpen(true);
 
   const handleModpackImported = async (instanceId: string) => {
     await refreshInstances();
     setSelectedInstanceId(instanceId);
-    const dir = viewDirectionFor(currentView, "instance-detail");
-    setViewDirection(dir);
-    setCurrentView("instance-detail");
+    showView("instance-detail");
   };
 
   const handleInstanceCreated = (newInstance: MinecraftInstance) => {
@@ -594,23 +174,33 @@ export default function App() {
     setCachedFiles(newInstance.id, EMPTY_FILES);
     setInstances((prev) => [...prev, newInstance]);
     setSelectedInstanceId(newInstance.id);
-    const dir = viewDirectionFor(currentView, "instance-detail");
-    setViewDirection(dir);
-    setCurrentView("instance-detail");
+    showView("instance-detail");
   };
 
-  const handleCreateGroup = () => {
-    // 實例分組功能預留於後續版本
+  const titlebarProps = {
+    newsNav: news.nav,
+    onNewsNavChange: news.change,
+    homeNav: home.nav,
+    onHomeNavChange: home.change,
+    settingsNav: settings.nav,
+    onSettingsNavChange: settings.change,
+    searchQuery,
+    onSearchChange: setSearchQuery,
+    onCreateInstance: handleCreateInstance,
+    onImportInstance: handleImportInstance,
   };
-
-  // 主頁面雙向物理垂直運動變體
+  /** Shared by every page that slides vertically. */
+  const pageMotion = {
+    custom: viewDirection,
+    variants: pageVariants,
+    initial: "initial",
+    animate: "animate",
+    exit: "exit",
+    className: "flex h-full w-full flex-col overflow-hidden",
+  };
 
   return (
-      <div
-        className={`relative flex h-screen w-screen flex-col overflow-hidden select-none transition-colors duration-300 ${
-          isDark ? "dark bg-canvas text-slate-100" : "bg-[#f4f6fb] text-slate-900"
-        }`}
-      >
+      <div className="dark relative flex h-screen w-screen flex-col overflow-hidden bg-canvas text-slate-100 select-none transition-colors duration-300">
       {/* 1. Global WindowBar (Tauri Managed) */}
       <WindowBar onClose={handleWindowClose} />
 
@@ -623,12 +213,7 @@ export default function App() {
       {bootStage !== "window-reveal" && (
         accounts.length === 0 ? (
           <div key="app-auth" className="flex flex-1 flex-col h-full w-full">
-            <AuthScreen
-              onLoginSuccess={(newAcc) => {
-                setAccounts([newAcc]);
-                setActiveAccountId(newAcc.id);
-              }}
-            />
+            <AuthScreen onLoginSuccess={signInFirstAccount} />
           </div>
         ) : (
           <div
@@ -641,62 +226,42 @@ export default function App() {
           <div className="absolute -bottom-[15%] -right-[10%] h-[450px] w-[450px] rounded-full bg-brand-dark/20 blur-[130px]" />
         </div>
 
-        <FriendsPanel account={activeAccount ?? null} visible={currentView === "home" && homeNav === "p2p"} />
+        <FriendsPanel account={activeAccount} visible={currentView === "home" && home.nav === "p2p"} />
 
         {/* Sidebar */}
         <Sidebar
           currentView={currentView}
-          onNavigate={handleNavigate}
+          onNavigate={navigate}
           instances={instances}
           selectedInstanceId={selectedInstanceId}
           onSelectInstance={handleSelectInstance}
           accounts={accounts}
           activeAccount={activeAccount}
-          onSelectAccount={handleSelectAccount}
-          onAddAccount={handleAddAccount}
-          onOpenSkinManager={() => handleNavigate("skins")}
-          onSignOut={handleSignOut}
+          onSelectAccount={selectAccount}
+          onAddAccount={() => setIsLoginModalOpen(true)}
+          onOpenSkinManager={() => navigate("skins")}
+          onSignOut={signOut}
           onCreateInstance={handleCreateInstance}
           onImportInstance={handleImportInstance}
           runningInstances={runningInstances}
-          isDark={isDark}
-          onToggleTheme={toggleTheme}
         />
 
-        {/* Right Content Area:
-            Titlebar 完全整合進主頁面畫布，與內容同享雙向物理動態 (AnimatePresence)
-        */}
+        {/* Right content area: each page carries its own titlebar so both move together. */}
         <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
           <main className="flex-1 min-h-0 overflow-hidden relative">
             <AnimatePresence mode="popLayout" initial={false} custom={viewDirection}>
               {currentView === "news" && (
                 <motion.div
                   key="news"
-                  custom={viewDirection}
-                  variants={pageVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  className="flex h-full w-full flex-col overflow-hidden"
+                  {...pageMotion}
                 >
-                  <DynamicTitlebar
-                    currentView="news"
-                    newsNav={newsNav}
-                    onNewsNavChange={handleNewsNavChange}
-                    homeNav={homeNav}
-                    onHomeNavChange={handleHomeNavChange}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    onCreateInstance={handleCreateInstance}
-                    onImportInstance={handleImportInstance}
-                    onCreateGroup={handleCreateGroup}
-                  />
+                  <DynamicTitlebar currentView="news" {...titlebarProps} />
                   <ScrollArea
                     className="flex-1 min-h-0"
                     viewportClassName="p-6"
                   >
                     <Suspense fallback={null}>
-                      <NewsView subNav={newsNav} direction={newsNavDirection} />
+                      <NewsView subNav={news.nav} direction={news.direction} />
                     </Suspense>
                   </ScrollArea>
                 </motion.div>
@@ -705,36 +270,20 @@ export default function App() {
               {currentView === "home" && (
                 <motion.div
                   key="home"
-                  custom={viewDirection}
-                  variants={pageVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  className="flex h-full w-full flex-col overflow-hidden"
+                  {...pageMotion}
                 >
-                  <DynamicTitlebar
-                    currentView="home"
-                    newsNav={newsNav}
-                    onNewsNavChange={handleNewsNavChange}
-                    homeNav={homeNav}
-                    onHomeNavChange={handleHomeNavChange}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    onCreateInstance={handleCreateInstance}
-                    onImportInstance={handleImportInstance}
-                    onCreateGroup={handleCreateGroup}
-                  />
+                  <DynamicTitlebar currentView="home" {...titlebarProps} />
                   <div className="flex-1 min-h-0 p-6">
                     <HomeView
-                      subNav={homeNav}
-                      direction={homeNavDirection}
+                      subNav={home.nav}
+                      direction={home.direction}
                       activeInstance={homeInstance}
                       onCreateInstance={handleCreateInstance}
                       onImportInstance={handleImportInstance}
                       instances={instances}
                       busyIds={{ ...launchingInstanceIds, ...runningInstances }}
-                      account={activeAccount ?? null}
-                      onQuickPlay={(instanceId, type, target) => handleLaunchGame(instanceId, type, target)}
+                      account={activeAccount}
+                      onQuickPlay={(instanceId, type, target) => launchGame(instanceId, type, target)}
                     />
                   </div>
                 </motion.div>
@@ -743,25 +292,9 @@ export default function App() {
               {currentView === "instances" && (
                 <motion.div
                   key="instances"
-                  custom={viewDirection}
-                  variants={pageVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  className="flex h-full w-full flex-col overflow-hidden"
+                  {...pageMotion}
                 >
-                  <DynamicTitlebar
-                    currentView="instances"
-                    newsNav={newsNav}
-                    onNewsNavChange={setNewsNav}
-                    homeNav={homeNav}
-                    onHomeNavChange={setHomeNav}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    onCreateInstance={handleCreateInstance}
-                    onImportInstance={handleImportInstance}
-                    onCreateGroup={handleCreateGroup}
-                  />
+                  <DynamicTitlebar currentView="instances" {...titlebarProps} />
                   <ScrollArea
                     className="flex-1 min-h-0"
                     viewportClassName="p-6"
@@ -775,18 +308,13 @@ export default function App() {
                         onInstanceDuplicated={refreshInstances}
                         onSelectInstance={(id) => {
                           setSelectedInstanceId(id);
-                          const dir =
-                            VIEW_INDEX["instance-detail"] > VIEW_INDEX["instances"]
-                              ? 1
-                              : -1;
-                          setViewDirection(dir);
-                          setCurrentView("instance-detail");
+                          showView("instance-detail");
                         }}
                         onLaunchInstance={(id) => {
-                          handleLaunchGame(id);
+                          launchGame(id);
                         }}
                         onKillInstance={(id) => {
-                          handleKillGame(id);
+                          killGame(id);
                         }}
                       />
                     </Suspense>
@@ -797,23 +325,18 @@ export default function App() {
               {currentView === "instance-detail" && (
                 <motion.div
                   key={`instance-detail-${selectedInstanceId}`}
-                  custom={viewDirection}
-                  variants={pageVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  className="flex h-full w-full flex-col overflow-hidden"
+                  {...pageMotion}
                 >
                   <Suspense fallback={null}>
                     <InstanceDetailView
                       instance={activeInstance}
-                      onLaunch={(id) => handleLaunchGame(id)}
-                      onGoToInstances={() => handleNavigate("instances")}
+                      onLaunch={(id) => launchGame(id)}
+                      onGoToInstances={() => navigate("instances")}
                       isLaunching={!!(activeInstance && launchingInstanceIds[activeInstance.id])}
                       isRunning={!!(activeInstance && runningInstances[activeInstance.id])}
                       runningPid={activeInstance ? runningInstances[activeInstance.id]?.pid ?? null : null}
                       runningAccountName={activeInstance ? runningInstances[activeInstance.id]?.accountName ?? null : null}
-                      onKill={() => activeInstance && handleKillGame(activeInstance.id)}
+                      onKill={() => activeInstance && killGame(activeInstance.id)}
                       onInstanceUpdated={(updated) => {
                         setInstances((prev) =>
                           prev.map((it) => (it.id === activeInstance?.id ? updated : it))
@@ -828,32 +351,15 @@ export default function App() {
               {currentView === "settings" && (
                 <motion.div
                   key="settings"
-                  custom={viewDirection}
-                  variants={pageVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  className="flex h-full w-full flex-col overflow-hidden"
+                  {...pageMotion}
                 >
-                  <DynamicTitlebar
-                    currentView="settings"
-                    newsNav={newsNav}
-                    onNewsNavChange={setNewsNav}
-                    homeNav={homeNav}
-                    onHomeNavChange={setHomeNav}
-                    settingsNav={settingsNav}
-                    onSettingsNavChange={handleSettingsNavChange}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    onCreateInstance={handleCreateInstance}
-                    onCreateGroup={handleCreateGroup}
-                  />
+                  <DynamicTitlebar currentView="settings" {...titlebarProps} />
                   <ScrollArea
                     className="flex-1 min-h-0"
                     viewportClassName="p-6"
                   >
                     <Suspense fallback={null}>
-                      <SettingsView subNav={settingsNav} direction={settingsNavDirection} />
+                      <SettingsView subNav={settings.nav} direction={settings.direction} />
                     </Suspense>
                   </ScrollArea>
                 </motion.div>
@@ -875,13 +381,9 @@ export default function App() {
                     <Suspense fallback={null}>
                       <SkinManagerView
                         activeAccount={activeAccount}
-                        onGoBack={() => handleNavigate("home")}
+                        onGoBack={() => navigate("home")}
                         onOpenLoginModal={() => setIsLoginModalOpen(true)}
-                        onAccountUpdated={(updated) => {
-                          setAccounts((prev) =>
-                            prev.map((a) => (a.id === updated.id ? updated : a))
-                          );
-                        }}
+                        onAccountUpdated={updateAccount}
                       />
                     </Suspense>
                   </ScrollArea>
@@ -900,14 +402,7 @@ export default function App() {
           <MicrosoftLoginModal
             isOpen={isLoginModalOpen}
             onClose={() => setIsLoginModalOpen(false)}
-            onSuccess={(newAcc) => {
-              loginEpochRef.current++;
-              setAccounts((prev) => {
-                const filtered = prev.filter((a) => a.id !== newAcc.id);
-                return [newAcc, ...filtered.map((a) => ({ ...a, isActive: false }))];
-              });
-              setActiveAccountId(newAcc.id);
-            }}
+            onSuccess={addAccount}
           />
         </Suspense>
       )}
@@ -917,7 +412,7 @@ export default function App() {
         <OnboardingGuide
           onCreateInstance={handleCreateInstance}
           onImportInstance={handleImportInstance}
-          onFinish={() => setShowOnboarding(false)}
+          onFinish={closeOnboarding}
         />
       )}
 

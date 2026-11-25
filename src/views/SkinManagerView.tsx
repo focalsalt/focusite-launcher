@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipTrigger,
@@ -26,6 +25,8 @@ import {
   Tip,
 } from "@/components/ui/tooltip";
 import { UserAccount, UserCape } from "@/types/navigation";
+import { OFFICIAL_9_SKINS, OFFICIAL_KNOWN_CAPES } from "@/components/skin/skinCatalog";
+import { SkinCardSkeleton, CapeCardSkeleton } from "@/components/skin/SkinSkeletons";
 import { Skin3DViewer } from "@/components/skin/Skin3DViewer";
 import { SkinThumbnail } from "@/components/skin/SkinThumbnail";
 import { skinService, SkinItem } from "@/services/skinService";
@@ -36,296 +37,6 @@ import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 
-interface DefaultSkinPreset {
-  id: string;
-  name: string;
-  model: "default" | "slim"; // 寬版 (4px) 或 苗條 (3px)
-  texturePath: string; // 本地打包資源路徑
-}
-
-// 依據 Minecraft Wiki 官方預設外觀對照表收錄之 9 款角色
-const OFFICIAL_9_SKINS: DefaultSkinPreset[] = [
-  {
-    id: "steve",
-    name: "Steve",
-    model: "default",
-    texturePath: "/assets/skins/wide/steve.png",
-  },
-  {
-    id: "alex",
-    name: "Alex",
-    model: "slim",
-    texturePath: "/assets/skins/slim/alex.png",
-  },
-  {
-    id: "ari",
-    name: "Ari",
-    model: "default",
-    texturePath: "/assets/skins/wide/ari.png",
-  },
-  {
-    id: "kai",
-    name: "Kai",
-    model: "default",
-    texturePath: "/assets/skins/wide/kai.png",
-  },
-  {
-    id: "noor",
-    name: "Noor",
-    model: "slim",
-    texturePath: "/assets/skins/slim/noor.png",
-  },
-  {
-    id: "sunny",
-    name: "Sunny",
-    model: "default",
-    texturePath: "/assets/skins/wide/sunny.png",
-  },
-  {
-    id: "zuri",
-    name: "Zuri",
-    model: "default",
-    texturePath: "/assets/skins/wide/zuri.png",
-  },
-  {
-    id: "efe",
-    name: "Efe",
-    model: "slim",
-    texturePath: "/assets/skins/slim/efe.png",
-  },
-  {
-    id: "makena",
-    name: "Makena",
-    model: "slim",
-    texturePath: "/assets/skins/slim/makena.png",
-  },
-];
-
-interface KnownCapeDef {
-  id: string;
-  name: string;
-  enName: string;
-  url: string;
-  alias?: string;
-  category: "event" | "minecon" | "account" | "special" | "staff";
-  status: "unobtainable" | "restricted" | "obtainable";
-  releaseYear: string;
-}
-
-// 依據 Minecraft Wiki 披風專題完整收錄之 21 款官方正統披風（全數經 Mojang 官方 CDN 探測返回 HTTP 200 OK）
-const OFFICIAL_KNOWN_CAPES: KnownCapeDef[] = [
-  {
-    id: "15th-anniversary",
-    name: "15th Anniversary Cape",
-    enName: "15th Anniversary Cape",
-    url: "https://textures.minecraft.net/texture/cd9d82ab17fd92022dbd4a86cde4c382a7540e117fae7b9a2853658505a80625",
-    alias: "15th Anniversary",
-    category: "event",
-    status: "unobtainable",
-    releaseYear: "2024",
-  },
-  {
-    id: "twitch-purple-heart",
-    name: "Purple Heart Cape",
-    enName: "Purple Heart Cape",
-    url: "https://textures.minecraft.net/texture/cb40a92e32b57fd732a00fc325e7afb00a7ca74936ad50d8e860152e482cfbde",
-    alias: "Purple Heart",
-    category: "event",
-    status: "unobtainable",
-    releaseYear: "2024",
-  },
-  {
-    id: "tiktok-follower",
-    name: "Follower's Cape",
-    enName: "Follower's Cape",
-    url: "https://textures.minecraft.net/texture/569b7f2a1d00d26f30efe3f9ab9ac817b1e6d35f4f3cfb0324ef2d328223d350",
-    alias: "Follower's Cape",
-    category: "event",
-    status: "unobtainable",
-    releaseYear: "2024",
-  },
-  {
-    id: "mcc-15th",
-    name: "MCC 15th Anniversary Cape",
-    enName: "MCC 15th Anniversary Cape",
-    url: "https://textures.minecraft.net/texture/fe8a02dfe9e390e44ff33d69feef9d3943f76d3901015bbd50f0b67722d288bd",
-    alias: "MCC 15th",
-    category: "event",
-    status: "unobtainable",
-    releaseYear: "2024",
-  },
-  {
-    id: "experience-villager",
-    name: "Minecraft Experience: Villager Rescue Cape",
-    enName: "Minecraft Experience: Villager Rescue Cape",
-    url: "https://textures.minecraft.net/texture/7658c5025c77cfac7574aab3af94a46a8886e3b7722a895255fbf22ab8652434",
-    alias: "Experience",
-    category: "event",
-    status: "restricted",
-    releaseYear: "2024",
-  },
-  {
-    id: "founders",
-    name: "Founder's Cape",
-    enName: "Founder's Cape",
-    url: "https://textures.minecraft.net/texture/99aba02ef05ec6aa4d42db8ee43796d6cd50e4b2954ab29f0caeb85f96bf52a1",
-    alias: "Founder's Cape",
-    category: "event",
-    status: "unobtainable",
-    releaseYear: "2019",
-  },
-  {
-    id: "cherry-blossom",
-    name: "Cherry Blossom Cape",
-    enName: "Cherry Blossom Cape",
-    url: "https://textures.minecraft.net/texture/724b1d9bf597b1ebff9546059c25f4625b16ae605bf6adcc4a54c9c1b3f5e55",
-    alias: "Cherry Blossom",
-    category: "event",
-    status: "unobtainable",
-    releaseYear: "2023",
-  },
-  {
-    id: "vanilla",
-    name: "Vanilla Cape",
-    enName: "Vanilla Cape",
-    url: "https://textures.minecraft.net/texture/f9a76537647989f9a0b6d001e320dac591c359e9e61a31f4ce11c88f207f0ad4",
-    alias: "Vanilla",
-    category: "account",
-    status: "unobtainable",
-    releaseYear: "2022",
-  },
-  {
-    id: "migrator",
-    name: "Migrator Cape",
-    enName: "Migrator Cape",
-    url: "https://textures.minecraft.net/texture/2340c0e03dd66c11d16dd1b9cb023a6044f7153b161093da08b029471e141953",
-    alias: "Migrator",
-    category: "account",
-    status: "unobtainable",
-    releaseYear: "2020",
-  },
-  {
-    id: "pan",
-    name: "Pan Cape",
-    enName: "Pan Cape",
-    url: "https://textures.minecraft.net/texture/8f120319222ba397266be33fed89a24911d9f0a0d4c1c1f7a7d3298ec5bb9",
-    alias: "Pan",
-    category: "account",
-    status: "unobtainable",
-    releaseYear: "2019",
-  },
-  {
-    id: "minecon-2016",
-    name: "MINECON 2016 Cape",
-    enName: "MINECON 2016 Cape",
-    url: "https://textures.minecraft.net/texture/e7dfea16dc83c97df01a12fabbd1216359c0cd0ea42f9999b6e97c584963e980",
-    alias: "Minecon 2016",
-    category: "minecon",
-    status: "unobtainable",
-    releaseYear: "2016",
-  },
-  {
-    id: "minecon-2015",
-    name: "MINECON 2015 Cape",
-    enName: "MINECON 2015 Cape",
-    url: "https://textures.minecraft.net/texture/b0cc08840700447322d953a02b965f1d65a13a603bf64b17c803c21446fe1635",
-    alias: "Minecon 2015",
-    category: "minecon",
-    status: "unobtainable",
-    releaseYear: "2015",
-  },
-  {
-    id: "minecon-2013",
-    name: "MINECON 2013 Cape",
-    enName: "MINECON 2013 Cape",
-    url: "https://textures.minecraft.net/texture/153b1a0dfcbae953cdeb6f2c2bf6bf79943239b1372780da44bcbb29273131da",
-    alias: "Minecon 2013",
-    category: "minecon",
-    status: "unobtainable",
-    releaseYear: "2013",
-  },
-  {
-    id: "minecon-2012",
-    name: "MINECON 2012 Cape",
-    enName: "MINECON 2012 Cape",
-    url: "https://textures.minecraft.net/texture/a2e8d97ec79100e90a75d369d1b3ba81273c4f82bc1b737e934eed4a854be1b6",
-    alias: "Minecon 2012",
-    category: "minecon",
-    status: "unobtainable",
-    releaseYear: "2012",
-  },
-  {
-    id: "minecon-2011",
-    name: "MINECON 2011 Cape",
-    enName: "MINECON 2011 Cape",
-    url: "https://textures.minecraft.net/texture/953cac8b779fe41383e675ee2b86071a71658f2180f56fbce8aa315ea70e2ed6",
-    alias: "Minecon 2011",
-    category: "minecon",
-    status: "unobtainable",
-    releaseYear: "2011",
-  },
-  {
-    id: "mojang-studios",
-    name: "Mojang Studios Cape",
-    enName: "Mojang Studios Cape",
-    url: "https://textures.minecraft.net/texture/9e507afc56359978a3eb3e32367042b853cddd0995d17d0da995662913fb00f7",
-    alias: "Mojang Studios",
-    category: "staff",
-    status: "restricted",
-    releaseYear: "2021",
-  },
-  {
-    id: "mojang-classic",
-    name: "Mojang Classic Cape",
-    enName: "Mojang Classic Cape",
-    url: "https://textures.minecraft.net/texture/8f120319222a9f4a104e2f5cb97b2cda93199a2ee9e1585cb8d09d6f687cb761",
-    alias: "Mojang Classic",
-    category: "staff",
-    status: "restricted",
-    releaseYear: "2010",
-  },
-  {
-    id: "realms-mapmaker",
-    name: "Realms Mapmaker Cape",
-    enName: "Realms Mapmaker Cape",
-    url: "https://textures.minecraft.net/texture/17912790ff164b93196f08ba71d0e62129304776d0f347334f8a6eae509f8a56",
-    alias: "Realms Mapmaker",
-    category: "special",
-    status: "restricted",
-    releaseYear: "2016",
-  },
-  {
-    id: "translator",
-    name: "Translator Cape",
-    enName: "Translator Cape",
-    url: "https://textures.minecraft.net/texture/1bf91499701404e21bd46b0191d63239a4ef76ebde88d27e4d430ac211df681e",
-    alias: "Translator",
-    category: "special",
-    status: "unobtainable",
-    releaseYear: "2015",
-  },
-  {
-    id: "turtle",
-    name: "Turtle Cape",
-    enName: "Turtle Cape",
-    url: "https://textures.minecraft.net/texture/5048ea61566353397247d2b7d946034de926b997d5e66c86483dfb1e031aee95",
-    alias: "Turtle",
-    category: "special",
-    status: "unobtainable",
-    releaseYear: "2018",
-  },
-  {
-    id: "cobalt",
-    name: "Cobalt Cape",
-    enName: "Cobalt Cape",
-    url: "https://textures.minecraft.net/texture/ca35c56efe71ed290385f4ab5346a1826b546a54d519e6a3ff01efa01acce81",
-    alias: "Cobalt",
-    category: "special",
-    status: "unobtainable",
-    releaseYear: "2016",
-  },
-];
-
 type AnimationMode = "idle" | "walk" | "run";
 
 // 水平分頁轉場慣性索引 (GEMINI.md Invariant)
@@ -333,38 +44,6 @@ const SUB_TAB_ORDER: Record<string, number> = {
   wardrobe: 0,
   capes: 1,
 };
-
-// 骨架屏載入佔位元件
-const SkinCardSkeleton: React.FC = () => (
-  <div className="flex flex-col justify-between p-3 rounded-xl border border-white/5 bg-white/[0.02] min-h-[120px] space-y-2">
-    <div className="flex items-center gap-3">
-      <Skeleton className="h-20 w-16 shrink-0 rounded-lg bg-white/5" />
-      <div className="min-w-0 flex-1 space-y-2">
-        <Skeleton className="h-3.5 w-24 rounded bg-white/5" />
-        <Skeleton className="h-2.5 w-16 rounded bg-white/5" />
-        <Skeleton className="h-2 w-12 rounded bg-white/5" />
-      </div>
-    </div>
-    <div className="pt-2 border-t border-white/5 flex justify-between items-center">
-      <Skeleton className="h-3 w-12 rounded bg-white/5" />
-    </div>
-  </div>
-);
-
-const CapeCardSkeleton: React.FC = () => (
-  <div className="flex flex-col justify-between p-3.5 rounded-xl border border-white/5 bg-white/[0.02] min-h-[120px] space-y-2">
-    <div className="flex items-center gap-3">
-      <Skeleton className="h-20 w-16 shrink-0 rounded-lg bg-white/5" />
-      <div className="min-w-0 flex-1 space-y-2">
-        <Skeleton className="h-3.5 w-28 rounded bg-white/5" />
-        <Skeleton className="h-2.5 w-20 rounded bg-white/5" />
-      </div>
-    </div>
-    <div className="pt-2 border-t border-white/5 flex justify-between items-center">
-      <Skeleton className="h-3 w-16 rounded bg-white/5" />
-    </div>
-  </div>
-);
 
 interface SkinManagerViewProps {
   activeAccount: UserAccount;
@@ -671,7 +350,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
               <h1 className="text-lg font-black tracking-tight text-white">
                 {t.skin.title}
               </h1>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-2xs text-slate-400">
                 {t.skin.centerDescBefore}<span className="font-semibold text-brand-light">{activeAccount.username}</span>{t.skin.centerDescAfter}
               </p>
             </div>
@@ -688,7 +367,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
               <div className="flex items-center justify-between w-full shrink-0 mb-1">
                 <div className="flex items-center gap-1.5">
                   <span className="flex h-2 w-2 rounded-full bg-brand-light animate-pulse" />
-                  <span className="text-[10px] font-mono font-medium text-slate-400">
+                  <span className="text-3xs font-mono font-medium text-slate-400">
                     3D LIVE PREVIEW
                   </span>
                 </div>
@@ -710,7 +389,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
 
               {/* 底部拖曳說明與保存/重設操作列 (固定高度，不造成卡片外擴) */}
               <div className="w-full shrink-0 mt-1">
-                <p className="text-[10px] text-slate-500 text-center pb-1">
+                <p className="text-3xs text-slate-500 text-center pb-1">
                   {t.skin.dragHint}
                 </p>
 
@@ -750,7 +429,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
             {/* 3D 動作模式與視角運鏡控制面板 (緊湊佈局，shrink-0 確保永不遭擠壓) */}
             <div className="w-full space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-2.5 text-xs shrink-0">
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-300">
+                <label className="text-2xs font-bold text-slate-300">
                   {t.skin.animationMode}
                 </label>
                 <div className="relative flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
@@ -767,7 +446,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                           isActive ? "text-white" : "text-slate-400 hover:text-slate-200"
                         }`}
                       >
-                        <span className="relative z-10 flex items-center justify-center gap-1 text-[11px]">
+                        <span className="relative z-10 flex items-center justify-center gap-1 text-2xs">
                           {btn.icon}
                           {btn.label}
                         </span>
@@ -782,7 +461,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <RotateCcw className="h-3.5 w-3.5 text-slate-300" />
-                    <span className="text-[11px] font-semibold text-slate-300">
+                    <span className="text-2xs font-semibold text-slate-300">
                       {t.skin.autoRotate}
                     </span>
                   </div>
@@ -795,7 +474,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Feather className="h-3.5 w-3.5 text-slate-300" />
-                    <span className="text-[11px] font-semibold text-slate-300">
+                    <span className="text-2xs font-semibold text-slate-300">
                       {t.skin.elytraMode}
                     </span>
                   </div>
@@ -886,7 +565,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                         <h2 className="text-xs font-bold text-slate-200">
                           {t.skin.localSkinsTitle}
                         </h2>
-                        <span className="text-[10px] text-slate-500 font-mono">
+                        <span className="text-3xs text-slate-500 font-mono">
                           {t.skin.fileCount(localSkins.length)}
                         </span>
                       </div>
@@ -913,7 +592,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                           <span className="text-xs font-bold text-slate-200">
                             {isUploading ? t.skin.uploading : t.skin.uploadNew}
                           </span>
-                          <span className="text-[10px] text-slate-500">
+                          <span className="text-3xs text-slate-500">
                             {t.skin.uploadHint}
                           </span>
                           
@@ -958,10 +637,10 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                     <p className="truncate text-xs font-bold text-white">
                                       {skin.name}
                                     </p>
-                                    <p className="truncate text-[10px] text-slate-400 font-mono mt-0.5">
+                                    <p className="truncate text-3xs text-slate-400 font-mono mt-0.5">
                                       {t.skin.customSkin}
                                     </p>
-                                    <p className="text-[10px] text-slate-500 mt-1">
+                                    <p className="text-3xs text-slate-500 mt-1">
                                       {Math.max(1, Math.round(skin.bytes.length / 1024))} KB
                                     </p>
                                   </div>
@@ -978,7 +657,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                   </Tip>
                                 </div>
 
-                                <div className="flex items-center justify-between text-[10px] pt-2 border-t border-white/5">
+                                <div className="flex items-center justify-between text-3xs pt-2 border-t border-white/5">
                                   <Badge
                                     variant="outline"
                                     className={`text-[9px] py-0 px-1.5 ${
@@ -1006,7 +685,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                         <h2 className="text-xs font-bold text-slate-200">
                           {t.skin.defaultSkinsTitle}
                         </h2>
-                        <span className="text-[10px] text-slate-500 font-mono">
+                        <span className="text-3xs text-slate-500 font-mono">
                           Minecraft Official Presets
                         </span>
                       </div>
@@ -1042,13 +721,13 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                   <p className="truncate text-xs font-bold text-white">
                                     {defSkin.id === "steve" ? t.skin.steveName : defSkin.name}
                                   </p>
-                                  <p className="truncate text-[10px] text-slate-400 mt-0.5">
+                                  <p className="truncate text-3xs text-slate-400 mt-0.5">
                                     {t.skin.defaultCharacter}
                                   </p>
                                 </div>
                               </div>
 
-                              <div className="flex items-center justify-between text-[10px] pt-2 border-t border-white/5">
+                              <div className="flex items-center justify-between text-3xs pt-2 border-t border-white/5">
                                 <Badge
                                   variant="outline"
                                   className={`text-[9px] py-0 px-1.5 ${
@@ -1086,7 +765,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                         <h2 className="text-xs font-bold text-slate-200">
                           {t.skin.ownedCapesTitle(accountCapes.length)}
                         </h2>
-                        <span className="text-[10px] text-slate-500 font-mono">
+                        <span className="text-3xs text-slate-500 font-mono">
                           OWNED ASSETS
                         </span>
                       </div>
@@ -1125,13 +804,13 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                 <p className="truncate text-xs font-bold text-white">
                                   {t.skin.noCape}
                                 </p>
-                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                <p className="text-3xs text-slate-400 mt-0.5">
                                   {t.skin.noCapeDesc}
                                 </p>
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between text-[10px] pt-2 border-t border-white/5">
+                            <div className="flex items-center justify-between text-3xs pt-2 border-t border-white/5">
                               <span className="text-[9px] text-slate-500 font-mono">
                                 UNEQUIPPED
                               </span>
@@ -1179,13 +858,13 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                         <p className="truncate text-xs font-bold text-white">
                                           {capeName}
                                         </p>
-                                        <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">
+                                        <p className="text-3xs text-slate-400 mt-0.5 line-clamp-2">
                                           {t.skin.statusLabel}{cape.state === "ACTIVE" ? t.skin.mojangDefault : t.skin.ownedOfficial}
                                         </p>
                                       </div>
                                     </div>
 
-                                    <div className="flex items-center justify-between text-[10px] pt-2 border-t border-white/5">
+                                    <div className="flex items-center justify-between text-3xs pt-2 border-t border-white/5">
                                       <span className="text-[9px] text-brand-light font-mono font-semibold">
                                         OFFICIAL OWNED
                                       </span>
@@ -1202,17 +881,17 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                         {matchedKnown ? capeText(matchedKnown.id).name : capeName}
                                       </span>
                                       {matchedKnown && (
-                                        <span className="text-[10px] text-slate-400 font-mono">
+                                        <span className="text-3xs text-slate-400 font-mono">
                                           {matchedKnown.releaseYear}
                                         </span>
                                       )}
                                     </div>
-                                    <p className="text-[11px] text-slate-300">
+                                    <p className="text-2xs text-slate-300">
                                       {matchedKnown
                                         ? capeText(matchedKnown.id).obtain
                                         : t.skin.ownedDesc}
                                     </p>
-                                    <div className="flex items-center gap-1.5 pt-1 text-[10px] text-brand-light font-medium">
+                                    <div className="flex items-center gap-1.5 pt-1 text-3xs text-brand-light font-medium">
                                       <Check className="h-3 w-3" />
                                       <span>{t.skin.cloudAssets}</span>
                                     </div>
@@ -1231,7 +910,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                   <p className="text-xs font-bold text-amber-400">
                                     {t.skin.tokenExpired}
                                   </p>
-                                  <p className="text-[11px] text-slate-400 max-w-md mx-auto leading-relaxed">
+                                  <p className="text-2xs text-slate-400 max-w-md mx-auto leading-relaxed">
                                     {t.skin.tokenMissingDesc}
                                   </p>
                                   {onOpenLoginModal && (
@@ -1251,7 +930,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                   <p className="text-xs font-bold text-slate-300">
                                     {t.skin.noCapesTitle}
                                   </p>
-                                  <p className="text-[11px] text-slate-500 max-w-md mx-auto leading-relaxed">
+                                  <p className="text-2xs text-slate-500 max-w-md mx-auto leading-relaxed">
                                     {t.skin.noCapesDesc}
                                   </p>
                                 </>

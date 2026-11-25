@@ -49,8 +49,6 @@ interface SidebarProps {
   onCreateInstance?: () => void;
   onImportInstance?: () => void;
   runningInstances?: Record<string, RunningInstanceInfo>;
-  isDark: boolean;
-  onToggleTheme: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -249,7 +247,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         {instances.length === 0 ? (
           <div className="px-5 py-6 text-center space-y-1">
-            <p className="text-[11px] text-slate-500">{t.shell.noInstances}</p>
+            <p className="text-2xs text-slate-500">{t.shell.noInstances}</p>
           </div>
         ) : (
           sortForSidebar(instances).map((inst) => {
@@ -319,7 +317,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span className="truncate text-xs font-semibold text-slate-200 leading-snug">
                       {inst.name}
                     </span>
-                    <span className="truncate text-[10px] text-slate-400 font-mono mt-0.5">
+                    <span className="truncate text-3xs text-slate-400 font-mono mt-0.5">
                       {inst.needsSetup ? t.common.unknown : `${inst.loader} · ${inst.version}`}
                     </span>
                   </div>

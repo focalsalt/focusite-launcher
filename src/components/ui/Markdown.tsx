@@ -30,10 +30,10 @@ const components: Components = {
   ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
   ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
   code: ({ children }) => (
-    <code className="rounded bg-white/10 px-1 py-0.5 font-mono text-[11px] text-slate-200">{children}</code>
+    <code className="rounded bg-white/10 px-1 py-0.5 font-mono text-2xs text-slate-200">{children}</code>
   ),
   pre: ({ children }) => (
-    <pre className="my-2 overflow-x-auto rounded-lg bg-black/40 p-3 font-mono text-[11px]">{children}</pre>
+    <pre className="my-2 overflow-x-auto rounded-lg bg-black/40 p-3 font-mono text-2xs">{children}</pre>
   ),
   blockquote: ({ children }) => (
     <blockquote className="my-2 border-l-2 border-white/20 pl-3 text-slate-500">{children}</blockquote>
@@ -41,7 +41,7 @@ const components: Components = {
   hr: () => <hr className="my-3 border-white/10" />,
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto">
-      <table className="w-full border-collapse text-[11px]">{children}</table>
+      <table className="w-full border-collapse text-2xs">{children}</table>
     </div>
   ),
   th: ({ children }) => <th className="border border-white/10 px-2 py-1 text-left text-slate-200">{children}</th>,

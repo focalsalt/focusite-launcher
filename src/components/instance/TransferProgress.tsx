@@ -79,7 +79,7 @@ export const TransferProgress: React.FC<TransferProgressProps> = ({ stages, prog
                       <div className="h-full w-1/3 animate-pulse rounded-full bg-brand/70" />
                     )}
                   </div>
-                  <div className="flex items-center justify-between gap-3 text-[11px] text-slate-400">
+                  <div className="flex items-center justify-between gap-3 text-2xs text-slate-400">
                     <span className="min-w-0 truncate font-mono">
                       {progress?.retry ? `${t.transfer.retrying(progress.retry)} · ` : ""}
                       {progress?.message}

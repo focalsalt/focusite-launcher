@@ -21,17 +21,6 @@ export interface VersionManifestV2 {
   versions: VersionSummary[];
 }
 
-export interface VersionManifest {
-  id: string;
-  type: string;
-  mainClass: string;
-  javaVersion?: {
-    component: string;
-    majorVersion: number;
-  };
-  assets?: string;
-}
-
 export const manifestService = {
   /**
    * Fetches real version manifest list from Mojang or mirror.
@@ -57,31 +46,6 @@ export const manifestService = {
 
     const resp = await fetch(targetUrl);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    return await resp.json();
-  },
-
-  /**
-   * Fetches details of a specific version manifest.
-   */
-  async getVersionDetail(url: string, mirror?: "official" | "bmclapi" | "mcbbs"): Promise<VersionManifest> {
-    const effectiveMirror =
-      mirror ||
-      (typeof window !== "undefined"
-        ? (localStorage.getItem("focusite_download_mirror") as "official" | "bmclapi" | "mcbbs") || "official"
-        : "official");
-
-    if (isTauri()) {
-      try {
-        return await invoke<VersionManifest>("get_version_detail", {
-          versionUrl: url,
-          mirror: effectiveMirror,
-        });
-      } catch (err) {
-        console.warn("Tauri get_version_detail IPC failed, falling back to direct fetch:", err);
-      }
-    }
-
-    const resp = await fetch(url);
     return await resp.json();
   },
 };

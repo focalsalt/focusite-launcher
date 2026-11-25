@@ -74,7 +74,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({ options, value, onChan
                   exit={{ opacity: 0, scale: 0.85 }}
                   transition={{ type: "spring", stiffness: 500, damping: 34 }}
                 >
-                  <Badge variant="outline" className="gap-1 border-brand-light/40 bg-brand/10 py-0.5 pl-2 pr-1 text-[11px] text-brand-light">
+                  <Badge variant="outline" className="gap-1 border-brand-light/40 bg-brand/10 py-0.5 pl-2 pr-1 text-2xs text-brand-light">
                     <span className="max-w-[10rem] truncate">{o.label}</span>
                     <button
                       type="button"
@@ -126,7 +126,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({ options, value, onChan
                     {on ? <Check className="h-3.5 w-3.5 shrink-0 text-brand-light" /> : <span className="w-3.5 shrink-0" />}
                     <span className="truncate">{opt.label}</span>
                   </div>
-                  {opt.hint && <span className="ml-2 shrink-0 font-mono text-[10px] text-slate-400">{opt.hint}</span>}
+                  {opt.hint && <span className="ml-2 shrink-0 font-mono text-3xs text-slate-400">{opt.hint}</span>}
                 </button>
               );
             })}

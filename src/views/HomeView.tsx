@@ -81,7 +81,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <ol className="mt-5 max-w-xl space-y-2 text-xs text-slate-300">
                   {[t.onboarding.emptyStep1, t.onboarding.emptyStep2, t.onboarding.emptyStep3].map((text, i) => (
                     <li key={i} className="flex items-start gap-2.5">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/20 text-[11px] font-bold text-brand-light">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/20 text-2xs font-bold text-brand-light">
                         {i + 1}
                       </span>
                       <span className="pt-0.5 leading-relaxed">{text}</span>

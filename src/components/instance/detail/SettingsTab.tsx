@@ -163,7 +163,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <span className="font-mono font-bold text-brand-light">{maxRam} MB</span>
           </div>
           <Slider value={maxRam} min={1024} max={16384} step={512} onChange={handleRamChange} />
-          <div className="flex justify-between font-mono text-[10px] text-slate-500">
+          <div className="flex justify-between font-mono text-3xs text-slate-500">
             <span>1024 MB</span>
             <span>{t.instSettings.recommended4096}</span>
             <span>8192 MB</span>
@@ -214,13 +214,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               {t.instSettings.javaUseAuto}
             </Button>
           </div>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-2xs text-slate-500">
             {javaPathInput ? t.instSettings.javaCustomNote : t.instSettings.javaAutoNote}
           </p>
 
           {systemJavas.length > 0 && (
             <div className="space-y-1.5">
-              <span className="text-[11px] text-slate-400">{t.instSettings.javaDetected}</span>
+              <span className="text-2xs text-slate-400">{t.instSettings.javaDetected}</span>
               <div className="flex flex-wrap gap-1.5">
                 {systemJavas.map((j) => (
                   <Tip label={j.path}>
@@ -228,7 +228,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       key={j.path}
                       type="button"
                       onClick={() => void applyJavaPath(j.path)}
-                      className={`rounded-lg border px-2.5 py-1 text-[11px] transition-colors ${
+                      className={`rounded-lg border px-2.5 py-1 text-2xs transition-colors ${
                         javaPathInput === j.path
                           ? "border-brand-light bg-brand/15 text-brand-light"
                           : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
@@ -309,7 +309,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             {t.common.save}
           </Button>
         </div>
-        <p className="text-[11px] text-slate-500">{t.instSettings.windowNote}</p>
+        <p className="text-2xs text-slate-500">{t.instSettings.windowNote}</p>
       </section>
 
       {divider}
@@ -324,7 +324,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.03] p-4 text-xs">
           <div>
             <span className="font-semibold text-slate-200">{t.instSettings.showLogOnLaunch}</span>
-            <p className="mt-1 text-[11px] text-slate-400">{t.instSettings.logWindowNote}</p>
+            <p className="mt-1 text-2xs text-slate-400">{t.instSettings.logWindowNote}</p>
           </div>
           <Switch checked={showLogOnLaunch} onCheckedChange={handleToggleShowLog} />
         </div>

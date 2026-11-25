@@ -75,6 +75,7 @@ runtime/
 java/
 cache/
 crash-reports/
+docs/
 
 # ------------------------------------------------------------------------------
 # 5. Environment & Secrets

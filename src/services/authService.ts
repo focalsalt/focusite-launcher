@@ -22,19 +22,6 @@ export interface DevicePollResult {
 const LOCAL_STORAGE_ACCOUNTS_KEY = "focusite_accounts_v26";
 
 export const authService = {
-  /**
-   * Checks whether MICROSOFT_CLIENT_ID is properly configured in .env.
-   */
-  async checkClientIdConfigured(): Promise<boolean> {
-    if (isTauri()) {
-      try {
-        return await invoke<boolean>("auth_check_client_id");
-      } catch {
-        return false;
-      }
-    }
-    return false;
-  },
 
   /**
    * Starts Microsoft Device Authorization flow.
@@ -109,17 +96,6 @@ export const authService = {
   },
 
   /**
-   * Verifies offline entitlement against native Keyring and account store.
-   */
-  async verifyOfflineLaunch(id: string): Promise<boolean> {
-    if (isTauri()) {
-      // A failed check means offline play is not allowed.
-      return await invoke<boolean>("auth_verify_offline_launch", { id }).catch(() => false);
-    }
-    return false;
-  },
-
-  /**
    * Refreshes account profile and owned capes from Mojang services.
    */
   async refreshProfile(id: string): Promise<UserAccount | null> {
@@ -155,48 +131,5 @@ export const authService = {
       a.id === id ? { ...a, skinUrl: skinUrl ?? a.skinUrl, capeUrl: capeUrl ?? a.capeUrl } : a
     );
     localStorage.setItem(LOCAL_STORAGE_ACCOUNTS_KEY, JSON.stringify(updated));
-  },
-
-  /**
-   * Uploads custom skin PNG to Mojang official API.
-   */
-  async uploadSkinToMojang(
-    accountId: string,
-    skinBytes: number[],
-    variant: "classic" | "slim"
-  ): Promise<UserAccount> {
-    if (isTauri()) {
-      return await invoke<UserAccount>("skin_upload_to_mojang", {
-        accountId,
-        skinBytes,
-        variant,
-      });
-    }
-    throw new Error("此環境無法上傳皮膚");
-  },
-
-  /**
-   * Equips a cape from player's inventory.
-   */
-  async setActiveCape(accountId: string, capeId: string): Promise<UserAccount> {
-    if (isTauri()) {
-      return await invoke<UserAccount>("skin_set_active_cape", {
-        accountId,
-        capeId,
-      });
-    }
-    throw new Error("此環境無法切換披風");
-  },
-
-  /**
-   * Unequips active cape.
-   */
-  async hideActiveCape(accountId: string): Promise<UserAccount> {
-    if (isTauri()) {
-      return await invoke<UserAccount>("skin_hide_active_cape", {
-        accountId,
-      });
-    }
-    throw new Error("此環境無法卸下披風");
   },
 };

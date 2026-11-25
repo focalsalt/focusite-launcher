@@ -29,6 +29,27 @@
   --fc-neutral-900: oklch(20.8% 0.042 265.755);
   --fc-neutral-950: oklch(12.9% 0.042 264.695);
 
+  /* Status scales: back the success-* / warning-* / danger-* utilities */
+  --fc-success-200: oklch(90.5% 0.093 164.15);
+  --fc-success-300: oklch(84.5% 0.143 164.978);
+  --fc-success-400: oklch(76.5% 0.177 163.223);
+  --fc-success-500: oklch(69.6% 0.17 162.48);
+  --fc-success-600: oklch(59.6% 0.145 163.225);
+  --fc-success-950: oklch(26.2% 0.051 172.552);
+  --fc-warning-200: oklch(92.4% 0.12 95.746);
+  --fc-warning-300: oklch(87.9% 0.169 91.605);
+  --fc-warning-400: oklch(82.8% 0.189 84.429);
+  --fc-warning-500: oklch(76.9% 0.188 70.08);
+  --fc-warning-950: oklch(27.9% 0.077 45.635);
+  --fc-danger-200: oklch(89.2% 0.058 10.001);
+  --fc-danger-300: oklch(81% 0.117 11.638);
+  --fc-danger-400: oklch(71.2% 0.194 13.428);
+  --fc-danger-500: oklch(64.5% 0.246 16.439);
+  --fc-danger-600: oklch(58.6% 0.253 17.585);
+  --fc-danger-700: oklch(51.4% 0.222 16.935);
+  --fc-danger-900: oklch(41% 0.159 10.272);
+  --fc-danger-950: oklch(27.1% 0.105 12.094);
+
   /* Shape and type: --fc-radius is the size of `rounded-xl`; the other steps scale from it */
   --fc-radius: 0.75rem;
   --fc-font-sans: Inter, "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
@@ -53,6 +74,30 @@
   --color-slate-800: var(--fc-neutral-800);
   --color-slate-900: var(--fc-neutral-900);
   --color-slate-950: var(--fc-neutral-950);
+
+  --color-success-200: var(--fc-success-200);
+  --color-success-300: var(--fc-success-300);
+  --color-success-400: var(--fc-success-400);
+  --color-success-500: var(--fc-success-500);
+  --color-success-600: var(--fc-success-600);
+  --color-success-950: var(--fc-success-950);
+  --color-warning-200: var(--fc-warning-200);
+  --color-warning-300: var(--fc-warning-300);
+  --color-warning-400: var(--fc-warning-400);
+  --color-warning-500: var(--fc-warning-500);
+  --color-warning-950: var(--fc-warning-950);
+  --color-danger-200: var(--fc-danger-200);
+  --color-danger-300: var(--fc-danger-300);
+  --color-danger-400: var(--fc-danger-400);
+  --color-danger-500: var(--fc-danger-500);
+  --color-danger-600: var(--fc-danger-600);
+  --color-danger-700: var(--fc-danger-700);
+  --color-danger-900: var(--fc-danger-900);
+  --color-danger-950: var(--fc-danger-950);
+
+  /* Small type steps below text-xs; font-size only, line height is inherited */
+  --text-3xs: 10px;
+  --text-2xs: 11px;
 
   --radius-md: calc(var(--fc-radius) * 0.5);
   --radius-lg: calc(var(--fc-radius) * 0.667);

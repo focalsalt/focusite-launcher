@@ -124,11 +124,11 @@ export const RecentQuickPlay: React.FC<RecentQuickPlayProps> = ({ instances, ref
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-2">
                   <p className="truncate text-xs font-semibold text-slate-100">{it.name}</p>
-                  <Badge variant="outline" className="shrink-0 border-white/10 px-1.5 py-0 font-mono text-[10px] text-slate-300">
+                  <Badge variant="outline" className="shrink-0 border-white/10 px-1.5 py-0 font-mono text-3xs text-slate-300">
                     {it.badge}
                   </Badge>
                 </div>
-                <p className="truncate text-[11px] text-slate-400">{t.home.usedInstance}{it.instanceName}</p>
+                <p className="truncate text-2xs text-slate-400">{t.home.usedInstance}{it.instanceName}</p>
               </div>
               <Tip label={t.home.joinNow}>
                 <Button

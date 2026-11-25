@@ -77,13 +77,13 @@ export const PatchNoteDialog: React.FC<PatchNoteDialogProps> = ({ patch: patchPr
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
           <div className="absolute inset-x-0 bottom-0 space-y-1.5 px-5 pb-3 pr-14">
-            <Badge variant="outline" className="border-white/25 bg-black/50 text-[10px] text-slate-200 backdrop-blur-md">
+            <Badge variant="outline" className="border-white/25 bg-black/50 text-3xs text-slate-200 backdrop-blur-md">
               {patch?.type === "release" ? t.common.release : t.common.snapshot}
               {patch?.version ? ` · ${patch.version}` : ""}
             </Badge>
             <h2 className="text-lg font-bold leading-tight text-white drop-shadow">{patch?.title}</h2>
             {patch?.date && (
-              <p className="font-mono text-[11px] text-slate-400">{patch.date.slice(0, 10)}</p>
+              <p className="font-mono text-2xs text-slate-400">{patch.date.slice(0, 10)}</p>
             )}
           </div>
         </div>

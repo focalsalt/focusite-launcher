@@ -255,7 +255,7 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
         description={
           <>
             {t.settings.themeDescBefore}
-            <kbd className="px-1 py-0.5 rounded bg-black/40 border border-white/10 font-mono text-[10px]">Ctrl+Shift+R</kbd>
+            <kbd className="px-1 py-0.5 rounded bg-black/40 border border-white/10 font-mono text-3xs">Ctrl+Shift+R</kbd>
             {t.settings.themeDescAfter}
           </>
         }
@@ -343,7 +343,7 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
             </div>
             {updateResult.body && (
               <ScrollArea className="max-h-32 rounded-lg bg-black/30">
-                <div className="whitespace-pre-wrap p-2.5 font-mono text-[11px] text-slate-300">{updateResult.body}</div>
+                <div className="whitespace-pre-wrap p-2.5 font-mono text-2xs text-slate-300">{updateResult.body}</div>
               </ScrollArea>
             )}
           </div>
@@ -359,7 +359,7 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
         <div className="flex items-start justify-between gap-4 rounded-xl border border-white/5 bg-black/20 p-4">
           <div className="space-y-1">
             <span className="text-xs font-semibold text-slate-100">{t.settings.campLocation}</span>
-            <p className="max-w-3xl text-[11px] leading-relaxed text-slate-400">{t.settings.campLocationDesc}</p>
+            <p className="max-w-3xl text-2xs leading-relaxed text-slate-400">{t.settings.campLocationDesc}</p>
           </div>
           <Switch checked={campLocation} onCheckedChange={handleToggleCampLocation} disabled={isLoading} />
         </div>
@@ -393,9 +393,9 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-slate-100">{t.settings.mirrorTitle}</span>
             </div>
-            <p className="max-w-3xl text-[11px] leading-relaxed text-slate-400">{t.settings.mirrorDesc}</p>
+            <p className="max-w-3xl text-2xs leading-relaxed text-slate-400">{t.settings.mirrorDesc}</p>
             {enableBmclapi && (
-              <div className="flex items-center gap-1.5 pt-1 text-[11px] text-amber-400/90">
+              <div className="flex items-center gap-1.5 pt-1 text-2xs text-amber-400/90">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 <span>{t.settings.mirrorWarning}</span>
               </div>
@@ -433,7 +433,7 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
               {t.settings.saveKey}
             </Button>
           </div>
-          <p className="pt-1 text-[11px] leading-relaxed text-slate-400">{t.settings.keyDesc}</p>
+          <p className="pt-1 text-2xs leading-relaxed text-slate-400">{t.settings.keyDesc}</p>
         </form>
         <PrivacyDetail access={t.privacy.keyAccess} sent={t.privacy.keySent} risk={t.privacy.keyRisk} />
       </SettingsSection>
@@ -453,7 +453,7 @@ const PrivacyDetail: React.FC<{ access: string; sent: string; risk: string }> = 
     [t.privacy.riskLabel, risk, "text-amber-300/90"],
   ];
   return (
-    <dl className="space-y-1.5 rounded-xl border border-white/5 bg-black/10 p-3 text-[11px] leading-relaxed">
+    <dl className="space-y-1.5 rounded-xl border border-white/5 bg-black/10 p-3 text-2xs leading-relaxed">
       {rows.map(([label, text, tone]) => (
         <div key={label} className="grid grid-cols-[4.5rem_1fr] gap-2">
           <dt className="font-semibold text-slate-500">{label}</dt>

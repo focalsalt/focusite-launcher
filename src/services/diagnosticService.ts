@@ -24,14 +24,4 @@ export const diagnosticService = {
       execution_time_micros: res.executionTimeMicros,
     };
   },
-
-  diagnoseInstanceLog: async (instanceId: string): Promise<DiagnosticResult> => {
-    const res = await invoke<DiagnosticResult>("diagnose_instance_log", { instanceId });
-    return {
-      ...res,
-      has_crash: res.hasCrash,
-      root_cause_type: res.rootCauseType,
-      execution_time_micros: res.executionTimeMicros,
-    };
-  },
 };

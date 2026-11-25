@@ -15,10 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   FolderDown,
-  RefreshCw,
-  ExternalLink,
   FolderOpen,
-  CheckCircle2,
   AlertTriangle,
   FileArchive,
   Search,
@@ -37,8 +34,8 @@ import {
   JobProgress,
 } from "@/services/modpackService";
 import { TransferProgress, type TransferStage } from "./TransferProgress";
+import { MissingModsPanel } from "./MissingModsPanel";
 import { formatBytes } from "@/lib/formatBytes";
-import { instanceService } from "@/services/instanceService";
 import { workshopService, WorkshopProjectSummary, WorkshopCategory } from "@/services/workshopService";
 import { FilterSidebar, Sort } from "@/components/workshop/FilterSidebar";
 import { ProjectDetailPanel } from "@/components/workshop/ProjectDetailPanel";
@@ -78,7 +75,6 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
   const [inspection, setInspection] = useState<PackInspection | null>(null);
   const [inspectError, setInspectError] = useState<string>("");
   const [isInspecting, setIsInspecting] = useState<boolean>(false);
-  const [isRetrying, setIsRetrying] = useState<boolean>(false);
   const [sort, setSort] = useState<Sort>("relevance");
   const [gameVersion, setGameVersion] = useState<string>("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -104,7 +100,6 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
   // 待補齊狀態
   const [importResult, setImportResult] = useState<ModpackImportResult | null>(null);
   const [missingMods, setMissingMods] = useState<MissingModItem[]>([]);
-  const [isRescanning, setIsRescanning] = useState<boolean>(false);
 
   // Describe the chosen file or folder before anything is imported, so problems show up early.
   useEffect(() => {
@@ -303,52 +298,6 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
     await modpackService.cancelJob(importIdRef.current);
   };
 
-  const handleRetryDownloads = async () => {
-    if (!importResult) return;
-    const importId = newJobId();
-    setProgress(null);
-    setIsRetrying(true);
-    const unlisten = await listenJobProgress(IMPORT_PROGRESS_EVENT, importId, setProgress);
-    try {
-      const remaining = await modpackService.retryPackDownloads(importResult.instanceId, importId);
-      setMissingMods(remaining);
-    } catch (err) {
-      toast(toUserMessage(err), "error");
-    } finally {
-      unlisten();
-      setIsRetrying(false);
-    }
-  };
-
-  const handleOpenAllPages = async () => {
-    const urls = missingMods.map((m) => m.webUrl).filter(Boolean);
-    if (urls.length > 0) {
-      await modpackService.openExternalUrls(urls);
-    }
-  };
-
-  const handleOpenModsFolder = async () => {
-    if (!importResult) return;
-    await instanceService.openInstanceDirectory(importResult.instanceId, "mods");
-  };
-
-  const handleRescan = async () => {
-    if (!importResult) return;
-    setIsRescanning(true);
-    try {
-      const remaining = await modpackService.rescanMissingMods(
-        importResult.instanceId,
-        missingMods
-      );
-      setMissingMods(remaining);
-    } catch (err) {
-      console.error("Rescan failed:", err);
-      toast(t.errors.rescanFailed(toUserMessage(err)), "error");
-    } finally {
-      setIsRescanning(false);
-    }
-  };
-
   const handleFinish = () => {
     if (!importResult || missingMods.length > 0) return;
     onClose();
@@ -402,154 +351,17 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
     );
   }
 
-  // 待補齊清單 Modal 視圖
+  // Missing-mods view: some files have to be downloaded by hand before the import is complete.
   if (importResult && !importResult.isCompleted) {
-    const isReady = missingMods.length === 0;
-
     return (
       <Dialog open={isOpen} onOpenChange={(open) => !open && resetAll()}>
         <DialogContent onClose={resetAll} className="max-w-2xl border-white/10 bg-slate-950/95 text-slate-100 backdrop-blur-xl">
-          <DialogHeader>
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
-              <DialogTitle className="text-base font-bold text-white">
-                {t.importPack.missingTitle}
-              </DialogTitle>
-            </div>
-            <DialogDescription className="text-xs text-slate-400 leading-relaxed pt-1">
-              {t.importPack.missingDesc}
-              {t.importPack.missingHint}
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* 狀態資訊橫幅 */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400">{t.importPack.instanceName}</span>
-              <span className="font-semibold text-white">{importResult.instanceName}</span>
-              <Badge variant="outline" className="text-[10px] font-mono border-white/10">
-                {importResult.loader} {importResult.version}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400">{t.importPack.remaining}</span>
-              <Badge
-                variant={isReady ? "success" : "outline"}
-                className={`text-[10px] font-mono font-bold ${
-                  !isReady ? "border-amber-500/50 text-amber-400 bg-amber-500/10" : ""
-                }`}
-              >
-                {t.importPack.itemCount(missingMods.length)}
-              </Badge>
-            </div>
-          </div>
-
-          {/* 條列缺失項目（嚴格不放單項按鈕） */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-semibold text-slate-300">{t.importPack.missingList}</span>
-            <div className="h-64 rounded-xl border border-white/10 bg-black/30 overflow-hidden">
-              <ScrollArea className="h-full w-full" viewportClassName="p-3">
-                {missingMods.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-48 text-center space-y-2">
-                    <CheckCircle2 className="h-8 w-8 text-brand-light" />
-                    <p className="text-sm font-semibold text-white">{t.importPack.allDone}</p>
-                    <p className="text-xs text-slate-400">{t.importPack.finishHint}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {missingMods.map((mod, idx) => (
-                      <div
-                        key={`${mod.projectId}-${mod.fileId}-${mod.relPath ?? mod.fileName}`}
-                        className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.03] border border-white/5 text-xs"
-                      >
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-200">
-                              {idx + 1}. {mod.name}
-                            </span>
-                            {mod.projectId !== 0 && (
-                              <Badge variant="outline" className="text-[9px] font-mono text-slate-400">
-                                ID: {mod.projectId}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-[11px] font-mono text-slate-400">
-                            {t.importPack.targetFile(mod.fileName)}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-950/20">
-                          {t.importPack.waitingManual}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </div>
-          </div>
-
-          {/* 底部按鈕區：嚴格合約提供「一鍵開啟全部頁面」、「開啟實例 mods 資料夾」與「重新掃描」，「完成建立實例」按鈕強制保持禁用 */}
-          <div className="flex items-center justify-between pt-2 border-t border-white/5">
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleOpenAllPages}
-                disabled={isReady}
-                className="gap-1.5 text-xs h-8 border-white/10 bg-white/5 hover:bg-white/10"
-              >
-                <ExternalLink className="h-3.5 w-3.5 text-brand-light" />
-                {t.importPack.openAllPages}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleOpenModsFolder}
-                className="gap-1.5 text-xs h-8 border-white/10 bg-white/5 hover:bg-white/10"
-              >
-                <FolderOpen className="h-3.5 w-3.5 text-brand-light" />
-                {t.importPack.openModsFolder}
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleRetryDownloads}
-                disabled={isReady || isRetrying || isRescanning}
-                className="gap-1.5 text-xs h-8 border-white/10"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${isRetrying ? "animate-spin text-brand-light" : ""}`} />
-                {isRetrying && progress && progress.total > 0
-                  ? `${t.importPack.retryDownloads} ${progress.current}/${progress.total}`
-                  : t.importPack.retryDownloads}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleRescan}
-                disabled={isRescanning || isRetrying}
-                className="gap-1.5 text-xs h-8 border-white/10"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${isRescanning ? "animate-spin text-brand-light" : ""}`} />
-                {t.importPack.rescan}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={!isReady}
-                onClick={handleFinish}
-                className="bg-brand hover:bg-brand-light disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold h-8 px-4"
-              >
-                {t.importPack.finish}
-              </Button>
-            </div>
-          </div>
+          <MissingModsPanel
+            result={importResult}
+            missingMods={missingMods}
+            onMissingModsChange={setMissingMods}
+            onFinish={handleFinish}
+          />
         </DialogContent>
       </Dialog>
     );
@@ -649,25 +461,25 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-semibold text-white">{inspection.name}</span>
-                            <Badge variant="outline" className="border-white/10 font-mono text-[10px]">
+                            <Badge variant="outline" className="border-white/10 font-mono text-3xs">
                               {inspection.loader} {inspection.version}
                             </Badge>
-                            <Badge variant="outline" className="border-brand-light/30 text-[10px] text-brand-light">
+                            <Badge variant="outline" className="border-brand-light/30 text-3xs text-brand-light">
                               {t.importPack.formats[inspection.format]}
                             </Badge>
                           </div>
-                          <p className="text-[11px] text-slate-400">
+                          <p className="text-2xs text-slate-400">
                             {t.importPack.summary(inspection.fileCount, formatBytes(inspection.sizeBytes))}
                             {inspection.folderName !== inspection.name && ` · ${t.importPack.willCreateAs(inspection.folderName)}`}
                           </p>
                           {inspection.large && (
-                            <p className="flex items-start gap-1.5 text-[11px] text-amber-300">
+                            <p className="flex items-start gap-1.5 text-2xs text-amber-300">
                               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
                               {t.importPack.largeNote(formatBytes(inspection.sizeBytes))}
                             </p>
                           )}
                           {inspection.imported.length > 0 && (
-                            <p className="text-[11px] text-slate-400">
+                            <p className="text-2xs text-slate-400">
                               {t.importPack.willImport}
                               {inspection.imported
                                 .map((k) => t.importPack.importedItems[k as keyof typeof t.importPack.importedItems] ?? k)
@@ -675,7 +487,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                             </p>
                           )}
                           {inspection.missingCurseforgeKey && (
-                            <p className="flex items-start gap-1.5 text-[11px] text-amber-300">
+                            <p className="flex items-start gap-1.5 text-2xs text-amber-300">
                               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
                               {t.importPack.noCurseforgeKey}
                             </p>
@@ -685,7 +497,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                     )}
                   </div>
                 )}
-                <div className="mx-auto w-full max-w-xl space-y-1 rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-relaxed text-slate-400">
+                <div className="mx-auto w-full max-w-xl space-y-1 rounded-xl border border-white/5 bg-black/20 p-3 text-2xs leading-relaxed text-slate-400">
                   <div className="flex items-center gap-1.5 font-semibold text-slate-300">
                     <FileArchive className="h-3.5 w-3.5 text-brand-light" />
                     <span>{t.importPack.formatEngine}</span>

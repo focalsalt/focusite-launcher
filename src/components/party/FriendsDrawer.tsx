@@ -122,7 +122,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
     >
       {label}
       {count ? (
-        <span className="rounded-full bg-brand px-1.5 text-[10px] font-bold leading-4 text-white">{count}</span>
+        <span className="rounded-full bg-brand px-1.5 text-3xs font-bold leading-4 text-white">{count}</span>
       ) : null}
     </button>
   );
@@ -217,7 +217,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-slate-100">{f.name}</p>
                     {sharePresence && (
-                      <p className={`text-[11px] ${isOnline(f.status) ? "text-emerald-400" : "text-slate-500"}`}>
+                      <p className={`text-2xs ${isOnline(f.status) ? "text-emerald-400" : "text-slate-500"}`}>
                         {statusText(f.status)}
                       </p>
                     )}
@@ -257,7 +257,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                 <p className="p-2 text-xs text-slate-500">{t.party.noRequests}</p>
               )}
               {incoming.length > 0 && (
-                <h4 className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                <h4 className="px-2 pt-1 text-2xs font-semibold uppercase tracking-wide text-slate-400">
                   {t.party.incomingTitle}
                 </h4>
               )}
@@ -291,7 +291,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                 ),
               )}
               {outgoing.length > 0 && (
-                <h4 className="px-2 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                <h4 className="px-2 pt-2 text-2xs font-semibold uppercase tracking-wide text-slate-400">
                   {t.party.outgoingTitle}
                 </h4>
               )}
@@ -331,7 +331,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
         >
           {open ? <X className="h-5 w-5" /> : <Users className="h-5 w-5" />}
           {!open && pending > 0 && (
-            <span className="absolute -left-2 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-center text-[10px] font-bold leading-4 text-white">
+            <span className="absolute -left-2 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-center text-3xs font-bold leading-4 text-white">
               {badge}
             </span>
           )}

@@ -114,7 +114,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
             <span className="truncate text-xs font-bold tracking-tight text-slate-100">
               {activeAccount.username}
             </span>
-            <div className="flex items-center gap-1 text-[10px]">
+            <div className="flex items-center gap-1 text-3xs">
               {isVerified ? (
                 <>
                   <ShieldCheck className="h-3 w-3 text-emerald-400 shrink-0" />
@@ -161,7 +161,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
                 className="z-[9999] overflow-hidden rounded-xl border border-white/15 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-2xl select-none"
               >
                 {/* Account List Header */}
-                <div className="px-2 py-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+                <div className="px-2 py-1 text-3xs font-semibold tracking-wider text-slate-400 uppercase">
                   {t.account.signedInList}
                 </div>
 

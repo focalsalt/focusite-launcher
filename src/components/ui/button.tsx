@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { motion, type HTMLMotionProps } from "motion/react";
+import { SPRING_PRESS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
@@ -48,7 +49,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         whileHover={disabled ? undefined : { scale: 1.02 }}
         whileTap={disabled ? undefined : { scale: 0.98 }}
-        transition={{ type: "spring", stiffness: 500, damping: 25 }}
+        transition={SPRING_PRESS}
         disabled={disabled}
         className={cn(buttonVariants({ variant, size, className }))}
         {...props}

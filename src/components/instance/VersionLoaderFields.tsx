@@ -171,7 +171,7 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
             ))}
           </SelectContent>
         </Select>
-        {old && <p className="text-[11px] text-slate-500">{t.create.vanillaOnlyOld}</p>}
+        {old && <p className="text-2xs text-slate-500">{t.create.vanillaOnlyOld}</p>}
       </div>
   );
 
@@ -197,11 +197,11 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
             <div className="flex items-center justify-between">
               <label className="font-semibold text-xs text-slate-300">{t.create.versionLabel}</label>
               <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-400 hover:text-slate-200">
+                <label className="flex items-center gap-1.5 cursor-pointer text-2xs text-slate-400 hover:text-slate-200">
                   <Checkbox checked={showSnapshots} onCheckedChange={setShowSnapshots} />
                   <span>{t.create.showSnapshots}</span>
                 </label>
-                <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-400 hover:text-slate-200">
+                <label className="flex items-center gap-1.5 cursor-pointer text-2xs text-slate-400 hover:text-slate-200">
                   <Checkbox checked={showHistorical} onCheckedChange={setShowHistorical} />
                   <span>{t.create.showOld}</span>
                 </label>
@@ -232,7 +232,7 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
                     key={v.id}
                     value={v.id}
                     extraRight={
-                      <span className="text-[10px] text-slate-400 font-mono">
+                      <span className="text-3xs text-slate-400 font-mono">
                         {v.type === "release"
                           ? t.common.release
                           : v.type === "snapshot"
@@ -285,7 +285,7 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
                         value={opt.version}
                         extraRight={
                           opt.isRecommended ? (
-                            <div className="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20 font-medium">
+                            <div className="flex items-center gap-1 text-3xs text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20 font-medium">
                               <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                               <span>{t.create.recommended}</span>
                             </div>
@@ -304,7 +304,7 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/20 text-brand-light">
                 <ShieldCheck className="h-4 w-4" />
               </div>
-              <p className="text-[11px] font-medium text-slate-200">{t.create.vanillaTitle}</p>
+              <p className="text-2xs font-medium text-slate-200">{t.create.vanillaTitle}</p>
             </div>
           )}
         </div>

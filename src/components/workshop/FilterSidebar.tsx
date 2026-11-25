@@ -80,7 +80,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             whileTap={{ scale: 0.94 }}
             onClick={onReset}
-            className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white"
+            className="flex items-center gap-1 text-2xs text-slate-400 hover:text-white"
           >
             <RotateCcw className="h-3 w-3" />
             {t.workshopWin.clearFilters}
@@ -130,7 +130,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
                   key={label}
                   type="button"
                   onClick={() => onEnv(v)}
-                  className={`rounded-lg px-1 py-1.5 text-[11px] font-semibold transition-colors ${
+                  className={`rounded-lg px-1 py-1.5 text-2xs font-semibold transition-colors ${
                     env === v ? "bg-brand text-white" : "text-slate-400 hover:bg-white/10 hover:text-white"
                   }`}
                 >
