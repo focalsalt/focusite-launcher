@@ -55,6 +55,8 @@ impl ProcessLauncher {
         cmd.args(arguments);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW: no console flash for java.exe
 
         cmd.spawn()
     }

@@ -199,6 +199,28 @@ impl P2pSessionRegistry {
         Ok((info, guest.answer_code))
     }
 
+    /// Sets the files this session's peer may fetch (sha1 hex -> path).
+    pub async fn serve_files(&self, session_id: &str, whitelist: HashMap<String, std::path::PathBuf>) -> Result<(), P2pError> {
+        let lock = self.sessions.read().await;
+        lock.get(session_id)
+            .and_then(|h| h.tunnel.as_ref())
+            .ok_or_else(|| P2pError::SignalingFailed(format!("找不到 WebRTC 連線階段: {}", session_id)))?
+            .serve_files(whitelist);
+        Ok(())
+    }
+
+    /// Downloads a file from the session's peer; the registry lock is released before the transfer starts.
+    pub async fn fetch_file(&self, session_id: &str, sha1: &str, size: u64, dest: &std::path::Path) -> Result<(), P2pError> {
+        let fetcher = {
+            let lock = self.sessions.read().await;
+            lock.get(session_id)
+                .and_then(|h| h.tunnel.as_ref())
+                .ok_or_else(|| P2pError::SignalingFailed(format!("找不到 WebRTC 連線階段: {}", session_id)))?
+                .fetcher()
+        };
+        fetcher.fetch(sha1, size, dest).await
+    }
+
     /// Stops and removes an active session.
     pub async fn stop_session(&self, session_id: &str) -> Result<(), P2pError> {
         let handle_opt = self.sessions.write().await.remove(session_id);

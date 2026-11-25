@@ -11,6 +11,7 @@ import { Copy, ExternalLink, RefreshCw, AlertCircle, Check } from "lucide-react"
 import { UserAccount } from "@/types/navigation";
 import { useI18n } from "@/i18n";
 import { useDeviceCodeLogin } from "./useDeviceCodeLogin";
+import { LoginSteps } from "./LoginSteps";
 
 interface MicrosoftLoginModalProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
     errorCategory,
     isCopied,
     pollingStatus,
+    loginStep,
     start: startLoginFlow,
     stop,
     copyCode: handleCopyCode,
@@ -46,9 +48,14 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  // Once the Xbox / Minecraft chain runs, the dialog can no longer be dismissed.
+  const verifying = loginStep !== null && !errorMessage;
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md border-white/10 bg-slate-900/95 text-slate-100 backdrop-blur-xl">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && !verifying && onClose()} preventBackdropClose>
+      <DialogContent
+        className="max-w-md border-white/10 bg-slate-900/95 text-slate-100 backdrop-blur-xl"
+      >
         <DialogHeader>
           <DialogTitle className="text-lg font-bold text-slate-100">
             {t.auth.modalTitle}
@@ -93,6 +100,8 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
               </Button>
             </div>
           </div>
+        ) : verifying ? (
+          <LoginSteps step={loginStep!} />
         ) : (
           <div className="space-y-5 py-3">
             {isStarting && !deviceInfo && (
@@ -150,6 +159,12 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
                 </div>
               </>
             )}
+
+            <div className="flex justify-center">
+              <Button variant="glass" size="sm" onClick={onClose}>
+                {t.common.cancel}
+              </Button>
+            </div>
           </div>
         )}
       </DialogContent>

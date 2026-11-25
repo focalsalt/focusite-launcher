@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { DownloadCloud, CheckCircle2, Cpu, Package, Layers, FileCode } from "lucide-react";
-import { listen } from "@tauri-apps/api/event";
+import { listenSafe } from "@/lib/listenSafe";
 import { useI18n } from "@/i18n";
 
 export interface InstanceProvisionProgress {
   instance_id: string;
-  step: "manifest" | "client_jar" | "libraries" | "assets" | "java" | "done" | "error";
+  step: "manifest" | "client_jar" | "libraries" | "assets" | "java" | "loader" | "done" | "error";
   message: string;
   current: number;
   total: number;
@@ -20,7 +20,7 @@ interface LaunchInstallModalProps {
 
 const STEPS: {
   key: string;
-  labelKey: "stepManifest" | "stepClient" | "stepLibraries" | "stepAssets" | "stepJava";
+  labelKey: "stepManifest" | "stepClient" | "stepLibraries" | "stepAssets" | "stepJava" | "stepLoader";
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
   { key: "manifest", labelKey: "stepManifest", icon: FileCode },
@@ -28,6 +28,7 @@ const STEPS: {
   { key: "libraries", labelKey: "stepLibraries", icon: Package },
   { key: "assets", labelKey: "stepAssets", icon: Layers },
   { key: "java", labelKey: "stepJava", icon: Cpu },
+  { key: "loader", labelKey: "stepLoader", icon: Package },
 ];
 
 export const LaunchInstallModal: React.FC<LaunchInstallModalProps> = ({
@@ -38,9 +39,7 @@ export const LaunchInstallModal: React.FC<LaunchInstallModalProps> = ({
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
-
-    listen<InstanceProvisionProgress>("instance-install-progress", (event) => {
+    return listenSafe<InstanceProvisionProgress>("instance-install-progress", (event) => {
       const payload = event.payload;
       if (activeInstanceId && payload.instance_id !== activeInstanceId) {
         return;
@@ -48,27 +47,20 @@ export const LaunchInstallModal: React.FC<LaunchInstallModalProps> = ({
 
       if (payload.step === "error") {
         setIsOpen(false);
-        setProgress(null);
       } else if (payload.step === "done") {
         setProgress(payload);
         setTimeout(() => {
           setIsOpen(false);
-          setProgress(null);
         }, 600);
       } else {
         setProgress(payload);
         setIsOpen(true);
       }
-    }).then((un) => {
-      unlisten = un;
     });
-
-    return () => {
-      if (unlisten) unlisten();
-    };
   }, [activeInstanceId]);
 
-  if (!isOpen || !progress) {
+  // Keep the last progress after closing so the exit animation still has content to show.
+  if (!progress) {
     return null;
   }
 

@@ -1,5 +1,6 @@
 import { sortForSidebar } from "@/lib/instanceOrder";
 import { scaleVariants, slideVariants } from "@/lib/motion";
+import { useExitMount } from "@/lib/useExitMount";
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { WindowBar } from "@/components/layout/WindowBar";
@@ -18,13 +19,14 @@ import {
   MainView,
   MinecraftInstance,
   NewsSubNav,
+  SettingsSubNav,
   RunningInstanceInfo,
   UserAccount,
 } from "@/types/navigation";
 import { instanceService, InstanceStatusEvent } from "@/services/instanceService";
 import { authService } from "@/services/authService";
 import { closeWindow, exitApp, showMainWindow, hideWindow } from "@/lib/tauriWindow";
-import { listen } from "@tauri-apps/api/event";
+import { listenSafe } from "@/lib/listenSafe";
 import {
   computeRemainingSplashDelay,
   runSequentialPrefetch,
@@ -32,6 +34,8 @@ import {
 } from "@/lib/startupOrchestrator";
 import { useI18n } from "@/i18n";
 import { themeService } from "@/services/themeService";
+import { settingsService } from "@/services/settingsService";
+import { LocationConsentDialog } from "@/components/layout/LocationConsentDialog";
 import { toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { Toaster } from "@/components/ui/Toaster";
@@ -122,6 +126,14 @@ export default function App() {
     setNewsNav(nav);
   };
 
+  const [settingsNav, setSettingsNav] = useState<SettingsSubNav>("general");
+  const [settingsNavDirection, setSettingsNavDirection] = useState<number>(1);
+  const handleSettingsNavChange = (nav: SettingsSubNav) => {
+    if (nav === settingsNav) return;
+    setSettingsNavDirection(nav === "privacy" ? 1 : -1);
+    setSettingsNav(nav);
+  };
+
   const handleHomeNavChange = (nav: HomeSubNav) => {
     if (nav === homeNav) return;
     const order: Record<HomeSubNav, number> = { overview: 0, p2p: 1 };
@@ -154,6 +166,23 @@ export default function App() {
     return () => window.removeEventListener(REPLAY_ONBOARDING_EVENT, replay);
   }, []);
   const [isImportModpackOpen, setIsImportModpackOpen] = useState<boolean>(false);
+  // Keep modals mounted briefly after closing so their exit animation can play.
+  const loginMounted = useExitMount(isLoginModalOpen);
+  const createMounted = useExitMount(isCreateInstanceOpen);
+  const importMounted = useExitMount(isImportModpackOpen);
+
+  // First launch: ask once whether the camp may use the user's coarse location (real sunrise, sunset and weather).
+  const [askLocation, setAskLocation] = useState<boolean>(false);
+  useEffect(() => {
+    settingsService
+      .getSettings()
+      .then((cfg) => setAskLocation(cfg.locationEnabled == null))
+      .catch(() => {});
+  }, []);
+  const answerLocation = (allow: boolean) => {
+    setAskLocation(false);
+    settingsService.updateSettings({ locationEnabled: allow }).catch((err) => console.error("Failed to save location choice:", err));
+  };
 
   // Theme state
   const [isDark, setIsDark] = useState<boolean>(true);
@@ -169,6 +198,9 @@ export default function App() {
 
   const activeAccount =
     accounts.find((a) => a.id === activeAccountId) || accounts[0] || fallbackAccount;
+  // Read by the long-lived instance-status listener so it does not resubscribe on every account change.
+  const activeAccountRef = useRef(activeAccount);
+  activeAccountRef.current = activeAccount;
 
   const activeInstance =
     instances.find((i) => i.id === selectedInstanceId) || instances[0] || null;
@@ -179,7 +211,8 @@ export default function App() {
   const refreshInstances = async () => {
     try {
       const list = await instanceService.listInstances();
-      setInstances(list);
+      // Keep the previous array when the poll found nothing new, so the whole tree does not re-render.
+      setInstances((prev) => (JSON.stringify(prev) === JSON.stringify(list) ? prev : list));
       setSelectedInstanceId((currentId) => {
         if (!currentId && list.length > 0) return list[0].id;
         if (currentId && !list.some((i) => i.id === currentId)) {
@@ -359,19 +392,17 @@ export default function App() {
 
   // 監聽後端遊戲進程狀態變更事件與退出二次確認請求
   useEffect(() => {
-    let unlistenStatus: (() => void) | undefined;
-    let unlistenExit: (() => void) | undefined;
-
-    listen<InstanceStatusEvent>("instance-status", (event) => {
+    const unlistenStatus = listenSafe<InstanceStatusEvent>("instance-status", (event) => {
       const id = event.payload.instance_id;
       if (event.payload.status === "running") {
+        const account = activeAccountRef.current;
         setRunningInstances((prev) => ({
           ...prev,
           [id]: {
             pid: event.payload.pid ?? 0,
             instanceId: id,
-            accountId: activeAccount?.id,
-            accountName: activeAccount?.username,
+            accountId: account?.id,
+            accountName: account?.username,
           },
         }));
         setLaunchingInstanceIds((prev) => {
@@ -396,21 +427,17 @@ export default function App() {
       } else if (event.payload.status === "launching") {
         setLaunchingInstanceIds((prev) => ({ ...prev, [id]: true }));
       }
-    }).then((un) => {
-      unlistenStatus = un;
     });
 
-    listen("request-exit-confirmation", () => {
+    const unlistenExit = listenSafe("request-exit-confirmation", () => {
       setIsExitConfirmOpen(true);
-    }).then((un) => {
-      unlistenExit = un;
     });
 
     return () => {
-      if (unlistenStatus) unlistenStatus();
-      if (unlistenExit) unlistenExit();
+      unlistenStatus();
+      unlistenExit();
     };
-  }, [activeAccount?.id, activeAccount?.username]);
+  }, []);
 
   const handleLaunchGame = async (
     id?: string,
@@ -614,7 +641,7 @@ export default function App() {
           <div className="absolute -bottom-[15%] -right-[10%] h-[450px] w-[450px] rounded-full bg-brand-dark/20 blur-[130px]" />
         </div>
 
-        <FriendsPanel account={activeAccount ?? null} />
+        <FriendsPanel account={activeAccount ?? null} visible={currentView === "home" && homeNav === "p2p"} />
 
         {/* Sidebar */}
         <Sidebar
@@ -814,6 +841,8 @@ export default function App() {
                     onNewsNavChange={setNewsNav}
                     homeNav={homeNav}
                     onHomeNavChange={setHomeNav}
+                    settingsNav={settingsNav}
+                    onSettingsNavChange={handleSettingsNavChange}
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
                     onCreateInstance={handleCreateInstance}
@@ -824,7 +853,7 @@ export default function App() {
                     viewportClassName="p-6"
                   >
                     <Suspense fallback={null}>
-                      <SettingsView />
+                      <SettingsView subNav={settingsNav} direction={settingsNavDirection} />
                     </Suspense>
                   </ScrollArea>
                 </motion.div>
@@ -866,7 +895,7 @@ export default function App() {
       )}
 
       {/* Microsoft Device Code Authentication Modal (Condition-gated to avoid eager bundle fetch) */}
-      {isLoginModalOpen && (
+      {loginMounted && (
         <Suspense fallback={null}>
           <MicrosoftLoginModal
             isOpen={isLoginModalOpen}
@@ -893,7 +922,7 @@ export default function App() {
       )}
 
       {/* Create Instance Modal */}
-      {isCreateInstanceOpen && (
+      {createMounted && (
         <Suspense fallback={null}>
           <CreateInstanceDialog
             isOpen={isCreateInstanceOpen}
@@ -904,7 +933,7 @@ export default function App() {
       )}
 
       {/* Import Modpack Modal */}
-      {isImportModpackOpen && (
+      {importMounted && (
         <Suspense fallback={null}>
           <ImportModpackDialog
             isOpen={isImportModpackOpen}
@@ -920,6 +949,8 @@ export default function App() {
       <Suspense fallback={null}>
         <LaunchInstallModal activeInstanceId={selectedInstanceId || activeInstance?.id || null} />
       </Suspense>
+
+      <LocationConsentDialog open={askLocation && bootStage === "ready" && !showOnboarding} onAnswer={answerLocation} />
 
       {/* Exit Confirmation Dialog */}
       <ExitConfirmationDialog

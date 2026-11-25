@@ -17,7 +17,9 @@ flate2.workspace = true
 base64.workspace = true
 webrtc = "0.14"
 bytes = "1"
+sha1.workspace = true
 if-addrs = "0.15"
+socket2 = "0.5"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

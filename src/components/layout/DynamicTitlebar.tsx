@@ -6,6 +6,7 @@ import {
   HomeSubNav,
   MainView,
   NewsSubNav,
+  SettingsSubNav,
 } from "@/types/navigation";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
@@ -16,6 +17,8 @@ interface DynamicTitlebarProps {
   onNewsNavChange: (nav: NewsSubNav) => void;
   homeNav: HomeSubNav;
   onHomeNavChange: (nav: HomeSubNav) => void;
+  settingsNav?: SettingsSubNav;
+  onSettingsNavChange?: (nav: SettingsSubNav) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onCreateInstance: () => void;
@@ -29,6 +32,8 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
   onNewsNavChange,
   homeNav,
   onHomeNavChange,
+  settingsNav = "general",
+  onSettingsNavChange,
   searchQuery,
   onSearchChange,
   onCreateInstance,
@@ -118,9 +123,19 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
 
       {/* 5. 全域設定：Title(靠左) */}
       {currentView === "settings" && (
-        <h2 className="text-lg font-bold tracking-tight text-slate-100">
-          {t.shell.globalSettings}
-        </h2>
+        <>
+          <h2 className="text-lg font-bold tracking-tight text-slate-100">
+            {t.shell.globalSettings}
+          </h2>
+          <SubNav
+            active={settingsNav}
+            onChange={(nav) => onSettingsNavChange?.(nav)}
+            items={[
+              { id: "general", label: t.shell.settingsGeneral },
+              { id: "privacy", label: t.shell.settingsPrivacy },
+            ]}
+          />
+        </>
       )}
     </div>
   );

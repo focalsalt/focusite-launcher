@@ -20,6 +20,10 @@ pub struct LauncherSettings {
     /// Custom instances folder; `None` means the default `<app data>\instances`.
     #[serde(rename = "instancesDir", default, skip_serializing_if = "Option::is_none")]
     pub instances_dir: Option<String>,
+
+    /// Camp location for real sunrise/sunset and weather; `None` means the user was not asked yet.
+    #[serde(rename = "locationEnabled", default, skip_serializing_if = "Option::is_none")]
+    pub location_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +36,9 @@ struct DiskSettings {
 
     #[serde(rename = "instancesDir", default, skip_serializing_if = "Option::is_none")]
     pub instances_dir: Option<String>,
+
+    #[serde(rename = "locationEnabled", default, skip_serializing_if = "Option::is_none")]
+    pub location_enabled: Option<bool>,
 }
 
 fn default_true() -> bool {
@@ -45,6 +52,7 @@ impl Default for LauncherSettings {
             curseforge_api_key: None,
             sound_enabled: true,
             instances_dir: None,
+            location_enabled: None,
         }
     }
 }
@@ -131,6 +139,7 @@ pub fn load_settings_from_disk() -> LauncherSettings {
         enable_bmclapi_mirror: false,
         sound_enabled: true,
         instances_dir: None,
+        location_enabled: None,
     };
 
     if path.is_file() {
@@ -169,6 +178,7 @@ pub fn load_settings_from_disk() -> LauncherSettings {
         curseforge_api_key: secure_key,
         sound_enabled: disk_settings.sound_enabled,
         instances_dir: disk_settings.instances_dir,
+        location_enabled: disk_settings.location_enabled,
     }
 }
 
@@ -186,6 +196,7 @@ pub fn save_settings_to_disk(settings: &LauncherSettings) -> Result<(), String> 
         enable_bmclapi_mirror: settings.enable_bmclapi_mirror,
         sound_enabled: settings.sound_enabled,
         instances_dir: settings.instances_dir.clone(),
+        location_enabled: settings.location_enabled,
     };
     save_disk_settings_internal(&path, &disk_settings)
 }
@@ -203,10 +214,11 @@ pub async fn update_launcher_settings(
     curseforge_api_key: Option<String>,
     sound_enabled: Option<bool>,
     instances_dir: Option<String>,
+    location_enabled: Option<bool>,
 ) -> Result<LauncherSettings, String> {
     let changes_dir = instances_dir.is_some();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        update_settings_blocking(enable_bmclapi_mirror, curseforge_api_key, sound_enabled, instances_dir)
+        update_settings_blocking(enable_bmclapi_mirror, curseforge_api_key, sound_enabled, instances_dir, location_enabled)
     })
     .await
     .map_err(|e| format!("設定更新失敗：{e}"))?;
@@ -233,8 +245,12 @@ fn update_settings_blocking(
     curseforge_api_key: Option<String>,
     sound_enabled: Option<bool>,
     instances_dir: Option<String>,
+    location_enabled: Option<bool>,
 ) -> Result<LauncherSettings, String> {
     let mut current = load_settings_from_disk();
+    if location_enabled.is_some() {
+        current.location_enabled = location_enabled;
+    }
     if let Some(enable_mirror) = enable_bmclapi_mirror {
         current.enable_bmclapi_mirror = enable_mirror;
     }
@@ -411,15 +427,25 @@ mod tests {
             curseforge_api_key: Some("$2a$10$fakekey".into()),
             sound_enabled: false,
             instances_dir: None,
+            location_enabled: Some(true),
         };
         let serialized = serde_json::to_string(&settings).unwrap();
         assert!(serialized.contains("enableBmclapiMirror"));
         assert!(serialized.contains("curseforgeApiKey"));
+        assert!(serialized.contains("locationEnabled"));
 
         let deserialized: LauncherSettings = serde_json::from_str(&serialized).unwrap();
         assert!(deserialized.enable_bmclapi_mirror);
         assert_eq!(deserialized.curseforge_api_key.as_deref(), Some("$2a$10$fakekey"));
         assert!(!deserialized.sound_enabled);
+        assert_eq!(deserialized.location_enabled, Some(true));
+    }
+
+    #[test]
+    fn test_location_enabled_defaults_to_not_asked() {
+        // Old settings.json files have no locationEnabled: the user has not been asked yet.
+        let disk: DiskSettings = serde_json::from_str(r#"{"enableBmclapiMirror":false}"#).unwrap();
+        assert_eq!(disk.location_enabled, None);
     }
 
     #[test]
@@ -428,6 +454,7 @@ mod tests {
             enable_bmclapi_mirror: true,
             sound_enabled: false,
             instances_dir: None,
+            location_enabled: None,
         };
         let serialized = serde_json::to_string(&disk).unwrap();
         assert!(!serialized.contains("curseforgeApiKey"));

@@ -47,6 +47,9 @@ pub struct InstanceSummaryDto {
     pub icon_source: Option<String>,
     #[serde(rename = "iconUpdatedAt", default, skip_serializing_if = "Option::is_none")]
     pub icon_updated_at: Option<i64>,
+    /// Absolute path of the instance's own background image, when one was set.
+    #[serde(rename = "backgroundPath", default, skip_serializing_if = "Option::is_none")]
+    pub background_path: Option<String>,
     #[serde(rename = "modCount")]
     pub mod_count: usize,
     #[serde(rename = "lastPlayed")]
@@ -58,6 +61,10 @@ pub struct InstanceSummaryDto {
     pub needs_setup: bool,
     #[serde(rename = "showLogOnLaunch", default)]
     pub show_log_on_launch: bool,
+    #[serde(rename = "windowWidth", default, skip_serializing_if = "Option::is_none")]
+    pub window_width: Option<u32>,
+    #[serde(rename = "windowHeight", default, skip_serializing_if = "Option::is_none")]
+    pub window_height: Option<u32>,
     #[serde(rename = "minMemoryMb", default = "default_min_memory")]
     pub min_memory_mb: u32,
     #[serde(rename = "maxMemoryMb", default = "default_max_memory")]
@@ -96,11 +103,18 @@ pub struct InstanceDiskConfig {
     pub icon_source: Option<String>,
     #[serde(rename = "iconUpdatedAt", default, skip_serializing_if = "Option::is_none")]
     pub icon_updated_at: Option<i64>,
+    /// File name (inside the instance folder) of the instance's background image.
+    #[serde(rename = "backgroundSource", default, skip_serializing_if = "Option::is_none")]
+    pub background_source: Option<String>,
     pub created_at: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_played_at: Option<i64>,
     #[serde(rename = "showLogOnLaunch", default)]
     pub show_log_on_launch: bool,
+    #[serde(rename = "windowWidth", default, skip_serializing_if = "Option::is_none")]
+    pub window_width: Option<u32>,
+    #[serde(rename = "windowHeight", default, skip_serializing_if = "Option::is_none")]
+    pub window_height: Option<u32>,
     #[serde(rename = "minMemoryMb", default = "default_min_memory")]
     pub min_memory_mb: u32,
     #[serde(rename = "maxMemoryMb", default = "default_max_memory")]
@@ -269,12 +283,15 @@ pub fn new_disk_config(id: &str, name: &str, version: &str, loader: &str, loader
         created_at: chrono::Utc::now().timestamp_millis(),
         last_played_at: None,
         show_log_on_launch: false,
+        window_width: None,
+        window_height: None,
         min_memory_mb: default_min_memory(),
         max_memory_mb: default_max_memory(),
         java_path: None,
         jvm_args: default_jvm_args(),
         icon_source: None,
         icon_updated_at: None,
+        background_source: None,
         group: None,
         custom_jvm_args: None,
         environment_vars: None,
@@ -307,6 +324,13 @@ pub fn convert_disk_config_to_summary(folder: &Path, config: InstanceDiskConfig)
         None
     };
 
+    let background_path = config
+        .background_source
+        .as_deref()
+        .map(|f| folder.join(f))
+        .filter(|p| p.is_file())
+        .map(|p| p.to_string_lossy().to_string());
+
     let capabilities = VersionCapabilities::from_mc_version(&config.version);
 
     InstanceSummaryDto {
@@ -320,11 +344,14 @@ pub fn convert_disk_config_to_summary(folder: &Path, config: InstanceDiskConfig)
         icon_path,
         icon_source: config.icon_source.clone(),
         icon_updated_at: config.icon_updated_at,
+        background_path,
         mod_count,
         needs_setup: false,
         last_played: last_played_str,
         is_favorite: config.is_favorite,
         show_log_on_launch: config.show_log_on_launch,
+        window_width: config.window_width,
+        window_height: config.window_height,
         min_memory_mb: config.min_memory_mb,
         max_memory_mb: config.max_memory_mb,
         java_path: config.java_path,
@@ -535,6 +562,10 @@ pub async fn create_instance(
     custom_jar_name: Option<String>,
     custom_jar_bytes: Option<Vec<u8>>,
 ) -> Result<InstanceSummaryDto, String> {
+    // These end up in file paths, and a shared world (another player) can supply them.
+    for field in [Some(version.as_str()), Some(loader.as_str()), loader_version.as_deref()].into_iter().flatten() {
+        validate_safe_id(field).map_err(|_| "版本或載入器含有不安全的字元".to_string())?;
+    }
     // A custom loader jar is checked before anything is written, so a bad jar leaves no folder behind.
     let custom_jar = if loader == "Custom" {
         match (custom_jar_name, custom_jar_bytes) {
@@ -685,6 +716,9 @@ pub fn update_instance_settings(
     java_path: Option<String>,
     jvm_args: Option<Vec<String>>,
     show_log_on_launch: Option<bool>,
+    // 0 clears the stored size (game default); only applied when both are given.
+    window_width: Option<u32>,
+    window_height: Option<u32>,
     group: Option<String>,
     custom_jvm_args: Option<Vec<String>>,
     environment_vars: Option<std::collections::HashMap<String, String>>,
@@ -719,6 +753,16 @@ pub fn update_instance_settings(
     }
     if let Some(show_log) = show_log_on_launch {
         config.show_log_on_launch = show_log;
+    }
+    if let (Some(w), Some(h)) = (window_width, window_height) {
+        if w == 0 || h == 0 {
+            config.window_width = None;
+            config.window_height = None;
+        } else {
+            // Keep to sane bounds so a typo cannot create an unusable window.
+            config.window_width = Some(w.clamp(320, 7680));
+            config.window_height = Some(h.clamp(240, 4320));
+        }
     }
     if let Some(grp) = group {
         let trimmed = grp.trim();
@@ -891,6 +935,8 @@ fn set_instance_icon_from_file_blocking(
 pub fn set_instance_preset_icon(
     instance_id: String,
     preset_key: String,
+    // Pixel art rendered by the launcher UI; when absent the flat-colour fallback below is used.
+    png_bytes: Option<Vec<u8>>,
 ) -> Result<InstanceSummaryDto, String> {
     validate_safe_id(&instance_id)?;
     let inst_dir = get_instances_dir().join(&instance_id);
@@ -899,6 +945,22 @@ pub fn set_instance_preset_icon(
     }
 
     let target_icon = inst_dir.join("icon.png");
+    if let Some(bytes) = png_bytes {
+        if bytes.len() > 2 * 1024 * 1024 {
+            return Err("圖示檔案過大".into());
+        }
+        let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+            .map_err(|e| format!("無法解碼圖示: {}", e))?;
+        img.resize_exact(256, 256, image::imageops::FilterType::Nearest)
+            .save(&target_icon)
+            .map_err(|e| format!("無法寫入預設圖示: {}", e))?;
+        let config = update_instance_config(&inst_dir, |c| {
+            c.icon_source = Some(format!("preset:{}", preset_key));
+            c.icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
+            c.clone()
+        })?;
+        return Ok(convert_disk_config_to_summary(&inst_dir, config));
+    }
     let (r, g, b): (u8, u8, u8) = match preset_key.as_str() {
         "grass" => (60, 133, 39),
         "diamond" => (44, 186, 219),
@@ -1340,12 +1402,15 @@ mod tests {
             created_at: 1000,
             last_played_at: None,
             show_log_on_launch: false,
+            window_width: None,
+            window_height: None,
             min_memory_mb: 1024,
             max_memory_mb: 4096,
             java_path: None,
             jvm_args: default_jvm_args(),
             icon_source: None,
             icon_updated_at: None,
+            background_source: None,
             group: None,
             custom_jvm_args: None,
             environment_vars: None,
@@ -1384,12 +1449,15 @@ mod tests {
             created_at: 1000,
             last_played_at: None,
             show_log_on_launch: true,
+            window_width: None,
+            window_height: None,
             min_memory_mb: 512,
             max_memory_mb: 2048,
             java_path: Some("C:/java8/bin/java.exe".into()),
             jvm_args: vec!["-XX:+UseG1GC".into()],
             icon_source: None,
             icon_updated_at: None,
+            background_source: None,
             group: None,
             custom_jvm_args: None,
             environment_vars: None,

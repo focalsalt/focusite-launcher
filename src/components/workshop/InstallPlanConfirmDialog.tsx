@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -41,7 +41,7 @@ function formatBytes(bytes: number): string {
 export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> = ({
   open,
   onOpenChange,
-  plan,
+  plan: planProp,
   onConfirm,
   isInstalling,
 }) => {
@@ -49,6 +49,10 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
   const [selectedOptionalIds, setSelectedOptionalIds] = useState<Set<string>>(
     () => new Set()
   );
+  // Keep the last non-null plan so the exit animation still has content after the parent clears it.
+  const lastPlanRef = useRef<InstallPlan | null>(planProp);
+  if (planProp) lastPlanRef.current = planProp;
+  const plan = lastPlanRef.current;
 
   if (!plan) return null;
 

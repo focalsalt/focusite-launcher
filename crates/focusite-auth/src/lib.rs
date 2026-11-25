@@ -1,6 +1,7 @@
 //! Focusite Auth: Microsoft OAuth 2.0 PKCE, Xbox Live token exchange, and offline entitlement gate.
 
 pub mod dpapi;
+pub mod friends;
 pub mod keyring_store;
 pub mod oauth;
 pub mod offline_gate;

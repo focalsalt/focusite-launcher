@@ -15,6 +15,10 @@ pub enum FrameType {
     Ping = 0x02,
     Pong = 0x03,
     Close = 0x04,
+    /// Requester -> provider: payload is the sha1 hex of the wanted file; `channel_id` is the transfer id.
+    FileRequest = 0x05,
+    /// Provider -> requester: seq 0 carries the u64 BE file size (empty payload = refused), seq n>=1 the chunks.
+    FileData = 0x06,
 }
 
 impl TryFrom<u8> for FrameType {
@@ -26,6 +30,8 @@ impl TryFrom<u8> for FrameType {
             0x02 => Ok(FrameType::Ping),
             0x03 => Ok(FrameType::Pong),
             0x04 => Ok(FrameType::Close),
+            0x05 => Ok(FrameType::FileRequest),
+            0x06 => Ok(FrameType::FileData),
             other => Err(P2pError::FramingError(format!("未知幀類型: 0x{:02X}", other))),
         }
     }
@@ -222,6 +228,14 @@ mod tests {
         encoded.pop(); // 故意截斷 1 個 byte
         let res = DataChannelFrame::decode(&encoded);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_file_frames_roundtrip() {
+        for ty in [FrameType::FileRequest, FrameType::FileData] {
+            let f = DataChannelFrame::new(7, ty, 3, b"abc".to_vec());
+            assert_eq!(DataChannelFrame::decode(&f.encode()).unwrap(), f);
+        }
     }
 
     #[test]

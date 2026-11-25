@@ -9,8 +9,10 @@ import { openExternal } from "@/lib/openExternal";
 import { PatchNoteDialog } from "@/components/news/PatchNoteDialog";
 import { newsService, LauncherNewsItem, LauncherPatchNoteItem } from "@/services/newsService";
 import { toUserMessage } from "@/lib/errorMessage";
+import { PullToRefresh } from "@/components/ui/PullToRefresh";
 import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
+import { Tip } from "@/components/ui/tooltip";
 
 const NEWS_SUB_NAV_ORDER: Record<NewsSubNav, number> = {
   official: 0,
@@ -145,7 +147,30 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
       });
   };
 
+  // Pull-to-refresh: refetch in place (keeps the current list visible instead of showing skeletons).
+  const handleRefresh = async () => {
+    try {
+      if (subNav === "official") {
+        const res = await newsService.getNewsArchivePage(1);
+        setNews(res.items);
+        setNewsPage(1);
+        setNewsHasMore(res.hasMore);
+      } else if (subNav === "changelog") {
+        setPatchNotes(await newsService.getPatchNotes(true));
+        setPatchVisible(PAGE_SIZE);
+      } else {
+        // Announcements are static for now; a short pause keeps the gesture feeling responsive.
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      setLoadError(null);
+    } catch (err) {
+      console.error("Failed to refresh news:", err);
+      toast(toUserMessage(err, t.news.loadNewsFailed), "error");
+    }
+  };
+
   return (
+    <>
     <AnimatePresence mode="popLayout" custom={direction}>
       <motion.div
         key={subNav}
@@ -154,8 +179,9 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
         initial="initial"
         animate="animate"
         exit="exit"
-        className="space-y-4 w-full"
+        className="w-full"
       >
+      <PullToRefresh onRefresh={handleRefresh} className="space-y-4">
       {/* 官方新聞快訊：依寬度自適應排列，最少維持 3 欄 */}
       {subNav === "official" && (
         <div className="grid grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
@@ -217,12 +243,13 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                   {/* 標題與內容摘要 */}
                   <div className="p-3.5 flex flex-col flex-1 justify-between space-y-2">
                     <div className="space-y-1.5">
-                      <h3
-                        className="font-bold text-xs text-slate-100 line-clamp-2 leading-snug group-hover:text-brand-light transition-colors"
-                        title={item.title}
-                      >
-                        {item.title}
-                      </h3>
+                      <Tip label={item.title}>
+                        <h3
+                          className="font-bold text-xs text-slate-100 line-clamp-2 leading-snug group-hover:text-brand-light transition-colors"
+                        >
+                          {item.title}
+                        </h3>
+                      </Tip>
                       <p className="text-[11px] text-slate-400 line-clamp-3 leading-relaxed">
                         {item.text}
                       </p>
@@ -313,12 +340,13 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                   {/* 標題與摘要 */}
                   <div className="p-3.5 flex flex-col flex-1 justify-between space-y-2">
                     <div className="space-y-1.5">
-                      <h3
-                        className="font-bold text-xs text-slate-100 line-clamp-2 leading-snug group-hover:text-brand-light transition-colors"
-                        title={patch.title}
-                      >
-                        {patch.title}
-                      </h3>
+                      <Tip label={patch.title}>
+                        <h3
+                          className="font-bold text-xs text-slate-100 line-clamp-2 leading-snug group-hover:text-brand-light transition-colors"
+                        >
+                          {patch.title}
+                        </h3>
+                      </Tip>
                       {patch.snippet ? (
                         <p className="text-[11px] text-slate-400 line-clamp-3 leading-relaxed">
                           {patch.snippet}
@@ -385,8 +413,10 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
           </div>
         </div>
       )}
+      </PullToRefresh>
       </motion.div>
-      <PatchNoteDialog patch={selectedPatch} onClose={() => setSelectedPatch(null)} />
     </AnimatePresence>
+    <PatchNoteDialog patch={selectedPatch} onClose={() => setSelectedPatch(null)} />
+    </>
   );
 };

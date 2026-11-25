@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { instanceService } from "@/services/instanceService";
-import { Archive, FolderOpen, HardDrive, Pencil, Play, Trash2 } from "lucide-react";
+import { Archive, FolderOpen, HardDrive, Package, Pencil, Play, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,9 +10,20 @@ import { Input } from "@/components/ui/input";
 import type { MinecraftInstance } from "@/types/navigation";
 import type { WorldSummary } from "@/services/instanceService";
 import { FramelessEmptyState, tabContentVariants } from "./shared";
+import { DatapacksPanel } from "./DatapacksPanel";
 import { toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
+import { useLastValue } from "@/lib/useExitMount";
+import { Tip } from "@/components/ui/tooltip";
+
+/** Datapacks exist since 1.13; unknown formats (snapshots, custom) are assumed to support them. */
+function supportsDatapacks(version: string): boolean {
+  const v = version.trim();
+  const m = v.match(/^1\.(\d+)/);
+  if (m) return parseInt(m[1], 10) >= 13;
+  return !/^(a|b|c|rd-|inf-)/.test(v);
+}
 
 interface WorldsTabProps {
   instance: MinecraftInstance;
@@ -30,7 +41,9 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
   const [renameWorldTarget, setRenameWorldTarget] = useState<WorldSummary | null>(null);
   const [newWorldName, setNewWorldName] = useState<string>("");
   const [deleteTarget, setDeleteTarget] = useState<WorldSummary | null>(null);
+  const shownDeleteTarget = useLastValue(deleteTarget);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [datapackWorld, setDatapackWorld] = useState<WorldSummary | null>(null);
 
   const confirmDeleteWorld = async () => {
     if (!deleteTarget) return;
@@ -56,6 +69,25 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                 initial="initial"
                 animate="animate"
                 exit="exit"
+              >
+              <AnimatePresence mode="wait" initial={false}>
+              {datapackWorld ? (
+                <motion.div
+                  key="datapacks"
+                  initial={{ opacity: 0, x: 16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 16 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <DatapacksPanel instanceId={instance.id} world={datapackWorld} onBack={() => setDatapackWorld(null)} />
+                </motion.div>
+              ) : (
+              <motion.div
+                key="world-list"
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -16 }}
+                transition={{ duration: 0.15 }}
                 className="space-y-4"
               >
                 <div className="flex items-center justify-between pb-2 border-b border-white/5">
@@ -146,57 +178,75 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
 
                           <div className="mt-3.5 pt-2.5 border-t border-white/5 flex items-center justify-between text-xs">
                             <div className="flex items-center gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  setRenameWorldTarget(world);
-                                  setNewWorldName(world.name);
-                                }}
-                                className="h-7 px-2 text-white/60 hover:text-white"
-                                title={t.worlds.renameAttr}
-                              >
-                                <Pencil className="w-3.5 h-3.5 mr-1" />
-                                {t.worlds.rename}
-                              </Button>
+                              <Tip label={t.worlds.renameAttr}>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setRenameWorldTarget(world);
+                                    setNewWorldName(world.name);
+                                  }}
+                                  className="h-7 px-2 text-white/60 hover:text-white"
+                                >
+                                  <Pencil className="w-3.5 h-3.5 mr-1" />
+                                  {t.worlds.rename}
+                                </Button>
+                              </Tip>
 
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={async () => {
-                                  try {
-                                    const selectedPath = await saveFileDialog({
-                                      defaultPath: `${world.name}_backup.zip`,
-                                      filters: [{ name: t.worlds.zipFilter, extensions: ["zip"] }],
-                                    });
-                                    if (selectedPath) {
-                                      await instanceService.backupInstanceWorld(
-                                        instance.id,
-                                        world.folder_name,
-                                        selectedPath
-                                      );
-                                      toast(t.worlds.backupOk, "success");
+                              <Tip label={t.worlds.backupAttr}>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={async () => {
+                                    try {
+                                      const selectedPath = await saveFileDialog({
+                                        defaultPath: `${world.name}_backup.zip`,
+                                        filters: [{ name: t.worlds.zipFilter, extensions: ["zip"] }],
+                                      });
+                                      if (selectedPath) {
+                                        await instanceService.backupInstanceWorld(
+                                          instance.id,
+                                          world.folder_name,
+                                          selectedPath
+                                        );
+                                        toast(t.worlds.backupOk, "success");
+                                      }
+                                    } catch (err: any) {
+                                      toast(t.errors.backupFailed(toUserMessage(err)), "error");
                                     }
-                                  } catch (err: any) {
-                                    toast(t.errors.backupFailed(toUserMessage(err)), "error");
-                                  }
-                                }}
-                                className="h-7 px-2 text-white/60 hover:text-white"
-                                title={t.worlds.backupAttr}
-                              >
-                                <Archive className="w-3.5 h-3.5 mr-1" />
-                                {t.worlds.backup}
-                              </Button>
+                                  }}
+                                  className="h-7 px-2 text-white/60 hover:text-white"
+                                >
+                                  <Archive className="w-3.5 h-3.5 mr-1" />
+                                  {t.worlds.backup}
+                                </Button>
+                              </Tip>
 
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setDeleteTarget(world)}
-                                className="h-7 px-2 text-white/60 hover:text-red-400"
-                                title={t.worlds.deleteAttr}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
+                              {supportsDatapacks(instance.version) && (
+                                <Tip label={t.worlds.datapackAttr}>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setDatapackWorld(world)}
+                                    className="h-7 px-2 text-white/60 hover:text-white"
+                                  >
+                                    <Package className="w-3.5 h-3.5 mr-1" />
+                                    {t.worlds.datapack}
+                                  </Button>
+                                </Tip>
+                              )}
+
+                              <Tip label={t.worlds.deleteAttr}>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setDeleteTarget(world)}
+                                  className="h-7 px-2 text-white/60 hover:text-red-400"
+                                  aria-label={t.worlds.deleteAttr}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </Tip>
                             </div>
 
                             <Button
@@ -214,6 +264,9 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                     })}
                   </div>
                 )}
+              </motion.div>
+              )}
+              </AnimatePresence>
               </motion.div>
         {/* 重新命名世界存檔對話框 */}
         <Dialog open={!!renameWorldTarget} onOpenChange={(open) => !open && setRenameWorldTarget(null)}>
@@ -262,7 +315,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
             </DialogTitle>
           </DialogHeader>
           <p className="text-xs text-slate-300 leading-relaxed py-2">
-            {t.worlds.deleteConfirm(deleteTarget?.name ?? "")}
+            {t.worlds.deleteConfirm(shownDeleteTarget?.name ?? "")}
           </p>
           <DialogFooter className="gap-2">
             <Button variant="outline" size="sm" disabled={isDeleting} onClick={() => setDeleteTarget(null)} className="border-white/10 text-xs">

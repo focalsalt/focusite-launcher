@@ -10,6 +10,7 @@ import type { MinecraftInstance } from "@/types/navigation";
 import type { ServerEntry, ServerPingResult } from "@/services/instanceService";
 import { FramelessEmptyState, tabContentVariants } from "./shared";
 import { useI18n } from "@/i18n";
+import { Tip } from "@/components/ui/tooltip";
 
 /** servers.dat stores the icon as bare base64, while a ping returns a full data URI. Falls back to a placeholder if it can't be decoded. */
 const ServerIcon: React.FC<{ icon?: string; alt: string }> = ({ icon, alt }) => {
@@ -171,17 +172,18 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                               </div>
                             )}
 
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={handlePing}
-                              disabled={pinging}
-                              className="h-8 border-white/10 text-xs text-white/70 hover:text-white"
-                              title={t.servers.pingAttr}
-                            >
-                              <Activity className={`w-3.5 h-3.5 mr-1 ${pinging ? "animate-spin" : ""}`} />
-                              Ping
-                            </Button>
+                            <Tip label={t.servers.pingAttr}>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handlePing}
+                                disabled={pinging}
+                                className="h-8 border-white/10 text-xs text-white/70 hover:text-white"
+                              >
+                                <Activity className={`w-3.5 h-3.5 mr-1 ${pinging ? "animate-spin" : ""}`} />
+                                Ping
+                              </Button>
+                            </Tip>
 
                             <Button
                               size="sm"

@@ -1,8 +1,9 @@
 //! LAN world announcement and WebRTC tunnel commands (manual offer/answer signaling).
 
-use focusite_p2p::{P2pHandshakeResult, P2pRole, P2pSessionInfo, P2pSessionRegistry, StunTurnConfig};
+use focusite_p2p::{LanWatcher, P2pHandshakeResult, P2pRole, P2pSessionInfo, P2pSessionRegistry, StunTurnConfig, TurnServerEntry};
 use serde::{Deserialize, Serialize};
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
+use tauri::{AppHandle, Emitter};
 
 static P2P_REGISTRY: LazyLock<P2pSessionRegistry> = LazyLock::new(P2pSessionRegistry::new);
 
@@ -86,14 +87,20 @@ pub struct TunnelCodeDto {
     pub code: String,
 }
 
+/// Public STUN servers, plus the TURN relays the Worker issued (if any) for peers that cannot connect directly.
+fn ice_config(turn: Option<Vec<TurnServerEntry>>) -> StunTurnConfig {
+    StunTurnConfig { turn_servers: turn.unwrap_or_default(), ..StunTurnConfig::default() }
+}
+
 #[tauri::command]
 pub async fn p2p_create_offer(
     instance_id: Option<String>,
     game_port: u16,
     alias: String,
+    turn: Option<Vec<TurnServerEntry>>,
 ) -> Result<TunnelCodeDto, String> {
     let (info, code) = P2P_REGISTRY
-        .create_tunnel_offer(instance_id, game_port, alias, &StunTurnConfig::default())
+        .create_tunnel_offer(instance_id, game_port, alias, &ice_config(turn))
         .await
         .map_err(super::ctx("建立邀請碼失敗"))?;
     Ok(TunnelCodeDto { session: info.into(), code })
@@ -109,12 +116,69 @@ pub async fn p2p_apply_answer(session_id: String, answer_code: String) -> Result
 }
 
 #[tauri::command]
-pub async fn p2p_join_with_offer(offer_code: String, local_port: Option<u16>) -> Result<TunnelCodeDto, String> {
+pub async fn p2p_join_with_offer(
+    offer_code: String,
+    local_port: Option<u16>,
+    turn: Option<Vec<TurnServerEntry>>,
+) -> Result<TunnelCodeDto, String> {
     let (info, code) = P2P_REGISTRY
-        .join_tunnel(&offer_code, local_port.unwrap_or(0), &StunTurnConfig::default())
+        .join_tunnel(&offer_code, local_port.unwrap_or(0), &ice_config(turn))
         .await
         .map_err(super::ctx("加入失敗"))?;
     Ok(TunnelCodeDto { session: info.into(), code })
+}
+
+/// Sets the files the peer of this session may fetch. Each entry is sha1 hex -> local path; nothing else is served.
+#[tauri::command]
+pub async fn p2p_serve_file(session_id: String, files: std::collections::HashMap<String, String>) -> Result<(), String> {
+    let whitelist = files.into_iter().map(|(sha1, path)| (sha1, path.into())).collect();
+    P2P_REGISTRY
+        .serve_files(&session_id, whitelist)
+        .await
+        .map_err(super::ctx("設定共享檔案失敗"))
+}
+
+/// Downloads a file from the session's peer into `dest`, verified against `sha1` and `size`.
+#[tauri::command]
+pub async fn p2p_fetch_file(session_id: String, sha1: String, size: u64, dest: String) -> Result<(), String> {
+    // The peer chose both values: a bad hash would end up in a file name, a huge size would fill the disk.
+    if sha1.len() != 40 || !sha1.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("invalid file hash".into());
+    }
+    if size == 0 || size > super::share::MAX_CUSTOM_JAR_BYTES {
+        return Err("the file is too large to receive".into());
+    }
+    P2P_REGISTRY
+        .fetch_file(&session_id, &sha1, size, std::path::Path::new(&dest))
+        .await
+        .map_err(super::ctx("下載檔案失敗"))
+}
+
+/// The running LAN world listener; at most one.
+static LAN_WATCHER: Mutex<Option<LanWatcher>> = Mutex::new(None);
+
+/// Starts reporting the local game's LAN world: emits `lan-world` with its port, or null when it closes.
+#[tauri::command]
+pub async fn lan_world_watch_start(app: AppHandle) -> Result<(), String> {
+    if LAN_WATCHER.lock().map_err(|e| e.to_string())?.is_some() {
+        return Ok(());
+    }
+    let (watcher, mut rx) = LanWatcher::start().map_err(super::ctx("無法監聽區網世界"))?;
+    *LAN_WATCHER.lock().map_err(|e| e.to_string())? = Some(watcher);
+    tauri::async_runtime::spawn(async move {
+        let _ = app.emit("lan-world", *rx.borrow());
+        while rx.changed().await.is_ok() {
+            let _ = app.emit("lan-world", *rx.borrow());
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub fn lan_world_watch_stop() {
+    if let Ok(mut guard) = LAN_WATCHER.lock() {
+        *guard = None;
+    }
 }
 
 const FIREWALL_RULE: &str = "Focusite Launcher P2P";

@@ -63,6 +63,20 @@ export interface WorldSummary {
   icon_base64?: string;
 }
 
+export interface LogFileEntry {
+  name: string;
+  kind: "log" | "crash";
+  size: number;
+  /** Modification time, Unix epoch milliseconds. */
+  modified: number;
+}
+
+export interface DatapackEntry {
+  file_name: string;
+  is_dir: boolean;
+  size_bytes: number;
+}
+
 export interface ServerEntry {
   name: string;
   ip: string;
@@ -361,6 +375,9 @@ export const instanceService = {
       javaPath?: string | null;
       jvmArgs?: string[];
       showLogOnLaunch?: boolean;
+      /** Both 0 clears the stored size. */
+      windowWidth?: number;
+      windowHeight?: number;
       group?: string;
       customJvmArgs?: string[];
       environmentVars?: Record<string, string>;
@@ -374,6 +391,8 @@ export const instanceService = {
         javaPath: settings.javaPath !== undefined ? (settings.javaPath === null ? "" : settings.javaPath) : null,
         jvmArgs: settings.jvmArgs ?? null,
         showLogOnLaunch: settings.showLogOnLaunch ?? null,
+        windowWidth: settings.windowWidth ?? null,
+        windowHeight: settings.windowHeight ?? null,
         group: settings.group !== undefined ? settings.group : null,
         customJvmArgs: settings.customJvmArgs ?? null,
         environmentVars: settings.environmentVars ?? null,
@@ -390,6 +409,8 @@ export const instanceService = {
       javaPath: settings.javaPath !== undefined ? (settings.javaPath ?? undefined) : target.javaPath,
       jvmArgs: settings.jvmArgs ?? target.jvmArgs,
       showLogOnLaunch: settings.showLogOnLaunch ?? target.showLogOnLaunch,
+      windowWidth: settings.windowWidth ? settings.windowWidth : settings.windowWidth === 0 ? undefined : target.windowWidth,
+      windowHeight: settings.windowHeight ? settings.windowHeight : settings.windowHeight === 0 ? undefined : target.windowHeight,
       group: settings.group !== undefined ? settings.group : target.group,
       customJvmArgs: settings.customJvmArgs ?? target.customJvmArgs,
       environmentVars: settings.environmentVars ?? target.environmentVars,
@@ -489,8 +510,9 @@ export const instanceService = {
   /**
    * Sets instance icon from a built-in curated preset key.
    */
-  async setInstancePresetIcon(instanceId: string, presetKey: string): Promise<MinecraftInstance> {
+  async setInstancePresetIcon(instanceId: string, presetKey: string, pngBytes?: number[]): Promise<MinecraftInstance> {
     return await invoke<MinecraftInstance>("set_instance_preset_icon", {
+      pngBytes: pngBytes ?? null,
       instanceId,
       presetKey,
     });
@@ -499,6 +521,14 @@ export const instanceService = {
   /**
    * Resets instance icon back to default.
    */
+  async setInstanceBackground(instanceId: string, sourcePath: string): Promise<MinecraftInstance> {
+    return await invoke<MinecraftInstance>("set_instance_background", { instanceId, sourcePath });
+  },
+
+  async resetInstanceBackground(instanceId: string): Promise<MinecraftInstance> {
+    return await invoke<MinecraftInstance>("reset_instance_background", { instanceId });
+  },
+
   async resetInstanceIcon(instanceId: string): Promise<MinecraftInstance> {
     return await invoke<MinecraftInstance>("reset_instance_icon", {
       instanceId,
@@ -535,6 +565,42 @@ export const instanceService = {
   /**
    * Deletes a world save folder.
    */
+  async openInstanceLogWindow(instanceId: string): Promise<void> {
+    if (isTauri()) {
+      await invoke("open_instance_log_window", { instanceId });
+    }
+  },
+
+  async listInstanceLogFiles(instanceId: string): Promise<LogFileEntry[]> {
+    if (isTauri()) {
+      return await invoke<LogFileEntry[]>("list_instance_log_files", { instanceId });
+    }
+    return [];
+  },
+
+  async readInstanceLogFile(instanceId: string, kind: LogFileEntry["kind"], name: string): Promise<string> {
+    return await invoke<string>("read_instance_log_file", { instanceId, kind, name });
+  },
+
+  async listWorldDatapacks(instanceId: string, folderName: string): Promise<DatapackEntry[]> {
+    if (isTauri()) {
+      return await invoke<DatapackEntry[]>("list_world_datapacks_cmd", { instanceId, folderName });
+    }
+    return [];
+  },
+
+  async deleteWorldDatapack(instanceId: string, folderName: string, packName: string): Promise<void> {
+    if (isTauri()) {
+      await invoke("delete_world_datapack_cmd", { instanceId, folderName, packName });
+    }
+  },
+
+  async openWorldDatapacksDir(instanceId: string, folderName: string): Promise<void> {
+    if (isTauri()) {
+      await invoke("open_world_datapacks_dir_cmd", { instanceId, folderName });
+    }
+  },
+
   async deleteInstanceWorld(instanceId: string, folderName: string): Promise<void> {
     if (isTauri()) {
       await invoke("delete_instance_world_cmd", { instanceId, folderName });

@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 use tauri::command;
 use focusite_core::world::{
-    backup_world, delete_world, list_instance_worlds, rename_world, WorldSummary,
+    backup_world, delete_world, delete_world_datapack, list_instance_worlds, list_world_datapacks,
+    rename_world, world_datapacks_dir, DatapackEntry, WorldSummary,
 };
 use super::instance::{get_instances_dir, validate_safe_id};
 
@@ -90,6 +91,51 @@ fn backup_world_blocking(instance_id: String, folder_name: String, target_zip_pa
 
     let instance_dir = get_instances_dir().join(&instance_id);
     backup_world(&instance_dir, &folder_name, &output_zip).map_err(|e| format!("備份存檔失敗：{}", e))
+}
+
+#[command]
+pub async fn list_world_datapacks_cmd(instance_id: String, folder_name: String) -> Result<Vec<DatapackEntry>, String> {
+    super::blocking(move || {
+        // Read-only listing is safe while the game is running.
+        validate_safe_id(&instance_id)?;
+        let instance_dir = get_instances_dir().join(&instance_id);
+        list_world_datapacks(&instance_dir, &folder_name).map_err(|e| format!("讀取資料包清單失敗：{}", e))
+    })
+    .await
+}
+
+#[command]
+pub async fn delete_world_datapack_cmd(
+    instance_id: String,
+    folder_name: String,
+    pack_name: String,
+) -> Result<(), String> {
+    super::blocking(move || {
+        validate_safe_id(&instance_id)?;
+        if super::instance::is_instance_busy(&instance_id) {
+            return Err(format!("實例 '{}' 正在運行或安裝中，無法刪除資料包", instance_id));
+        }
+        let instance_dir = get_instances_dir().join(&instance_id);
+        delete_world_datapack(&instance_dir, &folder_name, &pack_name).map_err(|e| format!("刪除資料包失敗：{}", e))
+    })
+    .await
+}
+
+#[command]
+pub fn open_world_datapacks_dir_cmd(instance_id: String, folder_name: String) -> Result<(), String> {
+    validate_safe_id(&instance_id)?;
+    let instance_dir = get_instances_dir().join(&instance_id);
+    let dir = world_datapacks_dir(&instance_dir, &folder_name).map_err(|e| format!("找不到資料包資料夾：{}", e))?;
+    let _ = std::fs::create_dir_all(&dir);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new("explorer");
+        cmd.arg(&dir);
+        cmd.creation_flags(0x08000000);
+        let _ = cmd.spawn();
+    }
+    Ok(())
 }
 
 #[cfg(test)]

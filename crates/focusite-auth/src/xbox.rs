@@ -154,41 +154,6 @@ pub async fn obtain_xsts_token_for(
     Ok((xsts_resp.token, uhs))
 }
 
-/// XUIDs on the caller's Xbox people list (`GET social.xboxlive.com/users/me/people`).
-/// Names and presence are not in this response; they need a separate Xbox service call.
-pub async fn fetch_xbox_people_xuids(
-    client: &reqwest::Client,
-    userhash: &str,
-    xsts_token: &str,
-) -> Result<Vec<String>, AuthError> {
-    let resp = client
-        .get("https://social.xboxlive.com/users/me/people")
-        .header("Authorization", format!("XBL3.0 x={};{}", userhash, xsts_token))
-        // Contract version 2 is what third-party Xbox clients send; the Microsoft page lists no value.
-        .header("x-xbl-contract-version", "2")
-        .send()
-        .await?;
-
-    if !resp.status().is_success() {
-        return Err(AuthError::AuthFailed(format!(
-            "Xbox people list failed with HTTP {}",
-            resp.status()
-        )));
-    }
-
-    #[derive(Deserialize)]
-    struct PeopleList {
-        people: Vec<Person>,
-    }
-    #[derive(Deserialize)]
-    struct Person {
-        xuid: String,
-    }
-
-    let list: PeopleList = resp.json().await?;
-    Ok(list.people.into_iter().map(|p| p.xuid).collect())
-}
-
 /// Exchanges XSTS Token for Minecraft Java Services Token.
 pub async fn login_minecraft_with_xbox(
     client: &reqwest::Client,
@@ -247,13 +212,27 @@ pub async fn login_chain(
     client: &reqwest::Client,
     ms_access_token: &str,
 ) -> Result<(MinecraftAuthResponse, MinecraftProfileResponse), AuthError> {
+    login_chain_with_progress(client, ms_access_token, |_| {}).await
+}
+
+/// Same as [`login_chain`], calling `on_step` with `"xbl"`, `"xsts"`, `"minecraft"` and `"profile"`
+/// just before each request starts.
+pub async fn login_chain_with_progress(
+    client: &reqwest::Client,
+    ms_access_token: &str,
+    on_step: impl Fn(&'static str),
+) -> Result<(MinecraftAuthResponse, MinecraftProfileResponse), AuthError> {
     let step = |name: &'static str| move |e: AuthError| match e {
         AuthError::NoMinecraftEntitlement => e,
         other => AuthError::AuthFailed(format!("{name}: {other}")),
     };
+    on_step("xbl");
     let (xbl, _) = authenticate_xbox_live(client, ms_access_token).await.map_err(step("Xbox Live"))?;
+    on_step("xsts");
     let (xsts, uhs) = obtain_xsts_token(client, &xbl).await.map_err(step("XSTS"))?;
+    on_step("minecraft");
     let mc = login_minecraft_with_xbox(client, &uhs, &xsts).await.map_err(step("Minecraft Services"))?;
+    on_step("profile");
     let profile = fetch_minecraft_profile(client, &mc.access_token).await.map_err(step("Minecraft profile"))?;
     Ok((mc, profile))
 }

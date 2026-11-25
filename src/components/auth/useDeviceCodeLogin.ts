@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { authService, DeviceCodeInfo } from "@/services/authService";
+import { isTauri } from "@/lib/tauri";
 import { UserAccount } from "@/types/navigation";
 import { openExternal } from "@/lib/openExternal";
 import { toUserMessage } from "@/lib/errorMessage";
@@ -22,6 +24,8 @@ export function useDeviceCodeLogin(onSuccess: (account: UserAccount) => void) {
   const [errorCategory, setErrorCategory] = useState<ErrorCategory | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [pollingStatus, setPollingStatus] = useState<string>(t.auth.waiting);
+  // Set once the browser step is done and the Xbox/Minecraft chain runs; null while still waiting.
+  const [loginStep, setLoginStep] = useState<string | null>(null);
   const timerRef = useRef<number | null>(null);
   // Bumped by every start and stop: a request or poll from an older round must not touch the state.
   const roundRef = useRef(0);
@@ -35,6 +39,7 @@ export function useDeviceCodeLogin(onSuccess: (account: UserAccount) => void) {
   }, []);
 
   const showError = (msg: string, category: ErrorCategory) => {
+    setLoginStep(null);
     setErrorCategory(category);
     setErrorMessage(msg);
   };
@@ -46,6 +51,7 @@ export function useDeviceCodeLogin(onSuccess: (account: UserAccount) => void) {
     setErrorMessage(null);
     setErrorCategory(null);
     setDeviceInfo(null);
+    setLoginStep(null);
     setPollingStatus(t.auth.requestingCode);
 
     try {
@@ -100,6 +106,7 @@ export function useDeviceCodeLogin(onSuccess: (account: UserAccount) => void) {
     setErrorMessage(null);
     setErrorCategory(null);
     setDeviceInfo(null);
+    setLoginStep(null);
   };
 
   const copyCode = () => {
@@ -117,6 +124,21 @@ export function useDeviceCodeLogin(onSuccess: (account: UserAccount) => void) {
     await openExternal(deviceInfo.verification_uri).catch((err) => console.error("Failed to open link:", err));
   };
 
+  // Progress events from the backend while it runs the Xbox / Minecraft login chain.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    void listen<string>("auth-login-step", (e) => setLoginStep(e.payload)).then((un) => {
+      if (disposed) un();
+      else unlisten = un;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
   // A request still in flight must not start polling after unmount.
   useEffect(() => stop, [stop]);
 
@@ -127,6 +149,7 @@ export function useDeviceCodeLogin(onSuccess: (account: UserAccount) => void) {
     errorCategory,
     isCopied,
     pollingStatus,
+    loginStep,
     start,
     stop,
     reset,

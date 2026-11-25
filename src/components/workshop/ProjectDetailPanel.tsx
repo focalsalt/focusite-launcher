@@ -14,6 +14,7 @@ import type {
 import { openExternal } from "@/lib/openExternal";
 import { formatCategory } from "@/lib/plainMarkdown";
 import { useI18n } from "@/i18n";
+import { Tip } from "@/components/ui/tooltip";
 
 const DETAIL_WIDTH = 440;
 
@@ -63,26 +64,30 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 px-4">
           <span className="truncate text-xs font-bold text-slate-200">{project.title}</span>
           <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              title={t.workshopWin.openInBrowser}
-              onClick={() => void openExternal(`https://modrinth.com/${projectType}/${project.slug}`)}
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              title={t.workshopWin.closeDetail}
-              onClick={onClose}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
+            <Tip label={t.workshopWin.openInBrowser}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label={t.workshopWin.openInBrowser}
+                onClick={() => void openExternal(`https://modrinth.com/${projectType}/${project.slug}`)}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+            </Tip>
+            <Tip label={t.workshopWin.closeDetail}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label={t.workshopWin.closeDetail}
+                onClick={onClose}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </Tip>
           </div>
         </div>
 

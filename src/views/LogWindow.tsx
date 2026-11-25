@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Terminal,
   Square,
@@ -13,11 +13,12 @@ import {
   Lightbulb,
   X,
 } from "lucide-react";
-import { listen } from "@tauri-apps/api/event";
+import { listenSafe } from "@/lib/listenSafe";
 import {
   instanceService,
   InstanceLogEvent,
   InstanceStatusEvent,
+  LogFileEntry,
 } from "@/services/instanceService";
 import {
   diagnosticService,
@@ -26,6 +27,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toUserMessage } from "@/lib/errorMessage";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WindowBar } from "@/components/layout/WindowBar";
 import { useI18n } from "@/i18n";
@@ -68,7 +71,66 @@ export const LogWindow: React.FC = () => {
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  const runDiagnosis = async (currentLogs = logs) => {
+  // Past logs and crash reports can be browsed while the game is not running.
+  const isLive = status === "running" || status === "launching";
+  const [files, setFiles] = useState<LogFileEntry[]>([]);
+  const [source, setSource] = useState<string>("live");
+  const [historyText, setHistoryText] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+  // "This session" only exists once the game has been started from here.
+  const hasSession = isLive || logs.length > 0;
+  const viewingHistory = !isLive && source !== "live";
+
+  // The live view takes over as soon as the game starts.
+  useEffect(() => {
+    if (isLive) setSource("live");
+  }, [isLive]);
+
+  useEffect(() => {
+    if (!activeInstanceId || isLive) return;
+    let cancelled = false;
+    instanceService
+      .listInstanceLogFiles(activeInstanceId)
+      .then((list) => !cancelled && setFiles(list))
+      .catch((err) => console.error("Failed to list log files:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [activeInstanceId, isLive, status]);
+
+  useEffect(() => {
+    if (!viewingHistory) {
+      setHistoryText(null);
+      return;
+    }
+    const [kind, ...rest] = source.split(":");
+    const name = rest.join(":");
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryText(null);
+    instanceService
+      .readInstanceLogFile(activeInstanceId, kind as LogFileEntry["kind"], name)
+      .then((text) => !cancelled && setHistoryText(text))
+      .catch((err) => !cancelled && toast(`${t.logWin.historyFailed}: ${toUserMessage(err)}`, "error"))
+      .finally(() => !cancelled && setHistoryLoading(false));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, viewingHistory, activeInstanceId]);
+
+  const historyEvents = useMemo<InstanceLogEvent[]>(() => {
+    if (historyText === null) return [];
+    return historyText.split(/\r?\n/).map((line) => ({
+      instance_id: activeInstanceId,
+      timestamp: 0,
+      line,
+      stream: /\b(ERROR|FATAL)\b|Exception|^\s+at /.test(line) ? "stderr" : "stdout",
+    }));
+  }, [historyText, activeInstanceId]);
+  const shownLogs = viewingHistory ? historyEvents : logs;
+
+  const runDiagnosis = async (currentLogs = shownLogs) => {
     if (currentLogs.length === 0) return;
     setIsDiagnosing(true);
     setDismissDiagnosis(false);
@@ -84,9 +146,6 @@ export const LogWindow: React.FC = () => {
   };
 
   useEffect(() => {
-    let unlistenLog: (() => void) | undefined;
-    let unlistenStatus: (() => void) | undefined;
-
     // Load initial in-memory buffered logs for this specific instance
     if (activeInstanceId) {
       instanceService.getInstanceLogBuffer(activeInstanceId).then((buffered) => {
@@ -105,7 +164,7 @@ export const LogWindow: React.FC = () => {
     }
 
     // Listen to real-time log events filtered by this instance
-    listen<InstanceLogEvent>("instance-log", (event) => {
+    const unlistenLog = listenSafe<InstanceLogEvent>("instance-log", (event) => {
       if (activeInstanceId && event.payload.instance_id && event.payload.instance_id !== activeInstanceId) {
         return;
       }
@@ -120,12 +179,10 @@ export const LogWindow: React.FC = () => {
       if (!activeInstanceId && event.payload.instance_id) {
         setActiveInstanceId(event.payload.instance_id);
       }
-    }).then((un) => {
-      unlistenLog = un;
     });
 
     // Listen to process status events filtered by this instance
-    listen<InstanceStatusEvent>("instance-status", (event) => {
+    const unlistenStatus = listenSafe<InstanceStatusEvent>("instance-status", (event) => {
       if (activeInstanceId && event.payload.instance_id && event.payload.instance_id !== activeInstanceId) {
         return;
       }
@@ -152,13 +209,11 @@ export const LogWindow: React.FC = () => {
           }, 300);
         }
       }
-    }).then((un) => {
-      unlistenStatus = un;
     });
 
     return () => {
-      if (unlistenLog) unlistenLog();
-      if (unlistenStatus) unlistenStatus();
+      unlistenLog();
+      unlistenStatus();
     };
   }, [activeInstanceId]);
 
@@ -170,12 +225,11 @@ export const LogWindow: React.FC = () => {
   }, [logs, autoScroll]);
 
   const handleCopyLogs = async () => {
-    const text = logs
-      .map(
-        (l) =>
-          `[${new Date(l.timestamp).toLocaleTimeString()}] [${l.stream.toUpperCase()}] ${l.line}`
-      )
-      .join("\n");
+    const text = viewingHistory
+      ? shownLogs.map((l) => l.line).join("\n")
+      : logs
+          .map((l) => `[${new Date(l.timestamp).toLocaleTimeString()}] [${l.stream.toUpperCase()}] ${l.line}`)
+          .join("\n");
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -196,7 +250,7 @@ export const LogWindow: React.FC = () => {
     }
   };
 
-  const filteredLogs = logs.filter((log) => {
+  const filteredLogs = shownLogs.filter((log) => {
     if (streamFilter !== "all" && log.stream !== streamFilter) {
       return false;
     }
@@ -213,22 +267,33 @@ export const LogWindow: React.FC = () => {
 
       {/* Detached Window Header */}
       <header className="flex items-center justify-between px-4 py-2.5 bg-slate-900 border-b border-white/10 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
-            <Terminal className="h-4 w-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-sm text-slate-100">
-                {t.logWin.title}
-              </span>
-              {activeInstanceId && (
-                <span className="text-[11px] text-slate-400">
-                  ({activeInstanceId})
-                </span>
-              )}
-            </div>
-          </div>
+        {/* Source picker (the title is already in the window bar) */}
+        <div className="flex items-center">
+          {!isLive && (
+            <Select value={source} onValueChange={setSource}>
+              <SelectTrigger className="h-8 w-56 shrink-0 text-xs" aria-label={t.logWin.sourceLabel}>
+                <SelectValue>
+                  {source === "live" ? (hasSession ? t.logWin.sourceLive : t.logWin.sourceLabel) : source.split(":").slice(1).join(":")}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent className="max-h-64">
+                {hasSession && <SelectItem value="live">{t.logWin.sourceLive}</SelectItem>}
+                {files.map((f) => (
+                  <SelectItem
+                    key={`${f.kind}:${f.name}`}
+                    value={`${f.kind}:${f.name}`}
+                    extraRight={
+                      <span className={`text-[10px] ${f.kind === "crash" ? "text-rose-400" : "text-slate-400"}`}>
+                        {f.kind === "crash" ? t.logWin.groupCrash : t.logWin.groupLogs}
+                      </span>
+                    }
+                  >
+                    {f.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {/* Status Indicator */}
@@ -269,23 +334,6 @@ export const LogWindow: React.FC = () => {
               {t.logWin.forceStop}
             </Button>
           )}
-        </div>
-      </header>
-
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-white/5 gap-3 shrink-0">
-        <div className="flex items-center gap-2 flex-1 max-w-sm">
-          <div className="relative w-full">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-            <Input
-              type="text"
-              placeholder={t.logWin.searchPlaceholder}
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              className="h-8 pl-8 text-xs bg-white/5 border-white/10 text-slate-200 focus-visible:border-brand-light"
-            />
-          </div>
-        </div>
 
         {/* Stream Filter Pills */}
         <div className="relative flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 text-xs">
@@ -313,7 +361,7 @@ export const LogWindow: React.FC = () => {
             size="sm"
             variant="outline"
             onClick={() => runDiagnosis()}
-            disabled={isDiagnosing || logs.length === 0}
+            disabled={isDiagnosing || shownLogs.length === 0}
             className="h-8 text-xs gap-1.5 border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300"
           >
             <Sparkles className={`h-3.5 w-3.5 ${isDiagnosing ? "animate-spin" : ""}`} />
@@ -345,6 +393,7 @@ export const LogWindow: React.FC = () => {
           <Button
             size="sm"
             variant="outline"
+            disabled={viewingHistory}
             onClick={handleClearLogs}
             className="h-8 text-xs gap-1.5 border-white/10 text-slate-400 hover:text-rose-400"
           >
@@ -352,6 +401,24 @@ export const LogWindow: React.FC = () => {
             {t.logWin.clear}
           </Button>
         </div>
+        </div>
+      </header>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-white/5 gap-3 shrink-0">
+        <div className="flex items-center gap-2 flex-1 max-w-sm">
+          <div className="relative w-full">
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+            <Input
+              type="text"
+              placeholder={t.logWin.searchPlaceholder}
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              className="h-8 pl-8 text-xs bg-white/5 border-white/10 text-slate-200 focus-visible:border-brand-light"
+            />
+          </div>
+        </div>
+
       </div>
 
       {/* Crash Alert Banner */}
@@ -424,7 +491,17 @@ export const LogWindow: React.FC = () => {
         {filteredLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-slate-500 space-y-2">
             <Terminal className="h-8 w-8 stroke-1" />
-            <p>{t.logWin.noLogs}</p>
+            <p>
+              {historyLoading
+                ? t.logWin.historyLoading
+                : viewingHistory
+                  ? t.logWin.noLogs
+                  : !isLive && files.length === 0 && logs.length === 0
+                    ? t.logWin.historyEmpty
+                    : !isLive && logs.length === 0
+                      ? t.logWin.historyHint
+                      : t.logWin.noLogs}
+            </p>
           </div>
         ) : (
           filteredLogs.map((log, index) => {
@@ -445,14 +522,18 @@ export const LogWindow: React.FC = () => {
                 key={`${log.timestamp}-${index}`}
                 className="flex items-start gap-2 hover:bg-white/[0.03] px-1 py-0.5 rounded transition-colors group"
               >
-                <span className="text-slate-600 select-none shrink-0 w-16">
-                  {timeStr}
-                </span>
-                <span
-                  className={`text-[9px] px-1 rounded border uppercase select-none shrink-0 ${tagColor}`}
-                >
-                  {log.stream}
-                </span>
+                {!viewingHistory && (
+                  <>
+                    <span className="text-slate-600 select-none shrink-0 w-16">
+                      {timeStr}
+                    </span>
+                    <span
+                      className={`text-[9px] px-1 rounded border uppercase select-none shrink-0 ${tagColor}`}
+                    >
+                      {log.stream}
+                    </span>
+                  </>
+                )}
                 <span className={`break-all whitespace-pre-wrap ${streamColor}`}>
                   {log.line}
                 </span>

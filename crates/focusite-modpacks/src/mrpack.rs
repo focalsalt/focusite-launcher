@@ -54,7 +54,12 @@ pub fn safe_extract_entry<R: Read>(
     let safe_rel = Path::new(&normalized);
 
     for comp in safe_rel.components() {
-        if let std::path::Component::ParentDir = comp {
+        // `..`, a leading `/` and a drive prefix such as `C:` would all leave `base_dir` (a joined absolute
+        // path replaces the base).
+        if matches!(
+            comp,
+            std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_)
+        ) {
             return Err(ModpackError::InvalidArchive(format!(
                 "Zip-Slip path traversal detected in entry: {}",
                 entry_name
@@ -90,7 +95,7 @@ pub fn safe_extract_entry<R: Read>(
     Ok(target_path)
 }
 
-pub(crate) fn open_zip(archive_bytes: &[u8]) -> Result<ZipArchive<Cursor<&[u8]>>, ModpackError> {
+pub fn open_zip(archive_bytes: &[u8]) -> Result<ZipArchive<Cursor<&[u8]>>, ModpackError> {
     let zip = ZipArchive::new(Cursor::new(archive_bytes))
         .map_err(|e| ModpackError::InvalidArchive(format!("Failed to open zip archive: {}", e)))?;
     if zip.len() > MAX_ENTRIES {
@@ -108,13 +113,21 @@ pub(crate) fn read_text(zip: &mut ZipArchive<Cursor<&[u8]>>, name: &str) -> Resu
 }
 
 /// Extracts every file under one of `prefixes` into `dir` (prefix stripped), within the archive limits.
-pub(crate) fn extract_overrides(
+/// Called before each file with `(done, total)`; an `Err` stops the extraction.
+pub type ExtractProgress<'a> = &'a mut dyn FnMut(usize, usize) -> Result<(), ModpackError>;
+
+pub fn extract_overrides(
     zip: &mut ZipArchive<Cursor<&[u8]>>,
     prefixes: &[&str],
     dir: &Path,
+    on_file: ExtractProgress,
 ) -> Result<Vec<PathBuf>, ModpackError> {
     let mut total_bytes: u64 = 0;
     let mut extracted = Vec::new();
+    let wanted: usize = zip
+        .file_names()
+        .filter(|n| prefixes.iter().any(|p| n.strip_prefix(p).is_some_and(|r| !r.is_empty() && !r.ends_with('/'))))
+        .count();
     for i in 0..zip.len() {
         let mut file = zip
             .by_index(i)
@@ -124,6 +137,7 @@ pub(crate) fn extract_overrides(
         if rel_path.is_empty() || file.is_dir() {
             continue;
         }
+        on_file(extracted.len(), wanted)?;
         let path = safe_extract_entry(rel_path, &mut file, dir)?;
         total_bytes += std::fs::metadata(&path)?.len();
         if total_bytes > MAX_TOTAL_BYTES {
@@ -152,10 +166,29 @@ pub fn unpack_mrpack(
     archive_bytes: &[u8],
     minecraft_dir: &Path,
 ) -> Result<(ModrinthIndex, Vec<PathBuf>), ModpackError> {
+    unpack_mrpack_with(archive_bytes, minecraft_dir, &mut |_, _| Ok(()))
+}
+
+/// Like [`unpack_mrpack`], reporting progress per extracted file.
+pub fn unpack_mrpack_with(
+    archive_bytes: &[u8],
+    minecraft_dir: &Path,
+    on_file: ExtractProgress,
+) -> Result<(ModrinthIndex, Vec<PathBuf>), ModpackError> {
     let index = read_mrpack_index(archive_bytes)?;
     let mut zip = open_zip(archive_bytes)?;
-    let extracted = extract_overrides(&mut zip, &["overrides/", "client-overrides/"], minecraft_dir)?;
+    let extracted = extract_overrides(&mut zip, &["overrides/", "client-overrides/"], minecraft_dir, on_file)?;
     Ok((index, extracted))
+}
+
+/// Total unpacked size of all entries, from the zip's central directory (nothing is extracted).
+pub fn archive_unpacked_size(archive_bytes: &[u8]) -> Result<u64, ModpackError> {
+    let mut zip = open_zip(archive_bytes)?;
+    let mut total = 0u64;
+    for i in 0..zip.len() {
+        total = total.saturating_add(zip.by_index(i).map(|f| f.size()).unwrap_or(0));
+    }
+    Ok(total)
 }
 
 #[cfg(test)]
@@ -163,6 +196,17 @@ mod tests {
     use super::*;
     use std::io::Write;
     use zip::write::SimpleFileOptions;
+
+    #[test]
+    fn test_absolute_and_drive_entries_are_rejected() {
+        let dir = std::env::temp_dir().join(format!("fc_abs_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for bad in ["/etc/x", "C:/x.txt", "C:\\x.txt", "../x", "a/../../x"] {
+            assert!(safe_extract_entry(bad, std::io::empty(), &dir).is_err(), "{bad}");
+        }
+        assert!(safe_extract_entry("a/b.txt", std::io::empty(), &dir).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn test_entry_over_limit_is_rejected_and_removed() {

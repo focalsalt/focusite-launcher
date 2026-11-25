@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { Coffee, Cpu, FolderOpen, RotateCcw, Terminal, Trash2 } from "lucide-react";
+import { Coffee, Cpu, FolderOpen, MonitorSmartphone, RotateCcw, Terminal, Trash2 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +13,7 @@ import { tabContentVariants } from "./shared";
 import { toast } from "@/lib/toast";
 import { toUserMessage } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n";
+import { Tip } from "@/components/ui/tooltip";
 
 interface SettingsTabProps {
   instance: MinecraftInstance;
@@ -70,6 +71,36 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     setCustomJvmArgsInput(instance.customJvmArgs?.join(" ") ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instance.id]);
+
+  const [winW, setWinW] = useState<string>(instance.windowWidth ? String(instance.windowWidth) : "");
+  const [winH, setWinH] = useState<string>(instance.windowHeight ? String(instance.windowHeight) : "");
+  useEffect(() => {
+    setWinW(instance.windowWidth ? String(instance.windowWidth) : "");
+    setWinH(instance.windowHeight ? String(instance.windowHeight) : "");
+  }, [instance.id, instance.windowWidth, instance.windowHeight]);
+
+  // Both fields empty clears the size (the game picks its default); otherwise both are required.
+  const saveWindowSize = async () => {
+    const w = winW.trim();
+    const h = winH.trim();
+    const clearing = w === "" && h === "";
+    const wn = Number(w);
+    const hn = Number(h);
+    if (!clearing && (!Number.isInteger(wn) || !Number.isInteger(hn) || wn <= 0 || hn <= 0)) {
+      toast(t.instSettings.windowInvalid, "error");
+      return;
+    }
+    try {
+      const updated = await instanceService.updateInstanceSettings(instance.id, {
+        windowWidth: clearing ? 0 : wn,
+        windowHeight: clearing ? 0 : hn,
+      });
+      onInstanceUpdated?.(updated);
+      toast(t.instSettings.windowUpdated, "success");
+    } catch (err) {
+      toast(toUserMessage(err), "error");
+    }
+  };
 
   const applyJavaPath = async (path: string) => {
     setJavaPathInput(path);
@@ -192,19 +223,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <span className="text-[11px] text-slate-400">{t.instSettings.javaDetected}</span>
               <div className="flex flex-wrap gap-1.5">
                 {systemJavas.map((j) => (
-                  <button
-                    key={j.path}
-                    type="button"
-                    title={j.path}
-                    onClick={() => void applyJavaPath(j.path)}
-                    className={`rounded-lg border px-2.5 py-1 text-[11px] transition-colors ${
-                      javaPathInput === j.path
-                        ? "border-brand-light bg-brand/15 text-brand-light"
-                        : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
-                    }`}
-                  >
-                    Java {j.major_version} ({j.vendor}) · {j.is_64_bit ? "64-bit" : "32-bit"}
-                  </button>
+                  <Tip label={j.path}>
+                    <button
+                      key={j.path}
+                      type="button"
+                      onClick={() => void applyJavaPath(j.path)}
+                      className={`rounded-lg border px-2.5 py-1 text-[11px] transition-colors ${
+                        javaPathInput === j.path
+                          ? "border-brand-light bg-brand/15 text-brand-light"
+                          : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                      }`}
+                    >
+                      Java {j.major_version} ({j.vendor}) · {j.is_64_bit ? "64-bit" : "32-bit"}
+                    </button>
+                  </Tip>
                 ))}
               </div>
             </div>
@@ -236,6 +268,48 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             {t.common.save}
           </Button>
         </div>
+      </section>
+
+      {divider}
+
+      {/* 3.5 Default game window size */}
+      <section className="space-y-3">
+        <SectionHeading
+          icon={<MonitorSmartphone className="h-4 w-4 text-brand-light" />}
+          title={t.instSettings.windowTitle}
+          description={t.instSettings.windowDesc}
+        />
+        <div className="flex items-center gap-2 pt-1">
+          <Input
+            type="number"
+            min={1}
+            inputMode="numeric"
+            value={winW}
+            onChange={(e) => setWinW(e.target.value)}
+            placeholder={t.instSettings.windowWidth}
+            aria-label={t.instSettings.windowWidth}
+            className="h-9 w-32 border-white/10 bg-black/30 font-mono text-xs"
+          />
+          <span className="text-xs text-slate-500">×</span>
+          <Input
+            type="number"
+            min={1}
+            inputMode="numeric"
+            value={winH}
+            onChange={(e) => setWinH(e.target.value)}
+            placeholder={t.instSettings.windowHeight}
+            aria-label={t.instSettings.windowHeight}
+            className="h-9 w-32 border-white/10 bg-black/30 font-mono text-xs"
+          />
+          <Button
+            size="sm"
+            onClick={saveWindowSize}
+            className="h-9 shrink-0 bg-brand px-4 text-xs text-white hover:bg-brand-light"
+          >
+            {t.common.save}
+          </Button>
+        </div>
+        <p className="text-[11px] text-slate-500">{t.instSettings.windowNote}</p>
       </section>
 
       {divider}

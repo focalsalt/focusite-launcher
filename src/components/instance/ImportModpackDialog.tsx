@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { ask as askDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,18 @@ import {
   Globe,
   Check,
 } from "lucide-react";
-import { modpackService, MissingModItem, ModpackImportResult } from "@/services/modpackService";
+import {
+  modpackService,
+  newJobId,
+  listenJobProgress,
+  IMPORT_PROGRESS_EVENT,
+  MissingModItem,
+  ModpackImportResult,
+  PackInspection,
+  JobProgress,
+} from "@/services/modpackService";
+import { TransferProgress, type TransferStage } from "./TransferProgress";
+import { formatBytes } from "@/lib/formatBytes";
 import { instanceService } from "@/services/instanceService";
 import { workshopService, WorkshopProjectSummary, WorkshopCategory } from "@/services/workshopService";
 import { FilterSidebar, Sort } from "@/components/workshop/FilterSidebar";
@@ -59,6 +70,15 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
   const [selectedProject, setSelectedProject] = useState<WorkshopProjectSummary | null>(null);
   const [customName, setCustomName] = useState<string>("");
   const [isImporting, setIsImporting] = useState<boolean>(false);
+  // Set synchronously so a double click cannot start two imports before the state update lands.
+  const importingRef = useRef<boolean>(false);
+  const importIdRef = useRef<string>("");
+  const [progress, setProgress] = useState<JobProgress | null>(null);
+  const [cancelling, setCancelling] = useState<boolean>(false);
+  const [inspection, setInspection] = useState<PackInspection | null>(null);
+  const [inspectError, setInspectError] = useState<string>("");
+  const [isInspecting, setIsInspecting] = useState<boolean>(false);
+  const [isRetrying, setIsRetrying] = useState<boolean>(false);
   const [sort, setSort] = useState<Sort>("relevance");
   const [gameVersion, setGameVersion] = useState<string>("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -85,6 +105,39 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
   const [importResult, setImportResult] = useState<ModpackImportResult | null>(null);
   const [missingMods, setMissingMods] = useState<MissingModItem[]>([]);
   const [isRescanning, setIsRescanning] = useState<boolean>(false);
+
+  // Describe the chosen file or folder before anything is imported, so problems show up early.
+  useEffect(() => {
+    const path = packFilePath.trim();
+    if (source !== "local" || !path) {
+      setInspection(null);
+      setInspectError("");
+      return;
+    }
+    let cancelled = false;
+    setIsInspecting(true);
+    const timer = window.setTimeout(() => {
+      modpackService
+        .inspectModpackFile(path, customName.trim() || undefined)
+        .then((info) => {
+          if (cancelled) return;
+          setInspection(info);
+          setInspectError("");
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setInspection(null);
+          setInspectError(toUserMessage(err));
+        })
+        .finally(() => !cancelled && setIsInspecting(false));
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [source, packFilePath, customName]);
+
+  const nameInvalid = /[<>:"/\\|?*\u0000-\u001f]/.test(customName) || customName.trim().length > 64;
 
   const handleBrowseFile = async () => {
     try {
@@ -180,6 +233,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
 
   const handleStartImport = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (importingRef.current) return;
     if (source === "online") {
       if (!selectedProject) {
         toast(t.importPack.onlinePick, "error");
@@ -188,29 +242,81 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
     } else if (!packFilePath.trim()) {
       toast(t.importPack.pickPath, "error");
       return;
+    } else if (inspectError || !inspection) {
+      toast(inspectError || t.importPack.inspecting, "error");
+      return;
+    }
+    if (nameInvalid) {
+      toast(t.importPack.nameInvalid, "error");
+      return;
     }
 
+    // A file above 1 GiB is read into memory whole, so the user decides first.
+    const large = source === "local" && !!inspection?.large;
+    if (large) {
+      const ok = await askDialog(t.importPack.largeConfirm(formatBytes(inspection?.sizeBytes ?? 0)), {
+        title: t.importPack.largeConfirmTitle,
+        kind: "warning",
+        okLabel: t.importPack.largeConfirmOk,
+        cancelLabel: t.common.cancel,
+      });
+      if (!ok) return;
+    }
+
+    importingRef.current = true;
+    const importId = newJobId();
+    importIdRef.current = importId;
+    setProgress(null);
+    setCancelling(false);
     setIsImporting(true);
+    const unlisten = await listenJobProgress(IMPORT_PROGRESS_EVENT, importId, setProgress);
     try {
       const res =
         source === "online" && selectedProject
-          ? await modpackService.importModrinthModpack(selectedProject.id, customName.trim() || undefined, selectedVersion?.id)
-          : await modpackService.importModpack(packFilePath.trim(), customName.trim() || undefined);
+          ? await modpackService.importModrinthModpack(selectedProject.id, customName.trim() || undefined, selectedVersion?.id, importId)
+          : await modpackService.importModpack(packFilePath.trim(), customName.trim() || undefined, importId, large);
 
       setImportResult(res);
       setMissingMods(res.missingMods);
 
       if (res.isCompleted) {
-        setIsImporting(false);
+        const taken = res.imported.map((k) => t.importPack.importedItems[k as keyof typeof t.importPack.importedItems] ?? k);
+        toast(t.importPack.doneToast(res.instanceName, taken), "success", 8000);
         onClose();
         onImportSuccess(res.instanceId);
-      } else {
-        // CurseForge missing mods mode
-        setIsImporting(false);
       }
+      // Otherwise the missing-mods view takes over.
     } catch (err: unknown) {
-      toast(toUserMessage(err), "error");
+      const message = toUserMessage(err);
+      if (message.includes("已取消")) toast(t.importPack.cancelled, "info");
+      else toast(message, "error");
+    } finally {
+      unlisten();
+      importingRef.current = false;
       setIsImporting(false);
+      setCancelling(false);
+    }
+  };
+
+  const handleCancelImport = async () => {
+    setCancelling(true);
+    await modpackService.cancelJob(importIdRef.current);
+  };
+
+  const handleRetryDownloads = async () => {
+    if (!importResult) return;
+    const importId = newJobId();
+    setProgress(null);
+    setIsRetrying(true);
+    const unlisten = await listenJobProgress(IMPORT_PROGRESS_EVENT, importId, setProgress);
+    try {
+      const remaining = await modpackService.retryPackDownloads(importResult.instanceId, importId);
+      setMissingMods(remaining);
+    } catch (err) {
+      toast(toUserMessage(err), "error");
+    } finally {
+      unlisten();
+      setIsRetrying(false);
     }
   };
 
@@ -250,6 +356,12 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
   };
 
   const resetAll = () => {
+    // Closing never cancels a running import; the dialog stays until it ends or is cancelled.
+    if (importingRef.current) return;
+    // The instance already exists on disk once the missing-mods view shows.
+    if (importResult && missingMods.length > 0) toast(t.importPack.missingClosed(missingMods.length), "info", 6000);
+    setInspection(null);
+    setInspectError("");
     setPackFilePath("");
     setCustomName("");
     setSelectedProject(null);
@@ -261,6 +373,34 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
     setMissingMods([]);
     onClose();
   };
+
+  // Running import: only the progress and the cancel button are left; nothing else can be picked.
+  if (isImporting) {
+    const isFolder = source === "local" && inspection?.format === "folder";
+    const stageLabels = t.transfer.stages;
+    const stages: TransferStage[] = (
+      source === "online"
+        ? ["download", "read", "overrides", "mods"]
+        : isFolder
+          ? ["read", "copy"]
+          : inspection?.format === "focusite"
+            ? ["read", "overrides"]
+            : ["read", "overrides", "mods"]
+    ).map((key) => ({ key, label: stageLabels[key as keyof typeof stageLabels] }));
+    return (
+      <Dialog open={isOpen} onOpenChange={() => {}} preventBackdropClose>
+        <DialogContent className="max-w-lg border-white/10 bg-slate-950/95 text-slate-100 backdrop-blur-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-white">{t.importPack.importingTitle}</DialogTitle>
+            <DialogDescription className="truncate text-xs text-slate-400">
+              {customName.trim() || selectedProject?.title || inspection?.name || ""}
+            </DialogDescription>
+          </DialogHeader>
+          <TransferProgress stages={stages} progress={progress} cancelling={cancelling} onCancel={handleCancelImport} />
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   // 待補齊清單 Modal 視圖
   if (importResult && !importResult.isCompleted) {
@@ -379,8 +519,21 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                 type="button"
                 variant="outline"
                 size="sm"
+                onClick={handleRetryDownloads}
+                disabled={isReady || isRetrying || isRescanning}
+                className="gap-1.5 text-xs h-8 border-white/10"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isRetrying ? "animate-spin text-brand-light" : ""}`} />
+                {isRetrying && progress && progress.total > 0
+                  ? `${t.importPack.retryDownloads} ${progress.current}/${progress.total}`
+                  : t.importPack.retryDownloads}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={handleRescan}
-                disabled={isRescanning}
+                disabled={isRescanning || isRetrying}
                 className="gap-1.5 text-xs h-8 border-white/10"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isRescanning ? "animate-spin text-brand-light" : ""}`} />
@@ -479,6 +632,59 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                     </Button>
                   </div>
                 </div>
+                {packFilePath.trim() && (
+                  <div className="mx-auto w-full max-w-xl rounded-xl border border-white/10 bg-black/30 p-3 text-xs">
+                    {isInspecting && !inspection && !inspectError ? (
+                      <div className="flex items-center gap-2 text-slate-400">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-light" />
+                        {t.importPack.inspecting}
+                      </div>
+                    ) : inspectError ? (
+                      <div className="flex items-start gap-2 text-red-300">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                        <span className="leading-relaxed">{inspectError}</span>
+                      </div>
+                    ) : (
+                      inspection && (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-white">{inspection.name}</span>
+                            <Badge variant="outline" className="border-white/10 font-mono text-[10px]">
+                              {inspection.loader} {inspection.version}
+                            </Badge>
+                            <Badge variant="outline" className="border-brand-light/30 text-[10px] text-brand-light">
+                              {t.importPack.formats[inspection.format]}
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            {t.importPack.summary(inspection.fileCount, formatBytes(inspection.sizeBytes))}
+                            {inspection.folderName !== inspection.name && ` · ${t.importPack.willCreateAs(inspection.folderName)}`}
+                          </p>
+                          {inspection.large && (
+                            <p className="flex items-start gap-1.5 text-[11px] text-amber-300">
+                              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                              {t.importPack.largeNote(formatBytes(inspection.sizeBytes))}
+                            </p>
+                          )}
+                          {inspection.imported.length > 0 && (
+                            <p className="text-[11px] text-slate-400">
+                              {t.importPack.willImport}
+                              {inspection.imported
+                                .map((k) => t.importPack.importedItems[k as keyof typeof t.importPack.importedItems] ?? k)
+                                .join("、")}
+                            </p>
+                          )}
+                          {inspection.missingCurseforgeKey && (
+                            <p className="flex items-start gap-1.5 text-[11px] text-amber-300">
+                              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                              {t.importPack.noCurseforgeKey}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
                 <div className="mx-auto w-full max-w-xl space-y-1 rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-relaxed text-slate-400">
                   <div className="flex items-center gap-1.5 font-semibold text-slate-300">
                     <FileArchive className="h-3.5 w-3.5 text-brand-light" />
@@ -614,20 +820,19 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
               }}
               placeholder={t.importPack.customNamePlaceholder}
               aria-label={t.importPack.customNameLabel}
-              className="h-9 flex-1 bg-black/30"
+              aria-invalid={nameInvalid}
+              className={`h-9 flex-1 bg-black/30 ${nameInvalid ? "border-red-500/60" : ""}`}
             />
             <Button type="button" variant="glass" size="sm" onClick={resetAll} className="shrink-0">
               {t.common.cancel}
             </Button>
-            <Button type="submit" size="sm" disabled={isImporting} className="shrink-0 px-4">
-              {isImporting ? (
-                <span className="flex items-center gap-1.5">
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  {source === "online" ? t.importPack.onlineImporting : t.importPack.importing}
-                </span>
-              ) : (
-                t.importPack.startImport
-              )}
+            <Button
+              type="submit"
+              size="sm"
+              disabled={nameInvalid || (source === "local" && (isInspecting || !inspection))}
+              className="shrink-0 px-4"
+            >
+              {t.importPack.startImport}
             </Button>
           </DialogFooter>
         </form>

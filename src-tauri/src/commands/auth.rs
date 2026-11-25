@@ -3,6 +3,7 @@
 use focusite_auth::oauth::{self, DeviceCodeResponse};
 use focusite_auth::xbox;
 use serde::{Deserialize, Serialize};
+use tauri::Emitter;
 use std::fs;
 use std::path::PathBuf;
 
@@ -116,7 +117,7 @@ impl DevicePollResult {
 }
 
 #[tauri::command]
-pub async fn auth_poll_device_code(device_code: String) -> Result<DevicePollResult, String> {
+pub async fn auth_poll_device_code(app: tauri::AppHandle, device_code: String) -> Result<DevicePollResult, String> {
     let client_id = oauth::get_microsoft_client_id().map_err(|_| MISSING_CLIENT_ID.to_string())?;
     let client = super::http();
     let (status, maybe_token) = oauth::poll_device_code_once(client, &client_id, &device_code)
@@ -133,9 +134,15 @@ pub async fn auth_poll_device_code(device_code: String) -> Result<DevicePollResu
         oauth::DeviceCodePollStatus::Success => maybe_token.ok_or("登入回應缺少憑證，請重試")?,
     };
 
-    let (mc_auth, profile) = xbox::login_chain(client, &token_resp.access_token)
+    // Progress for the login dialog: authorised in the browser, then each step of the chain.
+    let emit_step = |step: &str| {
+        let _ = app.emit("auth-login-step", step);
+    };
+    emit_step("microsoft");
+    let (mc_auth, profile) = xbox::login_chain_with_progress(client, &token_resp.access_token, emit_step)
         .await
         .map_err(|e| format!("Minecraft 登入流程失敗：{}", e))?;
+    emit_step("saving");
 
     if let Err(e) = focusite_auth::keyring_store::CredentialStore::save_credentials(
         &profile.id,
@@ -228,7 +235,7 @@ pub fn auth_update_account_skin(
 }
 
 /// Trades a refresh token for a new Minecraft token and profile, saving the new credentials.
-async fn silent_refresh(
+pub(super) async fn silent_refresh(
     client: &reqwest::Client,
     id: &str,
     old_mc_token: &str,

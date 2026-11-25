@@ -253,20 +253,27 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
 
           {/* 2. 兩欄式恆定佈局主體 (完全移除內部 Scroll Area，恆定固定高度確保 0px 位移) */}
           <div className="h-[360px] p-6 grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch shrink-0">
-            {/* === 左側欄位 === */}
-            <div className="flex flex-col h-full space-y-4">
-              {/* 實例自訂名稱與圖示 (標籤置頂，圖示與輸入框等高並排) */}
-              <div className="space-y-1 shrink-0">
-                <label className="font-semibold text-xs text-slate-300">{t.create.nameLabel}</label>
-                <div className="flex items-center gap-2.5">
-                  {/* 圖示選擇按鈕 (h-9 w-9 與 Input 等高) */}
-                  <div className="relative group shrink-0">
+            {/* === 左側欄位：圖示（跨名稱＋模組平台兩列）→ 遊戲版本 → 平台版本 === */}
+            <div className="flex flex-col h-full space-y-3">
+              <VersionLoaderFields
+                isOpen={isOpen}
+                loaders={LOADERS}
+                manifest={manifest}
+                isLoadingVersions={isLoadingVersions}
+                version={selectedVersion}
+                onVersionChange={setSelectedVersion}
+                loader={selectedLoader}
+                onLoaderChange={setSelectedLoader}
+                loaderVersion={loaderVersion}
+                onLoaderVersionChange={setLoaderVersion}
+                iconSlot={
+                  <div className="relative group w-24 shrink-0 self-stretch">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/40 hover:border-brand-light/60 hover:bg-brand/15 transition-all overflow-hidden"
+                          className="flex h-full min-h-[96px] w-24 items-center justify-center rounded-xl border border-white/10 bg-black/40 hover:border-brand-light/60 hover:bg-brand/15 transition-all overflow-hidden"
                         >
                           {iconPreview ? (
                             <img
@@ -275,7 +282,7 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                               className="h-full w-full object-cover"
                             />
                           ) : (
-                            <ImageIcon className="h-4 w-4 text-slate-400 group-hover:text-brand-light transition-colors" />
+                            <ImageIcon className="h-7 w-7 text-slate-400 group-hover:text-brand-light transition-colors" />
                           )}
                         </button>
                       </TooltipTrigger>
@@ -299,45 +306,21 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                       </Tooltip>
                     )}
                   </div>
-
-                  {/* 實例名稱輸入框 */}
-                  <Input
-                    value={instanceName}
-                    onChange={(e) => setInstanceName(e.target.value)}
-                    placeholder={t.create.namePlaceholder}
-                    className="bg-black/40 border-white/10 text-xs h-9 flex-1"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* 實例描述（自動填滿左欄剩餘高度，與右欄高度齊平） */}
-              <div className="flex-1 flex flex-col space-y-1 min-h-0 pt-0.5">
-                <label className="font-semibold text-xs text-slate-300">{t.create.descLabel}</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder={t.create.descPlaceholder}
-                  className="w-full flex-1 min-h-[170px] rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-slate-100 placeholder:text-slate-500 shadow-sm transition-colors focus-visible:outline-none focus-visible:border-brand-light/60 focus-visible:ring-1 focus-visible:ring-brand-light resize-none"
-                />
-              </div>
-            </div>
-
-            {/* === 右側欄位 === */}
-            <div className="flex flex-col h-full space-y-3">
-              <VersionLoaderFields
-                isOpen={isOpen}
-                loaders={LOADERS}
-                manifest={manifest}
-                isLoadingVersions={isLoadingVersions}
-                version={selectedVersion}
-                onVersionChange={setSelectedVersion}
-                loader={selectedLoader}
-                onLoaderChange={setSelectedLoader}
-                loaderVersion={loaderVersion}
-                onLoaderVersionChange={setLoaderVersion}
+                }
+                nameSlot={
+                  <div className="space-y-1">
+                    <label className="font-semibold text-xs text-slate-300">{t.create.nameLabel}</label>
+                    <Input
+                      value={instanceName}
+                      onChange={(e) => setInstanceName(e.target.value)}
+                      placeholder={t.create.namePlaceholder}
+                      className="bg-black/40 border-white/10 text-xs h-9"
+                      required
+                    />
+                  </div>
+                }
                 customSlot={
-                  <div className="flex-1 flex flex-col space-y-1.5 justify-center min-h-[200px]">
+                  <div className="flex-1 flex flex-col space-y-1.5 justify-center min-h-[150px]">
                     <label className="font-semibold text-xs text-slate-300">{t.create.customJarLabel}</label>
                     <div
                       onDragOver={handleJarDragOver}
@@ -388,6 +371,17 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                     </div>
                   </div>
                 }
+              />
+            </div>
+
+            {/* === 右側欄位：實例描述（填滿高度） === */}
+            <div className="flex flex-col h-full space-y-1 min-h-0">
+              <label className="font-semibold text-xs text-slate-300">{t.create.descLabel}</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t.create.descPlaceholder}
+                className="w-full flex-1 min-h-0 rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-slate-100 placeholder:text-slate-500 shadow-sm transition-colors focus-visible:outline-none focus-visible:border-brand-light/60 focus-visible:ring-1 focus-visible:ring-brand-light resize-none"
               />
             </div>
           </div>

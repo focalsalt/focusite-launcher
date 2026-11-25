@@ -1,6 +1,6 @@
 import { clearCachedFiles } from "@/lib/instanceFilesCache";
 import React, { useState, useMemo } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Box,
   AlertTriangle,
@@ -13,7 +13,6 @@ import {
   Copy,
   Trash2,
   ChevronDown,
-  ChevronUp,
   Folder,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +28,7 @@ import { instanceService } from "@/services/instanceService";
 import { useI18n } from "@/i18n";
 import { toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
+import { useLastValue } from "@/lib/useExitMount";
 
 interface InstancesViewProps {
   instances: MinecraftInstance[];
@@ -110,6 +110,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<MinecraftInstance | null>(null);
+  const shownDeleteTarget = useLastValue(deleteTarget);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   const handleDuplicate = async (e: React.FormEvent) => {
@@ -221,13 +222,26 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                       </Badge>
                     </div>
 
-                    <div className="text-white/40">
-                      {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-                    </div>
+                    <motion.div
+                      className="text-white/40"
+                      animate={{ rotate: isCollapsed ? 0 : 180 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </motion.div>
                   </div>
 
+                  <AnimatePresence initial={false}>
                   {!isCollapsed && (
-                    // At least 3 per row; wider windows fit more (each card is at least 380px unless that would drop below 3 columns).
+                    <motion.div
+                      key="group-body"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.25, ease: "easeInOut" }}
+                      className="overflow-hidden -mx-1 px-1 -my-1 py-1"
+                    >
+                    {/* At least 3 per row; wider windows fit more (each card is at least 380px unless that would drop below 3 columns). */}
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(min(380px,calc((100%-2.5rem)/3)),1fr))] gap-5">
                       {groupItems.map((inst) => (
             <Card
@@ -280,53 +294,6 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={() => instanceService.openInstanceDirectory(inst.id, "root")}
-                          className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-                          title={t.instances.openFolderAttr}
-                        >
-                          <FolderOpen className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">{t.instances.openDir}</TooltipContent>
-                    </Tooltip>
-
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDuplicateTarget(inst);
-                            setDuplicateName(t.inst.copySuffix(inst.name));
-                            setDuplicateError(null);
-                          }}
-                          className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-                          title={t.inst.duplicateTitle}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">{t.instances.duplicate}</TooltipContent>
-                    </Tooltip>
-
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(inst)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                          title={t.instances.deleteAttr}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">{t.instances.delete}</TooltipContent>
-                    </Tooltip>
-                  </div>
                 </div>
               </CardHeader>
 
@@ -377,12 +344,58 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                       <span>{t.instances.launchNow}</span>
                     </Button>
                   )}
+                  <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => instanceService.openInstanceDirectory(inst.id, "root")}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                          <FolderOpen className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">{t.instances.openDir}</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDuplicateTarget(inst);
+                            setDuplicateName(t.inst.copySuffix(inst.name));
+                            setDuplicateError(null);
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">{t.instances.duplicate}</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(inst)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">{t.instances.delete}</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
               </CardContent>
             </Card>
                       ))}
                     </div>
+                    </motion.div>
                   )}
+                  </AnimatePresence>
                 </div>
               );
             })}
@@ -504,9 +517,9 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
           </DialogHeader>
 
           <p className="text-xs text-slate-300 leading-relaxed">
-            {t.instances.deleteNotice(deleteTarget?.name ?? "")}
+            {t.instances.deleteNotice(shownDeleteTarget?.name ?? "")}
           </p>
-          {deleteTarget?.needsSetup && (
+          {shownDeleteTarget?.needsSetup && (
             <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs leading-relaxed text-amber-300">
               {t.instances.deleteForeignNotice}
             </p>

@@ -37,9 +37,12 @@ export const tabContentVariants = slideVariants("x", 16);
 export function PackItem({
   pack,
   icon: Icon,
+  action,
 }: {
   pack: PackFileInfo;
   icon: React.ComponentType<{ className?: string }>;
+  /** Optional trailing control (e.g. a delete button). */
+  action?: React.ReactNode;
 }) {
   const { t } = useI18n();
   const effectiveBytes = pack.sizeBytes ?? pack.size ?? 0;
@@ -64,8 +67,11 @@ export function PackItem({
           )}
         </div>
       </div>
-      <div className="text-[11px] text-slate-500 font-mono">
-        {pack.modified ? new Date(pack.modified * 1000).toLocaleDateString("zh-TW") : t.shared.localPackage}
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-slate-500 font-mono">
+          {pack.modified ? new Date(pack.modified * 1000).toLocaleDateString("zh-TW") : t.shared.localPackage}
+        </span>
+        {action}
       </div>
     </div>
   );

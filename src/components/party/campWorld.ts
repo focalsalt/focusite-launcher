@@ -18,13 +18,13 @@ import {
   TextureLoader,
   Vector3,
 } from "three";
-import campNbtUrl from "@/assets/party/camp.nbt?url";
-import dirtUrl from "@/assets/party/dirt.png";
-import dirtPathSideUrl from "@/assets/party/dirt_path/dirt_path_side.png";
-import dirtPathTopUrl from "@/assets/party/dirt_path/dirt_path_top.png";
-import grassSideUrl from "@/assets/party/grass_block/grass_block_side.png";
-import grassSideOverlayUrl from "@/assets/party/grass_block/grass_block_side_overlay.png";
-import grassTopUrl from "@/assets/party/grass_block/grass_block_top.png";
+import campNbtUrl from "@/assets/party/data/camp.nbt?url";
+import dirtUrl from "@/assets/party/block/dirt.png";
+import dirtPathSideUrl from "@/assets/party/block/dirt_path_side.png";
+import dirtPathTopUrl from "@/assets/party/block/dirt_path_top.png";
+import grassSideUrl from "@/assets/party/block/grass_block_side.png";
+import grassSideOverlayUrl from "@/assets/party/block/grass_block_side_overlay.png";
+import grassTopUrl from "@/assets/party/block/grass_block_top.png";
 import sandUrl from "@/assets/party/block/sand.png";
 import stoneUrl from "@/assets/party/block/stone.png";
 import waterUrl from "@/assets/party/block/water_still.png";
@@ -38,7 +38,7 @@ import cushionUrl from "@/assets/party/environment/white_cushion.png";
 import fireUrl from "@/assets/party/campfire/campfire_fire.png";
 import logUrl from "@/assets/party/campfire/campfire_log.png";
 import litLogUrl from "@/assets/party/campfire/campfire_log_lit.png";
-import campfireTemplate from "@/assets/party/campfire/template_campfire.json";
+import campfireTemplate from "@/assets/party/data/template_campfire.json";
 import { B, Voxels, generateTerrain } from "./campTerrain";
 import type { Rgb } from "./lightmap";
 

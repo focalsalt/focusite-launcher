@@ -1,4 +1,4 @@
-import dayTimeline from "@/assets/party/environment/day.json";
+import dayTimeline from "@/assets/party/data/day.json";
 import type { Rgb } from "./lightmap";
 
 /** Colours are 0..1 in Minecraft's own colour space; alpha last. */
@@ -106,8 +106,16 @@ const WEATHER = {
 const SKY_LIGHT_LEVEL = 15;
 const WEATHER_SKY_LIGHT_LEVEL = 4;
 
-/** `rain` and `thunder` are the 0..1 weather levels; `flash` brightens the sky during a lightning flash (0..1). */
-export const environmentAt = (tick: number, rain: number, thunder: number, flash = 0): Env => {
+/** How far full cloud cover pushes the sky: saturation, brightness and the sunrise glow (a light touch; rain does the heavy work). */
+const CLOUD_DESATURATE = 0.2;
+const CLOUD_DIM = 0.08;
+const CLOUD_SUNRISE_ALPHA = 0.35;
+
+/**
+ * `rain` and `thunder` are the 0..1 weather levels; `flash` brightens the sky during a lightning flash (0..1);
+ * `cloud` is the 0..1 cloud cover, which slightly greys and dims clear skies (it fades out as rain takes over).
+ */
+export const environmentAt = (tick: number, rain: number, thunder: number, flash = 0, cloud = 0): Env => {
   const t = ((tick % 24000) + 24000) % 24000;
   const env: Env = {
     skyColor: mul([...BIOME_SKY] as Rgb, sample("sky_color", t)),
@@ -136,6 +144,14 @@ export const environmentAt = (tick: number, rain: number, thunder: number, flash
     env.starBrightness = lerp(env.starBrightness, 0, w);
     env.sunriseColor = lerpN(env.sunriseColor, mul(env.sunriseColor, m.sunrise), w);
     skyLightLevel = lerp(skyLightLevel, lerp(skyLightLevel, WEATHER_SKY_LIGHT_LEVEL, m.light), w);
+  }
+  const overcast = Math.min(1, Math.max(0, cloud)) * (1 - rain);
+  if (overcast > 0) {
+    const dim = 1 - CLOUD_DIM * overcast;
+    env.skyColor = mul(blendToGray(env.skyColor, 1, CLOUD_DESATURATE * overcast), [dim, dim, dim]);
+    env.fogColor = mul(blendToGray(env.fogColor, 1, CLOUD_DESATURATE * overcast), [dim, dim, dim]);
+    env.skyLightFactor *= dim;
+    env.sunriseColor = [env.sunriseColor[0], env.sunriseColor[1], env.sunriseColor[2], env.sunriseColor[3] * (1 - CLOUD_SUNRISE_ALPHA * overcast)];
   }
   env.skyDarken = Math.trunc(15 - skyLightLevel);
   if (flash > 0) {

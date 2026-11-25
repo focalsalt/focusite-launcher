@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
+import { slideVariants } from "@/lib/motion";
+import type { SettingsSubNav } from "@/types/navigation";
 import {
   DownloadCloud,
   ShieldCheck,
@@ -16,6 +18,10 @@ import {
   Upload,
   RefreshCw,
   Sparkles,
+  MapPin,
+  Users,
+  UserRound,
+  Network,
 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { Switch } from "@/components/ui/switch";
@@ -33,10 +39,13 @@ import { toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { useAppVersion } from "@/lib/useAppVersion";
 
-export const SettingsView: React.FC = () => {
+const subTabVariants = slideVariants("x", 16);
+
+export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number }> = ({ subNav, direction = 1 }) => {
   const appVersion = useAppVersion();
   const { language, setLanguage, t } = useI18n();
   const [enableBmclapi, setEnableBmclapi] = useState<boolean>(false);
+  const [campLocation, setCampLocation] = useState<boolean>(false);
   const [curseforgeApiKey, setCurseforgeApiKey] = useState<string>("");
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -57,6 +66,7 @@ export const SettingsView: React.FC = () => {
       .getSettings()
       .then((cfg) => {
         setEnableBmclapi(cfg.enableBmclapiMirror);
+        setCampLocation(cfg.locationEnabled === true);
         setCurseforgeApiKey(cfg.curseforgeApiKey || "");
         setIsLoading(false);
       })
@@ -95,6 +105,17 @@ export const SettingsView: React.FC = () => {
       console.error("Failed to update mirror setting:", err);
       setEnableBmclapi(!checked);
       toast(t.errors.mirrorFailed(toUserMessage(err)), "error");
+    }
+  };
+
+  const handleToggleCampLocation = async (checked: boolean) => {
+    setCampLocation(checked);
+    try {
+      await settingsService.updateSettings({ locationEnabled: checked });
+    } catch (err) {
+      console.error("Failed to update camp location setting:", err);
+      setCampLocation(!checked);
+      toast(toUserMessage(err), "error");
     }
   };
 
@@ -179,9 +200,18 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <motion.div
-      className="w-full space-y-8 pb-10 select-none"
-    >
+    <AnimatePresence mode="popLayout" custom={direction} initial={false}>
+      <motion.div
+        key={subNav}
+        custom={direction}
+        variants={subTabVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        className="w-full space-y-8 pb-10 select-none"
+      >
+      {subNav === "general" ? (
+        <>
       {/* 1. Language */}
       <SettingsSection icon={<Languages className="h-4 w-4 text-brand-light" />} title={t.settings.language} description={t.settings.languageDesc}>
         <div className="flex items-center gap-3">
@@ -281,58 +311,6 @@ export const SettingsView: React.FC = () => {
 
       <Divider />
 
-      {/* 3. Download engine and mirror */}
-      <SettingsSection icon={<DownloadCloud className="h-4 w-4 text-brand-light" />} title={t.settings.downloadEngineTitle}>
-        <div className="flex items-start justify-between gap-4 rounded-xl border border-white/5 bg-black/20 p-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-100">{t.settings.mirrorTitle}</span>
-            </div>
-            <p className="max-w-3xl text-[11px] leading-relaxed text-slate-400">{t.settings.mirrorDesc}</p>
-            {enableBmclapi && (
-              <div className="flex items-center gap-1.5 pt-1 text-[11px] text-amber-400/90">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                <span>{t.settings.mirrorWarning}</span>
-              </div>
-            )}
-          </div>
-          <Switch checked={enableBmclapi} onCheckedChange={handleToggleBmclapi} disabled={isLoading} />
-        </div>
-      </SettingsSection>
-
-      <Divider />
-
-      {/* 4. External integrations */}
-      <SettingsSection icon={<Key className="h-4 w-4 text-brand-light" />} title={t.settings.integrations}>
-        <form onSubmit={handleSaveApiKey} className="space-y-2">
-          <label className="text-xs font-semibold text-slate-300">{t.settings.curseforgeKeyLabel}</label>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Input
-                type={showApiKey ? "text" : "password"}
-                value={curseforgeApiKey}
-                onChange={(e) => setCurseforgeApiKey(e.target.value)}
-                placeholder={t.settings.curseforgeKeyPlaceholder}
-                className="h-9 border-white/10 bg-black/30 pr-10 font-mono text-xs"
-              />
-              <button
-                type="button"
-                onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-200"
-              >
-                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            <Button type="submit" size="sm" className="h-9 bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-light">
-              {t.settings.saveKey}
-            </Button>
-          </div>
-          <p className="pt-1 text-[11px] leading-relaxed text-slate-400">{t.settings.keyDesc}</p>
-        </form>
-      </SettingsSection>
-
-      <Divider />
-
       {/* 6. About and updates */}
       <SettingsSection
         icon={<ShieldCheck className="h-4 w-4 text-emerald-400" />}
@@ -371,7 +349,118 @@ export const SettingsView: React.FC = () => {
           </div>
         )}
       </SettingsSection>
-    </motion.div>
+        </>
+      ) : (
+        <>
+      <p className="text-xs leading-relaxed text-slate-400">{t.privacy.intro}</p>
+
+      {/* Camp: real sunrise, sunset and weather from the user's coarse location */}
+      <SettingsSection icon={<MapPin className="h-4 w-4 text-brand-light" />} title={t.settings.campTitle}>
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-white/5 bg-black/20 p-4">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-slate-100">{t.settings.campLocation}</span>
+            <p className="max-w-3xl text-[11px] leading-relaxed text-slate-400">{t.settings.campLocationDesc}</p>
+          </div>
+          <Switch checked={campLocation} onCheckedChange={handleToggleCampLocation} disabled={isLoading} />
+        </div>
+        <PrivacyDetail access={t.privacy.campAccess} sent={t.privacy.campSent} risk={t.privacy.campRisk} />
+      </SettingsSection>
+
+      <Divider />
+
+      <SettingsSection icon={<Users className="h-4 w-4 text-brand-light" />} title={t.privacy.presenceTitle} description={t.privacy.presenceWhere}>
+        <PrivacyDetail access={t.privacy.presenceAccess} sent={t.privacy.presenceSent} risk={t.privacy.presenceRisk} />
+      </SettingsSection>
+
+      <Divider />
+
+      <SettingsSection icon={<UserRound className="h-4 w-4 text-brand-light" />} title={t.privacy.accountTitle}>
+        <PrivacyDetail access={t.privacy.accountAccess} sent={t.privacy.accountSent} risk={t.privacy.accountRisk} />
+      </SettingsSection>
+
+      <Divider />
+
+      <SettingsSection icon={<Network className="h-4 w-4 text-brand-light" />} title={t.privacy.p2pTitle}>
+        <PrivacyDetail access={t.privacy.p2pAccess} sent={t.privacy.p2pSent} risk={t.privacy.p2pRisk} />
+      </SettingsSection>
+
+      <Divider />
+
+      {/* Download engine and mirror */}
+      <SettingsSection icon={<DownloadCloud className="h-4 w-4 text-brand-light" />} title={t.settings.downloadEngineTitle}>
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-white/5 bg-black/20 p-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-100">{t.settings.mirrorTitle}</span>
+            </div>
+            <p className="max-w-3xl text-[11px] leading-relaxed text-slate-400">{t.settings.mirrorDesc}</p>
+            {enableBmclapi && (
+              <div className="flex items-center gap-1.5 pt-1 text-[11px] text-amber-400/90">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                <span>{t.settings.mirrorWarning}</span>
+              </div>
+            )}
+          </div>
+          <Switch checked={enableBmclapi} onCheckedChange={handleToggleBmclapi} disabled={isLoading} />
+        </div>
+        <PrivacyDetail access={t.privacy.mirrorAccess} sent={t.privacy.mirrorSent} risk={t.privacy.mirrorRisk} />
+      </SettingsSection>
+
+      <Divider />
+
+      {/* External integrations */}
+      <SettingsSection icon={<Key className="h-4 w-4 text-brand-light" />} title={t.settings.integrations}>
+        <form onSubmit={handleSaveApiKey} className="space-y-2">
+          <label className="text-xs font-semibold text-slate-300">{t.settings.curseforgeKeyLabel}</label>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Input
+                type={showApiKey ? "text" : "password"}
+                value={curseforgeApiKey}
+                onChange={(e) => setCurseforgeApiKey(e.target.value)}
+                placeholder={t.settings.curseforgeKeyPlaceholder}
+                className="h-9 border-white/10 bg-black/30 pr-10 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-200"
+              >
+                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <Button type="submit" size="sm" className="h-9 bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-light">
+              {t.settings.saveKey}
+            </Button>
+          </div>
+          <p className="pt-1 text-[11px] leading-relaxed text-slate-400">{t.settings.keyDesc}</p>
+        </form>
+        <PrivacyDetail access={t.privacy.keyAccess} sent={t.privacy.keySent} risk={t.privacy.keyRisk} />
+      </SettingsSection>
+        </>
+      )}
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+/** What a feature reads, where it sends it, and what could go wrong. */
+const PrivacyDetail: React.FC<{ access: string; sent: string; risk: string }> = ({ access, sent, risk }) => {
+  const { t } = useI18n();
+  const rows: [string, string, string][] = [
+    [t.privacy.accessLabel, access, "text-slate-300"],
+    [t.privacy.sentLabel, sent, "text-slate-300"],
+    [t.privacy.riskLabel, risk, "text-amber-300/90"],
+  ];
+  return (
+    <dl className="space-y-1.5 rounded-xl border border-white/5 bg-black/10 p-3 text-[11px] leading-relaxed">
+      {rows.map(([label, text, tone]) => (
+        <div key={label} className="grid grid-cols-[4.5rem_1fr] gap-2">
+          <dt className="font-semibold text-slate-500">{label}</dt>
+          <dd className={tone}>{text}</dd>
+        </div>
+      ))}
+    </dl>
   );
 };
 

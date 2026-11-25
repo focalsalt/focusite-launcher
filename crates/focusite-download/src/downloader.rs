@@ -55,6 +55,14 @@ impl Downloader {
         let client = reqwest::Client::builder()
             .pool_max_idle_per_host(32)
             .connect_timeout(Duration::from_secs(15))
+            // A redirect may never downgrade to plain HTTP.
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                if attempt.url().scheme() == "https" && attempt.previous().len() < 10 {
+                    attempt.follow()
+                } else {
+                    attempt.stop()
+                }
+            }))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {

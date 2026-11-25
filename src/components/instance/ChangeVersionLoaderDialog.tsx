@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Layers,
   ArrowRight,
   AlertTriangle,
   RefreshCw,
@@ -137,24 +136,10 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
   // A custom loader has no Minecraft version of its own; the backend stores "Custom" like at creation.
   const effectiveVersion = targetLoader === "Custom" ? "Custom" : targetVersion;
 
-  const handlePlanMigration = async () => {
-    setIsPlanning(true);
-    try {
-      const plan = await workshopService.planStackMigration(
-        instance.id,
-        effectiveVersion,
-        targetLoader
-      );
-      setMigrationPlan(plan);
-    } catch (err: any) {
-      setErrorMsg(t.errors.planFailed(toUserMessage(err)));
-    } finally {
-      setIsPlanning(false);
-    }
-  };
+  // Vanilla has no mods to port and Custom has no Modrinth metadata, so neither needs a compatibility check.
+  const skipCheck = targetLoader === "Vanilla" || targetLoader === "Custom";
 
-  const handleExecuteMigration = async () => {
-    if (!migrationPlan) return;
+  const runMigration = async (plan: MigrationPlan) => {
     setIsMigrating(true);
     try {
       await workshopService.executeStackMigration(
@@ -162,7 +147,7 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
         effectiveVersion,
         targetLoader,
         targetLoaderVersion.trim() || null,
-        migrationPlan
+        plan
       );
       onSuccess();
       onOpenChange(false);
@@ -173,8 +158,43 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
     }
   };
 
+  // Apply: first press checks installed mods (unless Vanilla/Custom); if anything changes, the plan is
+  // shown and a second press confirms. A plan that changes nothing applies straight away.
+  const handleApply = async () => {
+    if (migrationPlan) {
+      await runMigration(migrationPlan);
+      return;
+    }
+    if (skipCheck) {
+      await runMigration({
+        current_version: instance.version,
+        current_loader: instance.loader || "Vanilla",
+        target_version: effectiveVersion,
+        target_loader: targetLoader,
+        upgradable: [],
+        incompatible: [],
+        compatible_unchanged: [],
+      });
+      return;
+    }
+    setIsPlanning(true);
+    try {
+      const plan = await workshopService.planStackMigration(instance.id, effectiveVersion, targetLoader);
+      if (plan.upgradable.length === 0 && plan.incompatible.length === 0) {
+        setIsPlanning(false);
+        await runMigration(plan);
+      } else {
+        setMigrationPlan(plan);
+      }
+    } catch (err: any) {
+      setErrorMsg(t.errors.planFailed(toUserMessage(err)));
+    } finally {
+      setIsPlanning(false);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} preventBackdropClose={isMigrating}>
+    <Dialog open={open} onOpenChange={onOpenChange} preventBackdropClose={isMigrating || isPlanning}>
       <DialogContent className="max-w-2xl border-white/10 bg-slate-900/98 p-0 text-slate-100 shadow-2xl backdrop-blur-2xl overflow-hidden space-y-0">
         <DialogHeader className="h-16 shrink-0 justify-center border-b border-white/10 px-6">
           <div className="flex items-center gap-3">
@@ -225,29 +245,6 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
                 />
               }
             />
-          </div>
-
-          {/* 操作按鈕 */}
-          <div className="flex justify-end">
-            <Button
-              onClick={handlePlanMigration}
-              disabled={isPlanning || needsLoaderVersion}
-              variant="outline"
-              size="sm"
-              className="border-brand-light/40 text-brand-light hover:bg-brand/10"
-            >
-              {isPlanning ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                  {t.changeVer.analyzing}
-                </>
-              ) : (
-                <>
-                  <Layers className="w-3.5 h-3.5 mr-1.5" />
-                  {t.changeVer.analyze}
-                </>
-              )}
-            </Button>
           </div>
 
           {needsLoaderVersion && (
@@ -332,22 +329,24 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
             variant="outline"
             size="sm"
             onClick={() => onOpenChange(false)}
-            disabled={isMigrating}
+            disabled={isMigrating || isPlanning}
             className="border-white/10 bg-white/5 hover:bg-white/10"
           >
             {t.common.cancel}
           </Button>
           <Button
             size="sm"
-            onClick={handleExecuteMigration}
-            disabled={!migrationPlan || isMigrating || needsLoaderVersion}
+            onClick={handleApply}
+            disabled={isPlanning || isMigrating || needsLoaderVersion}
             className="bg-brand hover:bg-brand-light text-white"
           >
-            {isMigrating ? (
+            {isMigrating || isPlanning ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                {t.changeVer.migrating}
+                {isPlanning ? t.changeVer.analyzing : t.changeVer.migrating}
               </>
+            ) : migrationPlan ? (
+              t.changeVer.confirmApply
             ) : (
               t.changeVer.confirm
             )}

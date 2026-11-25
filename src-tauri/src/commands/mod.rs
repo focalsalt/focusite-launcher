@@ -31,11 +31,14 @@ pub fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path, skip_links: bo
 
 pub mod auth;
 pub mod friends;
+pub mod import_support;
 pub mod diagnostic;
 pub mod download;
 pub mod instance;
+pub mod instance_transfer;
 pub mod launch;
 pub mod launcher_import;
+pub mod logs;
 pub mod manifest;
 pub mod modpack;
 pub mod news;
@@ -43,6 +46,7 @@ pub mod p2p;
 pub mod provisioning;
 pub mod server;
 pub mod settings;
+pub mod share;
 pub mod skin;
 pub mod theme;
 pub mod workshop;

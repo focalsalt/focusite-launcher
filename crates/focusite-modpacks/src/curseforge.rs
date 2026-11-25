@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use crate::mrpack::{extract_overrides, open_zip, read_text};
+use crate::mrpack::{extract_overrides, open_zip, read_text, ExtractProgress};
 use crate::ModpackError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +23,9 @@ pub struct CurseForgeManifest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CurseForgeMinecraftSpec {
     pub version: String,
+    /// Memory the pack author recommends, in MiB.
+    #[serde(rename = "recommendedRam", default)]
+    pub recommended_ram: Option<u32>,
     #[serde(rename = "modLoaders")]
     pub mod_loaders: Vec<CurseForgeModLoaderEntry>,
 }
@@ -106,9 +109,19 @@ pub fn unpack_curseforge_overrides(
     manifest: &CurseForgeManifest,
     minecraft_dir: &Path,
 ) -> Result<Vec<PathBuf>, ModpackError> {
+    unpack_curseforge_overrides_with(archive_bytes, manifest, minecraft_dir, &mut |_, _| Ok(()))
+}
+
+/// Like [`unpack_curseforge_overrides`], reporting progress per extracted file.
+pub fn unpack_curseforge_overrides_with(
+    archive_bytes: &[u8],
+    manifest: &CurseForgeManifest,
+    minecraft_dir: &Path,
+    on_file: ExtractProgress,
+) -> Result<Vec<PathBuf>, ModpackError> {
     let prefix = manifest.overrides.as_deref().unwrap_or("overrides");
     let prefix = format!("{}/", prefix.trim_end_matches('/'));
-    extract_overrides(&mut open_zip(archive_bytes)?, &[prefix.as_str()], minecraft_dir)
+    extract_overrides(&mut open_zip(archive_bytes)?, &[prefix.as_str()], minecraft_dir, on_file)
 }
 
 /// Scans the instance's mods directory to determine which missing mods have been downloaded.

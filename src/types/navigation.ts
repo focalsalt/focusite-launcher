@@ -10,6 +10,8 @@ export type NewsSubNav = "official" | "changelog" | "announcements";
 
 export type HomeSubNav = "overview" | "p2p";
 
+export type SettingsSubNav = "general" | "privacy";
+
 export type InstanceDetailSubNav =
   | "screenshots"
   | "mods"
@@ -55,6 +57,8 @@ export interface MinecraftInstance {
   iconPath?: string;
   iconSource?: string;
   iconUpdatedAt?: number;
+  /** Absolute path of the instance's own background image. */
+  backgroundPath?: string;
   modCount: number;
   /** The folder has no config of ours yet; the user must pick version and loader first. */
   needsSetup?: boolean;
@@ -65,6 +69,9 @@ export interface MinecraftInstance {
   totalPlayTimeMs?: number;
   isFavorite?: boolean;
   showLogOnLaunch?: boolean;
+  /** Initial game window size; unset keeps the game default. */
+  windowWidth?: number;
+  windowHeight?: number;
   minMemoryMb?: number;
   maxMemoryMb?: number;
   javaPath?: string;

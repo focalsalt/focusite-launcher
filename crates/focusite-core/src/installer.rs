@@ -35,6 +35,29 @@ pub async fn fetch_quilt_profile(
     VersionManifest::fetch_remote(&url).await
 }
 
+fn check_version_part(part: &str) -> Result<(), CoreError> {
+    if part.is_empty() || !part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+')) || part.contains("..") {
+        return Err(CoreError::InvalidManifest(format!("Unsafe version string: {}", part)));
+    }
+    Ok(())
+}
+
+/// Maven URL of the official Forge / NeoForge installer jar. Unverified against every release line.
+pub fn forge_installer_url(kind: &str, mc: &str, loader_version: &str) -> Result<String, CoreError> {
+    check_version_part(mc)?;
+    check_version_part(loader_version)?;
+    if kind.eq_ignore_ascii_case("forge") {
+        let v = format!("{mc}-{loader_version}");
+        Ok(format!("https://maven.minecraftforge.net/net/minecraftforge/forge/{v}/forge-{v}-installer.jar"))
+    } else if mc == "1.20.1" {
+        // NeoForge for 1.20.1 still ships as the forge-style artifact.
+        let v = format!("{mc}-{loader_version}");
+        Ok(format!("https://maven.neoforged.net/releases/net/neoforged/forge/{v}/forge-{v}-installer.jar"))
+    } else {
+        Ok(format!("https://maven.neoforged.net/releases/net/neoforged/neoforge/{loader_version}/neoforge-{loader_version}-installer.jar"))
+    }
+}
+
 /// Installs Fabric or Quilt loader profile, merging with parent vanilla manifest.
 pub async fn install_meta_loader(
     loader_type: &str,
@@ -44,11 +67,8 @@ pub async fn install_meta_loader(
     versions_dir: &Path,
 ) -> Result<VersionManifest, CoreError> {
     // Both strings come from the instance config (a modpack can set them) and end up in a URL and a folder name.
-    for part in [game_version, loader_version] {
-        if part.is_empty() || !part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+')) || part.contains("..") {
-            return Err(CoreError::InvalidManifest(format!("Unsafe version string: {}", part)));
-        }
-    }
+    check_version_part(game_version)?;
+    check_version_part(loader_version)?;
 
     let profile = if loader_type.eq_ignore_ascii_case("quilt") {
         fetch_quilt_profile(game_version, loader_version).await?
@@ -88,6 +108,22 @@ mod tests {
         assert!(matches!(run("1.20.4", "../../x"), Err(CoreError::InvalidManifest(_))));
         assert!(matches!(run("1.20.4", "a/b"), Err(CoreError::InvalidManifest(_))));
         assert!(matches!(run("..", "0.15.7"), Err(CoreError::InvalidManifest(_))));
+    }
+
+    #[test]
+    fn forge_installer_urls() {
+        assert_eq!(
+            forge_installer_url("forge", "1.20.1", "47.4.0").unwrap(),
+            "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.0/forge-1.20.1-47.4.0-installer.jar"
+        );
+        assert_eq!(
+            forge_installer_url("neoforge", "1.21.1", "21.1.172").unwrap(),
+            "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.172/neoforge-21.1.172-installer.jar"
+        );
+        assert!(forge_installer_url("neoforge", "1.20.1", "47.1.106").unwrap().contains("/net/neoforged/forge/1.20.1-47.1.106/"));
+        assert!(forge_installer_url("forge", "1.20.1", "../x").is_err());
+        assert!(forge_installer_url("forge", "a/b", "47.4.0").is_err());
+        assert!(forge_installer_url("neoforge", "1.21.1", "").is_err());
     }
 
     #[test]

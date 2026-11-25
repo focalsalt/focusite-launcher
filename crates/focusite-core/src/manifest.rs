@@ -839,6 +839,20 @@ mod tests {
     }
 
     #[test]
+    fn merge_parent_keeps_forge_module_path_args_after_parent_jvm_args() {
+        let parent: VersionManifest = serde_json::from_str(r#"{"id":"1.21.1","type":"release","mainClass":"m",
+            "arguments":{"game":[],"jvm":["-cp","${classpath}"]},"libraries":[]}"#).unwrap();
+        let child: VersionManifest = serde_json::from_str(r#"{"id":"neoforge-21.1.172","inheritsFrom":"1.21.1","type":"release",
+            "mainClass":"cpw.mods.bootstraplauncher.BootstrapLauncher",
+            "arguments":{"game":[],"jvm":["-DlibraryDirectory=${library_directory}","-p","${library_directory}/a.jar${classpath_separator}${library_directory}/b.jar"]},
+            "libraries":[]}"#).unwrap();
+        let merged = child.merge_parent(&parent);
+        let jvm = &merged.arguments.unwrap().jvm;
+        assert_eq!(jvm.len(), 5);
+        assert!(matches!(&jvm[3], ArgumentEntry::Simple(s) if s == "-p"));
+    }
+
+    #[test]
     fn test_version_manifest_merge_parent() {
         let parent_json = r#"{
             "id": "1.20.1",

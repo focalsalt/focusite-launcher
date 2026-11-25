@@ -9,6 +9,7 @@ import {
 } from "@/lib/tauriWindow";
 import { useAppVersion } from "@/lib/useAppVersion";
 import { useI18n } from "@/i18n";
+import { Tip } from "@/components/ui/tooltip";
 
 interface WindowBarProps {
   onClose?: () => void;
@@ -96,49 +97,55 @@ export const WindowBar: React.FC<WindowBarProps> = ({
         onMouseDown={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            minimizeWindow();
-          }}
-          title={t.windowBar.minimize}
-          className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-white/10 hover:text-slate-100 transition-colors"
-        >
-          <Minus className="h-3.5 w-3.5" />
-        </button>
+        <Tip label={t.windowBar.minimize}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              minimizeWindow();
+            }}
+            aria-label={t.windowBar.minimize}
+            className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-white/10 hover:text-slate-100 transition-colors"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+        </Tip>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleToggleMaximize();
-          }}
-          title={maximized ? t.windowBar.restore : t.windowBar.maximize}
-          className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-white/10 hover:text-slate-100 transition-colors"
-        >
-          {maximized ? (
-            <Copy className="h-3 w-3 rotate-180" />
-          ) : (
-            <Square className="h-3 w-3" />
-          )}
-        </button>
+        <Tip label={maximized ? t.windowBar.restore : t.windowBar.maximize}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleToggleMaximize();
+            }}
+            aria-label={maximized ? t.windowBar.restore : t.windowBar.maximize}
+            className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-white/10 hover:text-slate-100 transition-colors"
+          >
+            {maximized ? (
+              <Copy className="h-3 w-3 rotate-180" />
+            ) : (
+              <Square className="h-3 w-3" />
+            )}
+          </button>
+        </Tip>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onClose) {
-              onClose();
-            } else {
-              closeWindow();
-            }
-          }}
-          title={t.windowBar.close}
-          className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-rose-600 hover:text-white transition-colors"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+        <Tip label={t.windowBar.close}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onClose) {
+                onClose();
+              } else {
+                closeWindow();
+              }
+            }}
+            aria-label={t.windowBar.close}
+            className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-rose-600 hover:text-white transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </Tip>
       </div>
     </header>
   );

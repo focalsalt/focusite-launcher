@@ -8,13 +8,27 @@ preview_urls = false
 routes = [{ pattern = "focusite-p2p.focalsalt.net", custom_domain = true }]
 
 [[durable_objects.bindings]]
-name = "GROUP"
-class_name = "GroupRoom"
+name = "PARTY"
+class_name = "PartyRoom"
+
+[[durable_objects.bindings]]
+name = "LAUNCHER"
+class_name = "LauncherPresence"
 
 # SQLite-backed Durable Objects are available on the free plan.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GroupRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LauncherPresence"]
+
+# Parties replace the old friend groups; their rooms (and everything stored in them) are dropped.
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["PartyRoom"]
+deleted_classes = ["GroupRoom"]
 
 # Per-IP limits applied inside the Worker (dashboard rate limiting rules are not on the free plan).
 [[ratelimits]]
@@ -26,3 +40,20 @@ simple = { limit = 60, period = 60 }
 name = "CREATE_LIMIT"
 namespace_id = "1002"
 simple = { limit = 3, period = 60 }
+
+[[ratelimits]]
+name = "LAUNCHER_LIMIT"
+namespace_id = "1003"
+simple = { limit = 30, period = 60 }
+
+[[ratelimits]]
+name = "JOIN_LIMIT"
+namespace_id = "1004"
+simple = { limit = 10, period = 60 }
+
+# Login verification (optional). Mojang refuses Cloudflare's addresses, so the Worker asks server/mojang-proxy instead.
+# While VERIFY_URL is unset, logins are not verified (only the short re-login lock applies).
+# To turn it on: run server/mojang-proxy on a normal host, uncomment the next two lines and fill in its origin,
+# then store the proxy's key with `wrangler secret put VERIFY_KEY`, and deploy.
+# [vars]
+# VERIFY_URL = "https://REPLACE-WITH-PROXY-HOST"

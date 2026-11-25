@@ -8,6 +8,7 @@ import type { MinecraftInstance } from "@/types/navigation";
 import type { ScreenshotFileInfo } from "@/services/instanceService";
 import { FramelessEmptyState, tabContentVariants } from "./shared";
 import { useI18n } from "@/i18n";
+import { Tip } from "@/components/ui/tooltip";
 
 /** Shows a pulsing placeholder until the image has loaded, then fades it in. Only mounted for nearby cards. */
 const ShotImage: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
@@ -99,22 +100,26 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
                   </div>
                 ) : (
                   <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentScreenshotIdx((cur) => (cur > 0 ? cur - 1 : screenshots.length - 1))}
-                      className="absolute left-2 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white shadow-2xl backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
-                      title={t.shots.prev}
-                    >
-                      <ChevronLeft className="h-5 w-5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentScreenshotIdx((cur) => (cur < screenshots.length - 1 ? cur + 1 : 0))}
-                      className="absolute right-2 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white shadow-2xl backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
-                      title={t.shots.next}
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </button>
+                    <Tip label={t.shots.prev} className="absolute left-2 top-1/2 z-30 -translate-y-1/2">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentScreenshotIdx((cur) => (cur > 0 ? cur - 1 : screenshots.length - 1))}
+                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white shadow-2xl backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
+                        aria-label={t.shots.prev}
+                      >
+                        <ChevronLeft className="h-5 w-5" />
+                      </button>
+                    </Tip>
+                    <Tip label={t.shots.next} className="absolute right-2 top-1/2 z-30 -translate-y-1/2">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentScreenshotIdx((cur) => (cur < screenshots.length - 1 ? cur + 1 : 0))}
+                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white shadow-2xl backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
+                        aria-label={t.shots.next}
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </button>
+                    </Tip>
 
                     {/* Shows n-1, n, n+1 (wrapping around); farther cards wait invisibly so they glide in */}
                     <div

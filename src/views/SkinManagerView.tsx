@@ -23,6 +23,7 @@ import {
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
+  Tip,
 } from "@/components/ui/tooltip";
 import { UserAccount, UserCape } from "@/types/navigation";
 import { Skin3DViewer } from "@/components/skin/Skin3DViewer";
@@ -845,19 +846,20 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
               </div>
 
               {activeTab === "capes" && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleRefreshCapes}
-                  disabled={isRefreshingCapes}
-                  className="h-8 px-2.5 text-xs text-slate-400 hover:text-white border border-white/10 hover:bg-white/5 rounded-lg mb-1"
-                  title={t.skin.refreshCapesAttr}
-                >
-                  <RefreshCw
-                    className={`h-3.5 w-3.5 mr-1.5 ${isRefreshingCapes ? "animate-spin text-brand-light" : ""}`}
-                  />
-                  <span>{isRefreshingCapes ? t.skin.syncing : t.skin.refresh}</span>
-                </Button>
+                <Tip label={t.skin.refreshCapesAttr}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRefreshCapes}
+                    disabled={isRefreshingCapes}
+                    className="h-8 px-2.5 text-xs text-slate-400 hover:text-white border border-white/10 hover:bg-white/5 rounded-lg mb-1"
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 mr-1.5 ${isRefreshingCapes ? "animate-spin text-brand-light" : ""}`}
+                    />
+                    <span>{isRefreshingCapes ? t.skin.syncing : t.skin.refresh}</span>
+                  </Button>
+                </Tip>
               )}
             </div>
 
@@ -964,14 +966,16 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                     </p>
                                   </div>
 
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleDeleteSkin(skin.filename, e)}
-                                    className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors self-start"
-                                    title={t.skin.deleteFromLocker}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </button>
+                                  <Tip label={t.skin.deleteFromLocker} className="self-start">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleDeleteSkin(skin.filename, e)}
+                                      className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors self-start"
+                                      aria-label={t.skin.deleteFromLocker}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </Tip>
                                 </div>
 
                                 <div className="flex items-center justify-between text-[10px] pt-2 border-t border-white/5">

@@ -18,6 +18,7 @@ use focusite_download::mirror::{MirrorManager, MirrorProvider};
 use focusite_download::Downloader;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
+use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
 use super::instance::InstanceDiskConfig;
@@ -34,14 +35,98 @@ pub fn is_instance_provisioning(instance_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Profile directory id written by `install_meta_loader` for Fabric/Quilt instances.
+/// Profile directory id of a loader instance: written by `install_meta_loader` (Fabric/Quilt) or by the
+/// official installer (Forge/NeoForge; id format unverified against every release line).
 pub fn loader_profile_id(cfg: &InstanceDiskConfig) -> Option<String> {
     let ver = cfg.loader_version.as_ref()?;
-    let l = cfg.loader.to_lowercase();
-    if l == "fabric" || l == "quilt" {
-        Some(format!("{}-{}-{}", cfg.version, l, ver))
-    } else {
-        None
+    match cfg.loader.to_lowercase().as_str() {
+        l @ ("fabric" | "quilt" | "forge") => Some(format!("{}-{}-{}", cfg.version, l, ver)),
+        // NeoForge for 1.20.1 is a Forge fork and installs a forge-style profile.
+        "neoforge" if cfg.version == "1.20.1" => Some(format!("{}-forge-{}", cfg.version, ver)),
+        "neoforge" => Some(format!("neoforge-{}", ver)),
+        _ => None,
+    }
+}
+
+fn is_forge_family(cfg: &InstanceDiskConfig) -> bool {
+    cfg.loader_version.is_some() && matches!(cfg.loader.to_lowercase().as_str(), "forge" | "neoforge")
+}
+
+/// Runs the official Forge/NeoForge installer headlessly so it writes `versions/<id>/<id>.json` and its libraries.
+async fn run_forge_installer(
+    app: &AppHandle,
+    instance_id: &str,
+    cfg: &InstanceDiskConfig,
+    app_data: &Path,
+    java: &Path,
+    downloader: &Downloader,
+    profile_id: &str,
+) -> Result<(), String> {
+    let ldr_ver = cfg.loader_version.as_deref().unwrap_or_default();
+    let url = focusite_core::installer::forge_installer_url(&cfg.loader, &cfg.version, ldr_ver)
+        .map_err(|e| e.to_string())?;
+    let installer = app_data.join("installers").join(format!("{}-installer.jar", profile_id));
+    emit_progress(app, instance_id, "loader", &format!("正在下載 {} 安裝程式...", cfg.loader), 0, 0, 0);
+    downloader
+        .download_file(&url, &installer, None, None, &format!("installer-{}", profile_id))
+        .await
+        .map_err(|e| format!("下載 {} 安裝程式失敗: {}", cfg.loader, e))?;
+
+    // The installer refuses to run without a launcher profile file in the target directory.
+    let profiles = app_data.join("launcher_profiles.json");
+    if !profiles.is_file() {
+        super::atomic_write(&profiles, br#"{"profiles":{},"version":3}"#)
+            .map_err(|e| format!("無法寫入 launcher_profiles.json: {}", e))?;
+    }
+
+    // java.exe (not javaw.exe) so the installer's output is captured.
+    let java = java.with_file_name(if cfg!(windows) { "java.exe" } else { "java" });
+    let flag = if cfg.loader.eq_ignore_ascii_case("neoforge") { "--install-client" } else { "--installClient" };
+    let args = vec![
+        "-jar".to_string(),
+        installer.to_string_lossy().to_string(),
+        flag.to_string(),
+        app_data.to_string_lossy().to_string(),
+    ];
+    emit_progress(app, instance_id, "loader", &format!("正在執行 {} 安裝程式...", cfg.loader), 0, 0, 0);
+    let mut child = focusite_core::process::ProcessLauncher::spawn_direct_with_env(&java, app_data, &args, None)
+        .map_err(|e| format!("無法啟動 {} 安裝程式: {}", cfg.loader, e))?;
+    let pid = child.id();
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    fn pipe<R: tokio::io::AsyncRead + Unpin + Send + 'static>(r: R, tx: tokio::sync::mpsc::UnboundedSender<String>) {
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(r).lines();
+            while let Ok(Some(l)) = lines.next_line().await {
+                let _ = tx.send(l);
+            }
+        });
+    }
+    if let Some(o) = child.stdout.take() { pipe(o, tx.clone()); }
+    if let Some(e) = child.stderr.take() { pipe(e, tx.clone()); }
+    drop(tx);
+
+    let mut tail: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+    let run = async {
+        while let Some(line) = rx.recv().await {
+            emit_progress(app, instance_id, "loader", &line, 0, 0, 0);
+            if tail.len() >= 20 {
+                tail.pop_front();
+            }
+            tail.push_back(line);
+        }
+        child.wait().await
+    };
+    match tokio::time::timeout(Duration::from_secs(15 * 60), run).await {
+        Ok(Ok(st)) if st.success() => Ok(()),
+        Ok(Ok(st)) => Err(format!("{} 安裝程式失敗 ({})：{}", cfg.loader, st, tail.into_iter().collect::<Vec<_>>().join(" | "))),
+        Ok(Err(e)) => Err(format!("等待 {} 安裝程式時出錯: {}", cfg.loader, e)),
+        Err(_) => {
+            if let Some(pid) = pid {
+                let _ = focusite_core::process::terminate_process_tree(pid).await;
+            }
+            Err(format!("{} 安裝程式逾時，已終止", cfg.loader))
+        }
     }
 }
 
@@ -225,7 +310,7 @@ pub async fn ensure_instance_provisioned(
     };
 
     // If instance specifies Fabric or Quilt loader, install loader profile & merge manifest
-    let manifest = if !instance_config.loader.eq_ignore_ascii_case("vanilla") {
+    let mut manifest = if !instance_config.loader.eq_ignore_ascii_case("vanilla") {
         if let Some(ref ldr_ver) = instance_config.loader_version {
             let loader_str = &instance_config.loader;
             if loader_str.eq_ignore_ascii_case("fabric") || loader_str.eq_ignore_ascii_case("quilt") {
@@ -314,6 +399,29 @@ pub async fn ensure_instance_provisioned(
         }
     }
 
+    // Forge/NeoForge: the official installer needs the vanilla jar, so it runs after step 2.
+    let mut early_java: Option<PathBuf> = None;
+    if is_forge_family(instance_config) {
+        if let Some(pid) = loader_profile_id(instance_config) {
+            let profile_path = versions_dir.join(&pid).join(format!("{}.json", pid));
+            if !profile_path.is_file() {
+                let vanilla_major = manifest
+                    .java_version
+                    .as_ref()
+                    .map(|j| j.major_version)
+                    .unwrap_or_else(|| get_recommended_java_version(version_id));
+                let java = ensure_java(app, instance_id, vanilla_major, instance_config.java_path.as_deref(), &downloader, provider, &runtime_dir).await?;
+                run_forge_installer(app, instance_id, instance_config, &app_data, &java, &downloader, &pid).await?;
+                early_java = Some(java);
+            }
+            let content = std::fs::read_to_string(&profile_path)
+                .map_err(|e| format!("安裝程式未產生版本設定檔 {}：{}", profile_path.display(), e))?;
+            let profile: VersionManifest = serde_json::from_str(&content)
+                .map_err(|e| format!("載入器版本設定檔格式損毀: {}", e))?;
+            manifest = if profile.inherits_from.is_some() { profile.merge_parent(&manifest) } else { profile };
+        }
+    }
+
     // ==========================================
     // 3. Libraries & Natives
     // ==========================================
@@ -344,14 +452,16 @@ pub async fn ensure_instance_provisioned(
                     .clone()
                     .or_else(|| maven_to_path(&lib.name))
                     .unwrap_or_else(|| format!("{}.jar", lib.name.replace(':', "/")));
-                let dest = libraries_dir.join(&rel_path);
+                // The manifest may come from a mirror, so its paths are checked before they are joined.
+                let dest = super::modpack::safe_rel_target(&libraries_dir, &rel_path)?;
 
-                if !dest.is_file() {
+                // An empty url marks a library the Forge/NeoForge installer generates itself.
+                if !dest.is_file() && !artifact.url.is_empty() {
                     let dl_url = MirrorManager::rewrite_url(&artifact.url, provider);
                     lib_tasks.push(DownloadTask {
                         url: dl_url,
                         destination: dest.to_string_lossy().to_string(),
-                        expected_sha1: Some(artifact.sha1.clone()),
+                        expected_sha1: Some(artifact.sha1.clone()).filter(|h| !h.is_empty()),
                         expected_size: Some(artifact.size),
                     });
                 }
@@ -382,7 +492,7 @@ pub async fn ensure_instance_provisioned(
                         .path
                         .clone()
                         .unwrap_or_else(|| format!("natives/{}.jar", lib.name.replace(':', "/")));
-                    let dest = libraries_dir.join(&rel_path);
+                    let dest = super::modpack::safe_rel_target(&libraries_dir, &rel_path)?;
 
                     if !dest.is_file() {
                         let dl_url = MirrorManager::rewrite_url(&native_art.url, provider);
@@ -522,7 +632,33 @@ pub async fn ensure_instance_provisioned(
         .as_ref()
         .map(|j| j.major_version)
         .unwrap_or_else(|| get_recommended_java_version(version_id));
-    let resolved_java = match resolve_or_locate_java(required_major, instance_config.java_path.as_deref()) {
+    let resolved_java = match early_java {
+        Some(p) => p,
+        None => {
+            ensure_java(app, instance_id, required_major, instance_config.java_path.as_deref(), &downloader, provider, &runtime_dir)
+                .await?
+        }
+    };
+
+    emit_progress(app, instance_id, "done", "所有依賴資源已全數就緒！", 100, 100, 0);
+    info!("Instance {} provisioning succeeded. Java at {:?}", instance_id, resolved_java);
+
+    Ok(resolved_java)
+}
+
+/// Resolves a usable Java, downloading the official Mojang runtime when none is installed.
+async fn ensure_java(
+    app: &AppHandle,
+    instance_id: &str,
+    required_major: u32,
+    custom: Option<&str>,
+    downloader: &Downloader,
+    provider: MirrorProvider,
+    runtime_dir: &Path,
+) -> Result<PathBuf, String> {
+    let os_name = get_current_os();
+    let os_arch = get_current_arch();
+    let resolved_java = match resolve_or_locate_java(required_major, custom) {
         Ok(path) => path,
         Err(_) => {
             // Need to download official Mojang JRE
@@ -556,7 +692,7 @@ pub async fn ensure_instance_provisioned(
             let mut jre_tasks = Vec::new();
 
             for (rel_path, url, sha1, size) in jre_items {
-                let dest = comp_dir.join(&rel_path);
+                let dest = super::modpack::safe_rel_target(&comp_dir, &rel_path)?;
                 if !dest.is_file() {
                     let target_url = MirrorManager::rewrite_url(&url, provider);
                     jre_tasks.push(DownloadTask {
@@ -570,7 +706,7 @@ pub async fn ensure_instance_provisioned(
             }
 
             if !jre_tasks.is_empty() {
-                download_with_progress(&downloader, app, instance_id, "java", "正在下載 Mojang JRE", jre_tasks)
+                download_with_progress(downloader, app, instance_id, "java", "正在下載 Mojang JRE", jre_tasks)
                     .await
                     .map_err(|e| format!("下載 Mojang JRE 失敗: {}", e))?;
             }
@@ -579,9 +715,6 @@ pub async fn ensure_instance_provisioned(
                 .map_err(|e| format!("JRE 安裝完成但無法定位可執行檔: {}", e))?
         }
     };
-
-    emit_progress(app, instance_id, "done", "所有依賴資源已全數就緒！", 100, 100, 0);
-    info!("Instance {} provisioning succeeded. Java at {:?}", instance_id, resolved_java);
 
     Ok(resolved_java)
 }
@@ -615,6 +748,20 @@ fn extract_natives_excluding_meta_inf(jar_path: &Path, target_dir: &Path) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loader_profile_ids() {
+        use super::super::instance::new_disk_config;
+        let id = |mc: &str, l: &str, v: Option<&str>| {
+            loader_profile_id(&new_disk_config("i", "n", mc, l, v.map(String::from)))
+        };
+        assert_eq!(id("1.20.1", "Forge", Some("47.4.0")).as_deref(), Some("1.20.1-forge-47.4.0"));
+        assert_eq!(id("1.21.1", "NeoForge", Some("21.1.172")).as_deref(), Some("neoforge-21.1.172"));
+        assert_eq!(id("1.20.1", "NeoForge", Some("47.1.106")).as_deref(), Some("1.20.1-forge-47.1.106"));
+        assert_eq!(id("1.21.4", "Fabric", Some("0.16.9")).as_deref(), Some("1.21.4-fabric-0.16.9"));
+        assert_eq!(id("1.21.4", "Vanilla", None), None);
+        assert_eq!(id("1.21.4", "Forge", None), None);
+    }
 
     #[test]
     fn test_provisioning_guard_lifecycle() {

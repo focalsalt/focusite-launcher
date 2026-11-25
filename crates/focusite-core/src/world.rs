@@ -256,6 +256,85 @@ pub fn backup_world(instance_dir: &Path, folder_name: &str, output_zip: &Path) -
     Ok(())
 }
 
+/// One entry of a world's `datapacks` folder.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatapackEntry {
+    pub file_name: String,
+    pub is_dir: bool,
+    pub size_bytes: u64,
+}
+
+fn dir_size(dir: &Path) -> u64 {
+    fs::read_dir(dir)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| match e.metadata() {
+                    Ok(m) if m.is_dir() => dir_size(&e.path()),
+                    Ok(m) => m.len(),
+                    Err(_) => 0,
+                })
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
+/// The `datapacks` folder of a world (may not exist yet).
+pub fn world_datapacks_dir(instance_dir: &Path, folder_name: &str) -> Result<PathBuf, CoreError> {
+    Ok(resolve_world_dir(instance_dir, folder_name)?.join("datapacks"))
+}
+
+/// Lists datapacks of a world: `.zip` files and folders that contain a `pack.mcmeta`.
+pub fn list_world_datapacks(instance_dir: &Path, folder_name: &str) -> Result<Vec<DatapackEntry>, CoreError> {
+    let dir = world_datapacks_dir(instance_dir, folder_name)?;
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for entry in fs::read_dir(&dir)?.flatten() {
+        let path = entry.path();
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        if path.is_dir() {
+            if path.join("pack.mcmeta").is_file() {
+                out.push(DatapackEntry { file_name, is_dir: true, size_bytes: dir_size(&path) });
+            }
+        } else if file_name.to_lowercase().ends_with(".zip") {
+            let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            out.push(DatapackEntry { file_name, is_dir: false, size_bytes });
+        }
+    }
+    out.sort_by_key(|a| a.file_name.to_lowercase());
+    Ok(out)
+}
+
+/// Deletes one datapack (file or folder) from a world's `datapacks` folder.
+pub fn delete_world_datapack(instance_dir: &Path, folder_name: &str, pack_name: &str) -> Result<(), CoreError> {
+    let trimmed = pack_name.trim();
+    if trimmed.is_empty()
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains("..")
+        || trimmed.contains(':')
+    {
+        return Err(CoreError::InvalidManifest(format!("Invalid datapack name: '{}'", pack_name)));
+    }
+    let dir = world_datapacks_dir(instance_dir, folder_name)?;
+    let target = dir.join(trimmed);
+    if !target.exists() {
+        return Err(CoreError::NotFound(format!("Datapack {} not found", trimmed)));
+    }
+    let canon_dir = dir.canonicalize().map_err(CoreError::Io)?;
+    let canon_target = target.canonicalize().map_err(CoreError::Io)?;
+    if !canon_target.starts_with(&canon_dir) || canon_target == canon_dir {
+        return Err(CoreError::InvalidManifest("Path traversal detected outside of datapacks".into()));
+    }
+    if canon_target.is_dir() {
+        fs::remove_dir_all(canon_target)?;
+    } else {
+        fs::remove_file(canon_target)?;
+    }
+    Ok(())
+}
+
 fn validate_world_folder_name(folder_name: &str) -> Result<(), CoreError> {
     let trimmed = folder_name.trim();
     if trimmed.is_empty()
@@ -311,6 +390,28 @@ fn resolve_world_dir(instance_dir: &Path, folder_name: &str) -> Result<PathBuf, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_datapack_list_and_delete() {
+        let root = std::env::temp_dir().join(format!("dp_test_{}", std::process::id()));
+        let world = root.join("saves").join("w1");
+        let dp = world.join("datapacks");
+        fs::create_dir_all(dp.join("folder_pack")).unwrap();
+        fs::write(dp.join("folder_pack").join("pack.mcmeta"), b"{}").unwrap();
+        fs::create_dir_all(dp.join("not_a_pack")).unwrap();
+        fs::write(dp.join("a.zip"), b"zip").unwrap();
+        fs::write(dp.join("ignored.txt"), b"x").unwrap();
+
+        let list = list_world_datapacks(&root, "w1").unwrap();
+        let names: Vec<_> = list.iter().map(|e| e.file_name.as_str()).collect();
+        assert_eq!(names, vec!["a.zip", "folder_pack"]);
+
+        assert!(delete_world_datapack(&root, "w1", "../level.dat").is_err());
+        assert!(delete_world_datapack(&root, "w1", "a.zip").is_ok());
+        assert!(delete_world_datapack(&root, "w1", "folder_pack").is_ok());
+        assert_eq!(list_world_datapacks(&root, "w1").unwrap().len(), 0);
+        let _ = fs::remove_dir_all(root);
+    }
 
     #[test]
     fn test_world_folder_name_validation() {

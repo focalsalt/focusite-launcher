@@ -1,17 +1,35 @@
-//! Imports instances made by other launchers (Prism / MultiMC / PolyMC and PCL) by copying their game files.
+//! Imports instances made by other launchers (Prism / MultiMC / PolyMC and PCL) or by this one, by copying their
+//! game files and carrying over the settings that can be read from them.
 //!
 //! The source folder is only read: files are copied into a new instance and nothing is moved or deleted.
 
+use super::import_support::{ensure_free_space, JobSession};
 use super::instance::{
-    get_instances_dir, new_disk_config, unique_folder_name, write_instance_config,
+    get_instances_dir, new_disk_config, read_instance_config, unique_folder_name, write_instance_config,
+    InstanceDiskConfig, INSTANCE_CONFIG_FILE,
 };
-use super::modpack::ModpackImportResult;
+use super::instance_transfer::{describe_settings, overlay_settings, read_limited, store_background_bytes};
+use super::modpack::{ModpackImportResult, PackInspection};
 use focusite_modpacks::prism::PrismInstanceCfg;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+/// Settings and assets found next to the game files of a source instance.
+#[derive(Debug, Default)]
+struct Extras {
+    jvm_args: Option<Vec<String>>,
+    min_memory_mb: Option<u32>,
+    max_memory_mb: Option<u32>,
+    java_path: Option<String>,
+    window: Option<(u32, u32)>,
+    description: Option<String>,
+    icon: Option<PathBuf>,
+    background: Option<PathBuf>,
+}
 
 /// What was recognised in a source folder.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 struct Detected {
     name: String,
     version: String,
@@ -23,6 +41,9 @@ struct Detected {
     skip: Vec<String>,
     /// When set, only these top-level entries are copied (non-isolated PCL versions share one `.minecraft`).
     only: Option<Vec<&'static str>>,
+    extras: Extras,
+    /// The source is one of our own instance folders: all its settings carry over.
+    focusite: Option<InstanceDiskConfig>,
 }
 
 fn folder_name(dir: &Path) -> String {
@@ -30,13 +51,51 @@ fn folder_name(dir: &Path) -> String {
 }
 
 fn detect(dir: &Path) -> Result<Detected, String> {
+    if dir.join(INSTANCE_CONFIG_FILE).is_file() {
+        return detect_focusite(dir);
+    }
     if dir.join("mmc-pack.json").is_file() {
         return detect_prism(dir);
     }
     if dir.join(format!("{}.json", folder_name(dir))).is_file() {
         return detect_pcl(dir);
     }
-    Err("無法辨識此資料夾：請選擇 Prism Launcher 的實例資料夾（含 mmc-pack.json），或 PCL 的版本資料夾（.minecraft\\versions\\<版本名>）".into())
+    Err("無法辨識此資料夾：請選擇 Focusite / Prism Launcher 的實例資料夾，或 PCL 的版本資料夾（.minecraft\\versions\\<版本名>）".into())
+}
+
+fn detect_focusite(dir: &Path) -> Result<Detected, String> {
+    let cfg = read_instance_config(dir)?;
+    let game_dir = dir.join("minecraft");
+    if !game_dir.is_dir() {
+        return Err("找不到實例的 minecraft 資料夾".into());
+    }
+    let extras = Extras {
+        icon: Some(dir.join("icon.png")).filter(|p| p.is_file()),
+        background: cfg.background_source.as_deref().map(|f| dir.join(f)).filter(|p| p.is_file()),
+        ..Default::default()
+    };
+    Ok(Detected {
+        name: cfg.name.clone(),
+        version: cfg.version.clone(),
+        loader: cfg.loader.clone(),
+        loader_version: cfg.loader_version.clone(),
+        game_dir,
+        skip: vec!["logs".into(), "crash-reports".into()],
+        only: None,
+        extras,
+        focusite: Some(cfg),
+    })
+}
+
+/// Icon of a Prism instance: one inside the instance folder, or a custom one in Prism's shared `icons` folder.
+fn prism_icon(dir: &Path, icon_key: Option<&str>) -> Option<PathBuf> {
+    let own = [dir.join("icon.png"), dir.join(".minecraft").join("icon.png"), dir.join("minecraft").join("icon.png")];
+    if let Some(p) = own.into_iter().find(|p| p.is_file()) {
+        return Some(p);
+    }
+    let key = icon_key.filter(|k| !k.is_empty() && !k.contains(['/', '\\', ':']) && *k != "..")?;
+    let icons = dir.parent()?.parent()?.join("icons");
+    ["png", "jpg", "jpeg"].iter().map(|e| icons.join(format!("{key}.{e}"))).find(|p| p.is_file())
 }
 
 fn detect_prism(dir: &Path) -> Result<Detected, String> {
@@ -71,9 +130,21 @@ fn detect_prism(dir: &Path) -> Result<Detected, String> {
         .map(|d| dir.join(d))
         .find(|p| p.is_dir())
         .ok_or("找不到實例的 minecraft 資料夾")?;
-    let name = std::fs::read_to_string(dir.join("instance.cfg"))
-        .map(|c| PrismInstanceCfg::parse(&c).name)
-        .unwrap_or_else(|_| folder_name(dir));
+    let cfg = std::fs::read_to_string(dir.join("instance.cfg")).ok().map(|c| PrismInstanceCfg::parse(&c));
+    let name = cfg.as_ref().map(|c| c.name.clone()).unwrap_or_else(|| folder_name(dir));
+    let extras = cfg
+        .as_ref()
+        .map(|c| Extras {
+            jvm_args: c.jvm_args.as_deref().map(|a| a.split_whitespace().map(str::to_string).collect()),
+            min_memory_mb: c.min_memory_mb,
+            max_memory_mb: c.max_memory_mb,
+            java_path: c.java_path.clone(),
+            window: c.window_width.zip(c.window_height),
+            description: c.notes.clone().filter(|n| !n.trim().is_empty()),
+            icon: prism_icon(dir, c.icon_key.as_deref()),
+            background: None,
+        })
+        .unwrap_or_default();
 
     Ok(Detected {
         name,
@@ -83,6 +154,8 @@ fn detect_prism(dir: &Path) -> Result<Detected, String> {
         game_dir,
         skip: vec!["logs".into(), "crash-reports".into()],
         only: None,
+        extras,
+        focusite: None,
     })
 }
 
@@ -179,39 +252,217 @@ fn detect_pcl(dir: &Path) -> Result<Detected, String> {
         )
     };
 
-    Ok(Detected { name, version, loader, loader_version, game_dir, skip, only })
+    let extras = pcl_extras(dir);
+    Ok(Detected { name, version, loader, loader_version, game_dir, skip, only, extras, focusite: None })
 }
 
-fn copy_game_files(found: &Detected, dst: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(&found.game_dir)? {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        let wanted = match &found.only {
-            Some(only) => only.contains(&name.as_str()),
-            None => !found.skip.contains(&name),
-        };
-        if !wanted {
+/// PCL keeps per-version settings in `PCL\Setup.ini` (`Key:Value` lines) and a custom logo in `PCL\Logo.png`.
+// shortcut: key names follow PCL's own files as far as known (only the JVM arguments are read); extend when
+// more keys are verified against a real PCL install.
+fn pcl_extras(dir: &Path) -> Extras {
+    let pcl = dir.join("PCL");
+    let jvm_args = std::fs::read_to_string(pcl.join("Setup.ini")).ok().and_then(|text| {
+        text.lines().find_map(|l| {
+            let (k, v) = l.split_once(':').or_else(|| l.split_once('='))?;
+            (k.trim() == "VersionAdvanceJvm" && !v.trim().is_empty())
+                .then(|| v.split_whitespace().map(str::to_string).collect::<Vec<_>>())
+        })
+    });
+    Extras { jvm_args, icon: Some(pcl.join("Logo.png")).filter(|p| p.is_file()), ..Default::default() }
+}
+
+fn wanted(found: &Detected, name: &str) -> bool {
+    match &found.only {
+        Some(only) => only.contains(&name),
+        None => !found.skip.iter().any(|s| s == name),
+    }
+}
+
+/// Counts the files and bytes that would be copied (symbolic links are skipped, as when copying).
+fn scan_tree(path: &Path, files: &mut u64, bytes: &mut u64) {
+    let Ok(rd) = std::fs::read_dir(path) else { return };
+    for e in rd.flatten() {
+        match e.file_type() {
+            Ok(t) if t.is_symlink() => {}
+            Ok(t) if t.is_dir() => scan_tree(&e.path(), files, bytes),
+            Ok(_) => {
+                *files += 1;
+                *bytes += e.metadata().map(|m| m.len()).unwrap_or(0);
+            }
+            Err(_) => {}
+        }
+    }
+}
+
+fn measure(found: &Detected) -> Result<(u64, u64), String> {
+    let (mut files, mut bytes) = (0, 0);
+    let rd = std::fs::read_dir(&found.game_dir).map_err(|e| format!("無法讀取來源資料夾：{e}"))?;
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if !wanted(found, &name) {
             continue;
         }
-        let to = dst.join(&name);
-        let kind = entry.file_type()?;
+        match e.file_type() {
+            Ok(t) if t.is_symlink() => {}
+            Ok(t) if t.is_dir() => scan_tree(&e.path(), &mut files, &mut bytes),
+            Ok(_) => {
+                files += 1;
+                bytes += e.metadata().map(|m| m.len()).unwrap_or(0);
+            }
+            Err(_) => {}
+        }
+    }
+    Ok((files, bytes))
+}
+
+struct CopyProgress<'a> {
+    session: &'a JobSession,
+    total_files: u64,
+    total_bytes: u64,
+    done_files: u64,
+    done_bytes: u64,
+    started: Instant,
+    last_emit: Instant,
+}
+
+impl CopyProgress<'_> {
+    fn file_done(&mut self, name: &str, size: u64) {
+        self.done_files += 1;
+        self.done_bytes += size;
+        if self.last_emit.elapsed().as_millis() >= 100 || self.done_files == self.total_files {
+            let speed = (self.done_bytes as f64 / self.started.elapsed().as_secs_f64().max(0.001)) as u64;
+            self.session.emit_full("copy", name, self.done_bytes, self.total_bytes, speed, None);
+            self.last_emit = Instant::now();
+        }
+    }
+}
+
+fn copy_tree(src: &Path, dst: &Path, p: &mut CopyProgress) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+    for entry in std::fs::read_dir(src).map_err(|e| format!("複製實例檔案失敗：{e}"))? {
+        let entry = entry.map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+        p.session.check()?;
+        let to = dst.join(entry.file_name());
+        let kind = entry.file_type().map_err(|e| format!("複製實例檔案失敗：{e}"))?;
         if kind.is_symlink() {
             tracing::warn!("匯入時略過符號連結 {}", entry.path().display());
         } else if kind.is_dir() {
-            super::copy_dir_all(&entry.path(), &to, true)?;
+            copy_tree(&entry.path(), &to, p)?;
         } else {
-            std::fs::copy(entry.path(), to)?;
+            let size = std::fs::copy(entry.path(), &to).map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+            p.file_done(&entry.file_name().to_string_lossy(), size);
         }
     }
     Ok(())
 }
 
-fn import_blocking(source: &Path, custom_name: Option<String>) -> Result<ModpackImportResult, String> {
-    import_into(&get_instances_dir(), source, custom_name)
+fn copy_game_files(found: &Detected, dst: &Path, session: &JobSession, total: (u64, u64)) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+    let mut p = CopyProgress {
+        session,
+        total_files: total.0,
+        total_bytes: total.1,
+        done_files: 0,
+        done_bytes: 0,
+        started: Instant::now(),
+        last_emit: Instant::now(),
+    };
+    session.emit("copy", "", 0, total.1);
+    for entry in std::fs::read_dir(&found.game_dir).map_err(|e| format!("複製實例檔案失敗：{e}"))? {
+        let entry = entry.map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+        session.check()?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !wanted(found, &name) {
+            continue;
+        }
+        let to = dst.join(&name);
+        let kind = entry.file_type().map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+        if kind.is_symlink() {
+            tracing::warn!("匯入時略過符號連結 {}", entry.path().display());
+        } else if kind.is_dir() {
+            copy_tree(&entry.path(), &to, &mut p)?;
+        } else {
+            let size = std::fs::copy(entry.path(), to).map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+            p.file_done(&name, size);
+        }
+    }
+    Ok(())
 }
 
-fn import_into(base: &Path, source: &Path, custom_name: Option<String>) -> Result<ModpackImportResult, String> {
+/// Carries the source's settings over to `cfg` and returns what was taken.
+fn apply_settings(found: &Detected, cfg: &mut InstanceDiskConfig) -> Vec<String> {
+    let mut imported = vec!["overrides".to_string()];
+    if let Some(src) = &found.focusite {
+        overlay_settings(cfg, src);
+        cfg.is_favorite = false;
+        imported.extend(describe_settings(cfg));
+        return imported;
+    }
+    let x = &found.extras;
+    if let Some(args) = x.jvm_args.as_ref().filter(|a| !a.is_empty()) {
+        cfg.custom_jvm_args = Some(args.clone());
+        imported.push("jvm".into());
+    }
+    if x.min_memory_mb.is_some() || x.max_memory_mb.is_some() {
+        let max = x.max_memory_mb.unwrap_or(cfg.max_memory_mb).clamp(512, 65536);
+        cfg.max_memory_mb = max;
+        cfg.min_memory_mb = x.min_memory_mb.unwrap_or(cfg.min_memory_mb).clamp(256, max);
+        imported.push("memory".into());
+    }
+    // A Java from another launcher's folder is only kept when it still exists.
+    if let Some(java) = x.java_path.as_ref().filter(|p| Path::new(p).exists()) {
+        cfg.java_path = Some(java.clone());
+        imported.push("java".into());
+    }
+    if let Some((w, h)) = x.window.filter(|(w, h)| *w >= 200 && *h >= 200) {
+        cfg.window_width = Some(w);
+        cfg.window_height = Some(h);
+        imported.push("window".into());
+    }
+    if let Some(desc) = &x.description {
+        cfg.description = Some(desc.clone());
+        imported.push("description".into());
+    }
+    imported
+}
+
+/// Copies the source's icon and background into the new instance folder.
+fn copy_assets(found: &Detected, inst_dir: &Path, cfg: &mut InstanceDiskConfig) -> Vec<String> {
+    let mut imported = Vec::new();
+    if let Some(icon) = &found.extras.icon {
+        let saved = image::ImageReader::open(icon)
+            .ok()
+            .and_then(|r| r.with_guessed_format().ok())
+            .and_then(|r| r.decode().ok())
+            .map(|img| img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3))
+            .is_some_and(|img| img.save(inst_dir.join("icon.png")).is_ok());
+        if saved {
+            cfg.icon_source = Some("import".into());
+            cfg.icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
+            imported.push("icon".to_string());
+        }
+    }
+    if let Some(bg) = &found.extras.background {
+        let ext = bg.extension().and_then(|e| e.to_str()).unwrap_or_default();
+        if let Ok(name) = read_limited(bg, 20 * 1024 * 1024).and_then(|b| store_background_bytes(inst_dir, ext, &b)) {
+            cfg.background_source = Some(name);
+            imported.push("background".into());
+        }
+    }
+    imported
+}
+
+fn import_blocking(source: &Path, custom_name: Option<String>, session: &JobSession) -> Result<ModpackImportResult, String> {
+    import_into(&get_instances_dir(), source, custom_name, session)
+}
+
+fn import_into(
+    base: &Path,
+    source: &Path,
+    custom_name: Option<String>,
+    session: &JobSession,
+) -> Result<ModpackImportResult, String> {
+    session.emit("read", "", 0, 0);
     let found = detect(source)?;
     let name = custom_name
         .map(|n| n.trim().to_string())
@@ -224,17 +475,25 @@ fn import_into(base: &Path, source: &Path, custom_name: Option<String>) -> Resul
     if inst_dir.starts_with(&found.game_dir) {
         return Err("來源資料夾包含目標實例資料夾，請選擇其他來源".into());
     }
+    let total = measure(&found)?;
+    ensure_free_space(base, total.1 / 10 * 11)?;
+    session.check()?;
 
-    let result = copy_game_files(&found, &inst_dir.join("minecraft"))
-        .map_err(|e| format!("複製實例檔案失敗：{e}"))
-        .and_then(|_| {
-            let cfg = new_disk_config(&folder, &name, &found.version, &found.loader, found.loader_version.clone());
-            write_instance_config(&inst_dir, &cfg)
-        });
-    if let Err(e) = result {
-        let _ = std::fs::remove_dir_all(&inst_dir);
-        return Err(e);
-    }
+    let result = copy_game_files(&found, &inst_dir.join("minecraft"), session, total).and_then(|_| {
+        let mut cfg = new_disk_config(&folder, &name, &found.version, &found.loader, found.loader_version.clone());
+        let mut imported = apply_settings(&found, &mut cfg);
+        imported.extend(copy_assets(&found, &inst_dir, &mut cfg));
+        write_instance_config(&inst_dir, &cfg)?;
+        Ok(imported)
+    });
+    let imported = match result {
+        Ok(i) => i,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&inst_dir);
+            return Err(e);
+        }
+    };
+    session.emit("done", "", 1, 1);
 
     Ok(ModpackImportResult {
         instance_id: folder,
@@ -243,22 +502,60 @@ fn import_into(base: &Path, source: &Path, custom_name: Option<String>) -> Resul
         loader: found.loader,
         missing_mods: Vec::new(),
         is_completed: true,
+        imported,
     })
 }
 
-/// Copies a Prism / PCL instance folder into a new instance.
-pub async fn import_instance_dir(source: PathBuf, custom_name: Option<String>) -> Result<ModpackImportResult, String> {
-    super::blocking(move || import_blocking(&source, custom_name)).await
+/// Copies a Prism / PCL / Focusite instance folder into a new instance.
+pub async fn import_instance_dir(
+    session: &JobSession,
+    source: PathBuf,
+    custom_name: Option<String>,
+) -> Result<ModpackImportResult, String> {
+    let session = session.clone();
+    super::blocking(move || import_blocking(&source, custom_name, &session)).await
+}
+
+/// Describes a source instance folder without copying anything.
+pub fn inspect_dir(source: &Path, custom_name: Option<String>) -> Result<PackInspection, String> {
+    let found = detect(source)?;
+    let (file_count, size_bytes) = measure(&found)?;
+    let name = custom_name.unwrap_or_else(|| found.name.clone());
+    let mut probe = new_disk_config("", &name, &found.version, &found.loader, None);
+    let mut imported = apply_settings(&found, &mut probe);
+    if found.extras.icon.is_some() {
+        imported.push("icon".into());
+    }
+    if found.extras.background.is_some() {
+        imported.push("background".into());
+    }
+    Ok(PackInspection {
+        format: "folder".into(),
+        folder_name: unique_folder_name(&get_instances_dir(), &name)?,
+        name,
+        version: found.version,
+        loader: found.loader,
+        loader_version: found.loader_version,
+        file_count: file_count as usize,
+        size_bytes,
+        imported,
+        ..Default::default()
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::import_support::cancel_job;
 
     fn temp() -> PathBuf {
         let d = std::env::temp_dir().join(format!("fc_li_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    fn session() -> JobSession {
+        JobSession::new(None, None)
     }
 
     #[test]
@@ -309,6 +606,15 @@ mod tests {
     }
 
     #[test]
+    fn pcl_jvm_args_are_read_from_setup_ini() {
+        let root = temp();
+        std::fs::create_dir_all(root.join("PCL")).unwrap();
+        std::fs::write(root.join("PCL").join("Setup.ini"), "VersionAdvanceJvm:-Xss4m -Dx=y\nOther:1\n").unwrap();
+        assert_eq!(pcl_extras(&root).jvm_args, Some(vec!["-Xss4m".to_string(), "-Dx=y".to_string()]));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn import_copies_files_and_leaves_source_untouched() {
         let root = temp();
         let src = root.join("src-inst");
@@ -324,16 +630,99 @@ mod tests {
         .unwrap();
 
         let base = root.join("instances");
-        let res = import_into(&base, &src, None).unwrap();
+        let s = session();
+        let res = import_into(&base, &src, None, &s).unwrap();
         assert_eq!((res.instance_id.as_str(), res.version.as_str(), res.loader.as_str()), ("Imported", "1.20.1", "Vanilla"));
         let inst = base.join("Imported");
         assert!(inst.join("minecraft").join("mods").join("a.jar").is_file());
         assert!(!inst.join("minecraft").join("logs").exists(), "logs are skipped");
-        assert!(inst.join(super::super::instance::INSTANCE_CONFIG_FILE).is_file());
+        assert!(inst.join(INSTANCE_CONFIG_FILE).is_file());
         assert!(src.join(".minecraft").join("mods").join("a.jar").is_file(), "source is untouched");
 
         // A second import of the same name gets a new folder instead of overwriting.
-        assert_eq!(import_into(&base, &src, None).unwrap().instance_id, "Imported (2)");
+        assert_eq!(import_into(&base, &src, None, &s).unwrap().instance_id, "Imported (2)");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn prism_settings_and_icon_come_along() {
+        let root = temp();
+        let src = root.join("instances").join("Fancy");
+        std::fs::create_dir_all(src.join(".minecraft")).unwrap();
+        std::fs::write(
+            src.join("instance.cfg"),
+            "name=Fancy\nnotes=Hello\nOverrideJavaArgs=true\nJvmArgs=-Xss4m\nOverrideMemory=true\n\
+             MinMemAlloc=1024\nMaxMemAlloc=6144\nOverrideWindow=true\nMinecraftWinWidth=1280\nMinecraftWinHeight=720\n",
+        )
+        .unwrap();
+        std::fs::write(
+            src.join("mmc-pack.json"),
+            r#"{"components":[{"uid":"net.minecraft","version":"1.20.1"}]}"#,
+        )
+        .unwrap();
+        let mut png = Vec::new();
+        image::DynamicImage::new_rgba8(4, 4)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        std::fs::write(src.join("icon.png"), png).unwrap();
+
+        let base = root.join("out");
+        let res = import_into(&base, &src, None, &session()).unwrap();
+        for k in ["jvm", "memory", "window", "icon", "description"] {
+            assert!(res.imported.contains(&k.to_string()), "{k}");
+        }
+        let cfg = read_instance_config(&base.join("Fancy")).unwrap();
+        assert_eq!(cfg.custom_jvm_args, Some(vec!["-Xss4m".to_string()]));
+        assert_eq!((cfg.min_memory_mb, cfg.max_memory_mb), (1024, 6144));
+        assert_eq!((cfg.window_width, cfg.window_height), (Some(1280), Some(720)));
+        assert_eq!(cfg.description.as_deref(), Some("Hello"));
+        assert!(base.join("Fancy").join("icon.png").is_file());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn focusite_instance_folder_keeps_settings_icon_and_background() {
+        let root = temp();
+        let src = root.join("Src");
+        std::fs::create_dir_all(src.join("minecraft").join("mods")).unwrap();
+        std::fs::write(src.join("minecraft").join("mods").join("a.jar"), "x").unwrap();
+        let mut png = Vec::new();
+        image::DynamicImage::new_rgba8(4, 4)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        std::fs::write(src.join("icon.png"), &png).unwrap();
+        std::fs::write(src.join("background.png"), &png).unwrap();
+        let mut cfg = new_disk_config("Src", "Src", "1.21.4", "Vanilla", None);
+        cfg.max_memory_mb = 8192;
+        cfg.custom_jvm_args = Some(vec!["-Xss8m".into()]);
+        cfg.background_source = Some("background.png".into());
+        cfg.total_play_time_ms = 5000;
+        write_instance_config(&src, &cfg).unwrap();
+
+        let base = root.join("out");
+        let res = import_into(&base, &src, Some("Copy".into()), &session()).unwrap();
+        for k in ["jvm", "memory", "icon", "background"] {
+            assert!(res.imported.contains(&k.to_string()), "{k}");
+        }
+        let got = read_instance_config(&base.join("Copy")).unwrap();
+        assert_eq!((got.max_memory_mb, got.total_play_time_ms), (8192, 0));
+        assert_eq!(got.background_source.as_deref(), Some("background.png"));
+        assert!(base.join("Copy").join("background.png").is_file());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn cancelled_import_leaves_no_folder_behind() {
+        let root = temp();
+        let src = root.join("Cancel");
+        std::fs::create_dir_all(src.join(".minecraft").join("mods")).unwrap();
+        std::fs::write(src.join(".minecraft").join("mods").join("a.jar"), "x").unwrap();
+        std::fs::write(src.join("mmc-pack.json"), r#"{"components":[{"uid":"net.minecraft","version":"1.20.1"}]}"#).unwrap();
+        let base = root.join("out");
+        let s = JobSession::new(None, Some("li-cancel".into()));
+        cancel_job("li-cancel".into());
+        assert!(import_into(&base, &src, None, &s).is_err());
+        assert!(!base.join("Cancel").exists());
         let _ = std::fs::remove_dir_all(root);
     }
 

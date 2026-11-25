@@ -8,14 +8,17 @@ import { newsService, LauncherPatchNoteItem } from "@/services/newsService";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
 import { openExternal } from "@/lib/openExternal";
 import { useI18n } from "@/i18n";
+import { useLastValue } from "@/lib/useExitMount";
 
 interface PatchNoteDialogProps {
   patch: LauncherPatchNoteItem | null;
   onClose: () => void;
 }
 
-export const PatchNoteDialog: React.FC<PatchNoteDialogProps> = ({ patch, onClose }) => {
+export const PatchNoteDialog: React.FC<PatchNoteDialogProps> = ({ patch: patchProp, onClose }) => {
   const { t } = useI18n();
+  // Keep the last patch while the dialog animates out.
+  const patch = useLastValue(patchProp);
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +50,7 @@ export const PatchNoteDialog: React.FC<PatchNoteDialogProps> = ({ patch, onClose
   };
 
   return (
-    <Dialog open={!!patch} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={!!patchProp} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex h-[80vh] max-h-[85vh] max-w-2xl flex-col space-y-0 overflow-hidden border-white/10 bg-slate-900 p-0 text-white">
         {/* Always-visible close button, pinned to the top-right of the dialog */}
         <button

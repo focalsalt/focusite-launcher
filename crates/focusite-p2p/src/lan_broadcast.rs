@@ -41,7 +41,7 @@ pub struct LanBroadcaster {
 }
 
 /// IPv4 address of every usable local adapter with its directed broadcast address.
-fn local_adapters() -> Vec<(Ipv4Addr, Option<Ipv4Addr>)> {
+pub(crate) fn local_adapters() -> Vec<(Ipv4Addr, Option<Ipv4Addr>)> {
     if_addrs::get_if_addrs()
         .unwrap_or_default()
         .into_iter()

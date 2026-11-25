@@ -281,8 +281,8 @@ export const createParticles = async (u: McUniforms) => {
           p.zd *= 0.999;
           break;
         case "trail":
-          // gravity -0.1, friction 0.96, sprite from age (generic_7 down to generic_0).
-          p.sprite = GENERIC0 + 7 - Math.min(7, Math.floor((p.age * 7) / p.lifetime));
+          // gravity -0.1, friction 0.96. Vanilla steps through generic_7..0 once per tick, which pops between sizes (29 down to
+          // 1 visible pixels); the sprite stays generic_7 and the quad shrinks smoothly when drawn instead.
           p.yd += 0.04 * 0.1;
           p.xd *= 0.96;
           p.yd *= 0.96;
@@ -368,7 +368,11 @@ export const createParticles = async (u: McUniforms) => {
         let size = p.size;
         const age = p.age - 1 + partial;
         if (p.kind === "lava") size *= 1 - (age / p.lifetime) ** 2;
-        if (p.kind === "trail") size *= Math.min(1, (age / p.lifetime) * 32);
+        if (p.kind === "trail") {
+          // Ramp in, then shrink linearly to about the size of vanilla's last frame (about 0.2 of the first).
+          const life = Math.min(1, Math.max(0, age / p.lifetime));
+          size *= Math.min(1, life * 32) * (1 - 0.8 * life);
+        }
         const s = size * BLOCK;
         const roll = lerp(p.oRoll, p.roll);
         const c = Math.cos(roll);

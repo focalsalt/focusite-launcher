@@ -101,17 +101,21 @@ let lastPatchNotesFetchTime = 0;
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
 
+/** Decodes HTML entities (&amp;, &#39;, ...) to plain text without ever inserting markup into the DOM. */
+export function decodeHtmlEntities(input: string): string {
+  if (!input || !input.includes("&")) return input;
+  const doc = new DOMParser().parseFromString(input, "text/html");
+  return doc.documentElement.textContent ?? input;
+}
+
 function stripHtmlToSnippet(html?: string, maxLength = 120): string {
   if (!html) return "";
-  const text = html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+  const text = decodeHtmlEntities(
+    html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+  )
     .replace(/\s+/g, " ")
     .trim();
 
@@ -137,7 +141,16 @@ export const newsService = {
   async getNewsArchivePage(page: number): Promise<NewsArchivePage> {
     if (isTauri()) {
       const { invoke } = await import("@tauri-apps/api/core");
-      return await invoke<NewsArchivePage>("news_fetch_archive_page", { page });
+      const res = await invoke<NewsArchivePage>("news_fetch_archive_page", { page });
+      return {
+        ...res,
+        items: res.items.map((n) => ({
+          ...n,
+          title: decodeHtmlEntities(n.title),
+          category: decodeHtmlEntities(n.category),
+          text: decodeHtmlEntities(n.text),
+        })),
+      };
     }
     // Browser dev mode: only the launcher feed is reachable (CORS).
     const items = page === 1 ? await newsService.getNews() : [];
@@ -164,10 +177,10 @@ export const newsService = {
 
         return {
           id: entry.id || `${entry.date}-${entry.title}`,
-          title: entry.title || "Minecraft 新聞",
-          category: entry.category || "Minecraft",
+          title: decodeHtmlEntities(entry.title || "Minecraft 新聞"),
+          category: decodeHtmlEntities(entry.category || "Minecraft"),
           date: entry.date || new Date().toISOString().split("T")[0],
-          text: entry.text || "",
+          text: decodeHtmlEntities(entry.text || ""),
           imageUrl: rawImg,
           readMoreLink: entry.readMoreLink || "https://www.minecraft.net/zh-hant/article",
         };
@@ -212,7 +225,7 @@ export const newsService = {
 
         return {
           id: entry.id || Math.random().toString(36).substring(2),
-          title: entry.title || `Minecraft ${entry.version || ""}`,
+          title: decodeHtmlEntities(entry.title || `Minecraft ${entry.version || ""}`),
           type: entry.type === "release" ? "release" : "snapshot",
           version: entry.version || "",
           imageUrl: rawImg,

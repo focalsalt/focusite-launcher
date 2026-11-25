@@ -181,10 +181,12 @@ pub fn ensure_or_create_log_window(
         tauri::WebviewUrl::App(url_str.into()),
     )
     .title(format!("Focusite 即時控制台 — {}", instance_name))
-    .inner_size(860.0, 540.0)
-    .min_inner_size(600.0, 380.0)
+    .inner_size(1072.0, 603.0)
+    .min_inner_size(1072.0, 603.0)
     .decorations(false)
-    .resizable(true);
+    .resizable(true)
+    // Dark backdrop so the window is not white before the page has painted.
+    .background_color(tauri::window::Color(10, 15, 29, 255));
 
     // Must match the main window exactly, otherwise WebView2 fails with HRESULT 0x8007139F.
     #[cfg(windows)]
@@ -198,24 +200,6 @@ pub fn ensure_or_create_log_window(
     let _ = win.unminimize();
     let _ = win.set_focus();
     Ok(win)
-}
-
-/// Grants the asset protocol read access to one user-chosen image file.
-#[tauri::command]
-pub fn allow_asset_image(app_handle: AppHandle, path: String) -> Result<(), String> {
-    let p = std::path::Path::new(&path);
-    let ext_ok = p
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg" | "webp"))
-        .unwrap_or(false);
-    if !ext_ok || !p.is_file() {
-        return Err("僅允許既有的圖片檔案 (png/jpg/webp)".into());
-    }
-    app_handle
-        .asset_protocol_scope()
-        .allow_file(p)
-        .map_err(super::ctx("無法開啟控制台視窗"))
 }
 
 #[tauri::command]
@@ -466,6 +450,11 @@ pub async fn launch_instance(
         tweak_class: None,
         quick_play,
         custom_jvm_args: instance_config.custom_jvm_args.clone().unwrap_or_default(),
+        library_directory: libraries_dir.to_string_lossy().to_string(),
+        window_size: match (instance_config.window_width, instance_config.window_height) {
+            (Some(w), Some(h)) if w > 0 && h > 0 => Some((w, h)),
+            _ => None,
+        },
     };
 
     let min_memory = instance_config.min_memory_mb;

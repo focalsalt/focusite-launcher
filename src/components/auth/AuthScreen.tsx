@@ -17,6 +17,7 @@ import { UserAccount } from "@/types/navigation";
 import { useAppVersion } from "@/lib/useAppVersion";
 import { useI18n } from "@/i18n";
 import { useDeviceCodeLogin } from "./useDeviceCodeLogin";
+import { LoginSteps } from "./LoginSteps";
 
 interface AuthScreenProps {
   onLoginSuccess: (account: UserAccount) => void;
@@ -33,6 +34,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     errorCategory,
     isCopied,
     pollingStatus,
+    loginStep,
     start,
     reset,
     copyCode: handleCopyCode,
@@ -43,6 +45,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     setStage("device_code");
     void start();
   };
+
+  // The Xbox / Minecraft chain cannot be cancelled once it started.
+  const verifying = loginStep !== null && !errorMessage;
 
   const handleBackToWelcome = () => {
     reset();
@@ -124,15 +129,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                   <CardTitle className="text-base font-bold text-slate-100">
                     {t.auth.deviceCodeTitle}
                   </CardTitle>
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    onClick={handleBackToWelcome}
-                    className="h-7 px-2 gap-1 text-xs text-slate-400 hover:text-slate-200"
-                  >
-                    <ArrowLeft className="h-3 w-3" />
-                    <span>{t.auth.back}</span>
-                  </Button>
+                  {!verifying && (
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={handleBackToWelcome}
+                      className="h-7 px-2 gap-1 text-xs text-slate-400 hover:text-slate-200"
+                    >
+                      <ArrowLeft className="h-3 w-3" />
+                      <span>{t.auth.back}</span>
+                    </Button>
+                  )}
                 </div>
                 <CardDescription className="text-xs text-slate-400">
                   {t.auth.confirmIdentity}
@@ -175,6 +182,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                       </Button>
                     </div>
                   </div>
+                ) : verifying ? (
+                  <LoginSteps step={loginStep!} />
                 ) : (
                   <>
                     {isStarting && !deviceInfo && (

@@ -30,6 +30,10 @@ pub struct LaunchContext {
     pub tweak_class: Option<String>,
     pub quick_play: Option<QuickPlayTarget>,
     pub custom_jvm_args: Vec<String>,
+    /// Root of the shared libraries folder (`${library_directory}` in Forge/NeoForge profiles).
+    pub library_directory: String,
+    /// Initial game window size (width, height); `None` keeps the game default.
+    pub window_size: Option<(u32, u32)>,
 }
 
 impl Default for LaunchContext {
@@ -51,6 +55,8 @@ impl Default for LaunchContext {
             tweak_class: None,
             quick_play: None,
             custom_jvm_args: Vec::new(),
+            library_directory: "".into(),
+            window_size: None,
         }
     }
 }
@@ -71,6 +77,8 @@ impl LaunchContext {
         map.insert("${natives_directory}", self.natives_directory.as_str());
         map.insert("${launcher_name}", self.launcher_name.as_str());
         map.insert("${launcher_version}", self.launcher_version.as_str());
+        map.insert("${library_directory}", self.library_directory.as_str());
+        map.insert("${classpath_separator}", if cfg!(windows) { ";" } else { ":" });
         if let Some(ref tc) = self.tweak_class {
             map.insert("${tweak_class}", tc.as_str());
         }
@@ -97,6 +105,19 @@ pub fn build_classpath(libraries: &[PathBuf], client_jar: &Path) -> String {
         .collect();
     parts.push(client_jar.to_string_lossy().to_string());
     parts.join(separator)
+}
+
+/// Appends `--width/--height` when the instance defines a window size. The manifest's own
+/// `${resolution_*}` arguments sit behind a launcher-feature rule that is not evaluated here.
+fn push_window_size(args: &mut Vec<String>, context: &LaunchContext) {
+    if let Some((w, h)) = context.window_size {
+        if w > 0 && h > 0 {
+            args.push("--width".into());
+            args.push(w.to_string());
+            args.push("--height".into());
+            args.push(h.to_string());
+        }
+    }
 }
 
 /// Builds complete command-line arguments to launch Minecraft.
@@ -207,6 +228,8 @@ pub fn build_launch_arguments(
         }
     }
 
+    push_window_size(&mut args, context);
+
     // 5.5 Quick Play Direct Launch (Minecraft 1.20+)
     if let Some(ref qp) = context.quick_play {
         match qp {
@@ -277,6 +300,7 @@ pub fn build_legacy_pre16_forge_arguments(
     args.push(context.auth_player_name.clone());
     args.push("--version".into());
     args.push(context.version_name.clone());
+    push_window_size(&mut args, context);
 
     args
 }
@@ -284,6 +308,20 @@ pub fn build_legacy_pre16_forge_arguments(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_window_size_args() {
+        let mut args = Vec::new();
+        push_window_size(&mut args, &LaunchContext::default());
+        assert!(args.is_empty());
+        let ctx = LaunchContext { window_size: Some((1280, 720)), ..Default::default() };
+        push_window_size(&mut args, &ctx);
+        assert_eq!(args, vec!["--width", "1280", "--height", "720"]);
+        let zero = LaunchContext { window_size: Some((0, 720)), ..Default::default() };
+        let mut none = Vec::new();
+        push_window_size(&mut none, &zero);
+        assert!(none.is_empty());
+    }
 
     #[test]
     fn test_build_legacy_pre16_forge_arguments() {
@@ -333,6 +371,16 @@ mod tests {
         assert!(args.contains(&"net.minecraft.client.Minecraft".to_string()));
         assert!(args.contains(&"--gameDir".to_string()));
         assert!(args.contains(&"C:/focusite/instances/Retro/minecraft".to_string()));
+    }
+
+    #[test]
+    fn test_forge_library_placeholders() {
+        let ctx = LaunchContext { library_directory: "/libs".into(), ..Default::default() };
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        assert_eq!(
+            ctx.interpolate("-DlibraryDirectory=${library_directory} -p ${library_directory}/a.jar${classpath_separator}${library_directory}/b.jar"),
+            format!("-DlibraryDirectory=/libs -p /libs/a.jar{sep}/libs/b.jar")
+        );
     }
 
     #[test]

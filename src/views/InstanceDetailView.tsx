@@ -20,13 +20,15 @@ import {
   RefreshCw,
   Pencil,
   AlertTriangle,
+  Terminal,
+  PackageOpen,
 } from "lucide-react";
 import { ChangeVersionLoaderDialog } from "@/components/instance/ChangeVersionLoaderDialog";
+import { ExportInstanceDialog } from "@/components/instance/ExportInstanceDialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { toAssetSrc } from "@/lib/assetUrl";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { ScreenshotsTab } from "@/components/instance/detail/ScreenshotsTab";
@@ -46,6 +48,8 @@ import { toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
+import { Tip } from "@/components/ui/tooltip";
+import { presetIconPngBytes, presetIconUrl, type PresetIconId } from "@/lib/presetIcons";
 
 
 const PRESET_ICONS = [
@@ -161,7 +165,11 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
     if (!instance) return;
     setIsSettingIcon(true);
     try {
-      const updated = await instanceService.setInstancePresetIcon(instance.id, presetId);
+      const updated = await instanceService.setInstancePresetIcon(
+        instance.id,
+        presetId,
+        await presetIconPngBytes(presetId as PresetIconId)
+      );
       if (onInstanceUpdated) {
         onInstanceUpdated(updated);
       }
@@ -375,10 +383,14 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
   };
 
   // 可自訂背景圖狀態
-  const [bgImage, setBgImage] = useState<string>(DEFAULT_MC_BG);
+  // The background lives in the instance folder; `bgVersion` busts the webview cache when it is replaced.
+  const [bgVersion, setBgVersion] = useState<number>(0);
   const [bgLoadError, setBgLoadError] = useState<boolean>(false);
+  const bgImage = toAssetSrc(instance?.backgroundPath, bgVersion || undefined) ?? DEFAULT_MC_BG;
+  useEffect(() => setBgLoadError(false), [bgImage]);
 
   const handleSelectCustomBg = async () => {
+    if (!instance) return;
     try {
       const selected = await openFileDialog({
         multiple: false,
@@ -390,20 +402,29 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
         ],
       });
       if (selected && typeof selected === "string") {
-        await invoke("allow_asset_image", { path: selected });
-        setBgImage(convertFileSrc(selected));
-        setBgLoadError(false);
+        const updated = await instanceService.setInstanceBackground(instance.id, selected);
+        setBgVersion(Date.now());
+        onInstanceUpdated?.(updated);
       }
     } catch (err) {
       console.warn("選擇自訂背景失敗:", err);
+      toast(toUserMessage(err), "error");
     }
   };
 
-  const handleResetBg = (e: React.MouseEvent) => {
+  const handleResetBg = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setBgImage(DEFAULT_MC_BG);
-    setBgLoadError(false);
+    if (!instance) return;
+    try {
+      const updated = await instanceService.resetInstanceBackground(instance.id);
+      setBgVersion(Date.now());
+      onInstanceUpdated?.(updated);
+    } catch (err) {
+      toast(toUserMessage(err), "error");
+    }
   };
+
+  const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
 
   const navTabs = useMemo(() => {
     const list: { id: InstanceDetailSubNav; label: string; icon: React.ReactNode }[] = [];
@@ -486,7 +507,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
 
   // 1. 緊湊頂部 Hero 橫幅
   const heroSection = (
-    <div className="relative w-full h-44 shrink-0 overflow-hidden border-b border-white/10 bg-slate-950">
+    <div className="group/hero relative w-full h-44 shrink-0 overflow-hidden border-b border-white/10 bg-slate-950">
       {/* 背景大圖與漸變遮罩 */}
       {!bgLoadError ? (
         <img
@@ -504,43 +525,73 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
       <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/50 to-slate-950/70" />
       <div className="pointer-events-none absolute bottom-0 left-6 h-28 w-80 rounded-full bg-brand/25 blur-3xl" />
 
+      {/* 背景編輯：滑過橫幅時才顯示於左上角 */}
+      <div className="absolute left-4 top-3 z-20 flex items-center gap-2 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/hero:opacity-100">
+        <Tip label={t.inst.customBgAttr}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSelectCustomBg}
+            className="gap-1.5 text-xs h-8 rounded-lg border-white/15 bg-black/50 backdrop-blur-md hover:bg-white/10 text-slate-200"
+          >
+            <ImageIcon className="h-3.5 w-3.5 text-slate-300" />
+            <span>{t.inst.changeBg}</span>
+          </Button>
+        </Tip>
+        {!!instance?.backgroundPath && (
+          <Tip label={t.inst.resetBgAttr}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleResetBg}
+              className="text-xs h-8 px-2.5 rounded-lg border-white/15 bg-black/50 backdrop-blur-md hover:bg-white/10 text-slate-300"
+              aria-label={t.inst.resetBgAttr}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
+          </Tip>
+        )}
+      </div>
+
       {/* Hero 內部下緣內容：實例資訊與操作按鈕群 */}
       <div className="relative z-10 flex h-full w-full items-end justify-between px-6 pb-4">
         {/* 左側實例圖示、名稱、版本 */}
         <div className="flex items-center gap-4">
-          <div
-            onClick={() => setIsIconModalOpen(true)}
-            className="group relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-brand to-brand-dark text-white shadow-xl shadow-brand/30 border border-white/20 overflow-hidden cursor-pointer hover:border-brand-light/80 transition-all"
-            title={t.inst.changeIconAttr}
-          >
-            {instance.hasIcon && instance.iconPath ? (
-              <img
-                src={toAssetSrc(instance.iconPath, instance.iconUpdatedAt)}
-                alt={instance.name}
-                className="h-full w-full object-cover transition-transform group-hover:scale-105"
-              />
-            ) : (
-              <Package className="h-7 w-7 drop-shadow transition-transform group-hover:scale-105" />
-            )}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-              <Pencil className="h-4 w-4 text-white drop-shadow" />
+          <Tip label={t.inst.changeIconAttr}>
+            <div
+              onClick={() => setIsIconModalOpen(true)}
+              className="group relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-brand to-brand-dark text-white shadow-xl shadow-brand/30 border border-white/20 overflow-hidden cursor-pointer hover:border-brand-light/80 transition-all"
+            >
+              {instance.hasIcon && instance.iconPath ? (
+                <img
+                  src={toAssetSrc(instance.iconPath, instance.iconUpdatedAt)}
+                  alt={instance.name}
+                  className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                />
+              ) : (
+                <Package className="h-7 w-7 drop-shadow transition-transform group-hover:scale-105" />
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                <Pencil className="h-4 w-4 text-white drop-shadow" />
+              </div>
             </div>
-          </div>
+          </Tip>
 
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
+            <Tip label={t.inst.renameAttr}>
               <h1 className="text-xl font-black tracking-tight text-white drop-shadow-md">
-                {instance.name}
+                <button
+                  type="button"
+                  onClick={openRenameModal}
+                  aria-label={t.inst.renameAttr}
+                  className="-mx-1.5 rounded-md px-1.5 text-left transition-colors hover:bg-white/10"
+                >
+                  {instance.name}
+                </button>
               </h1>
-              <button
-                type="button"
-                onClick={openRenameModal}
-                className="rounded p-1 text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-                title={t.inst.renameAttr}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            </Tip>
             <div className="flex items-center gap-2">
               <p className="text-[11px] text-slate-400 drop-shadow">
                 Minecraft {instance.version} - {instance.loader}{instance.loaderVersion ? ` ${instance.loaderVersion}` : ""}
@@ -550,45 +601,48 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
                   </span>
                 )}
               </p>
-              <button
-                type="button"
-                onClick={() => setIsChangeVersionOpen(true)}
-                className="text-[10px] text-brand-light hover:text-brand-light/80 hover:underline flex items-center gap-1 font-medium bg-black/40 px-1.5 py-0.5 rounded border border-brand-light/30 transition-all"
-                title={t.inst.changeVersionAttr}
-              >
-                <RefreshCw className="w-2.5 h-2.5" />
-                {t.inst.changeVersionBtn}
-              </button>
+              <Tip label={t.inst.changeVersionAttr}>
+                <button
+                  type="button"
+                  onClick={() => setIsChangeVersionOpen(true)}
+                  className="text-[10px] text-brand-light hover:text-brand-light/80 hover:underline flex items-center gap-1 font-medium bg-black/40 px-1.5 py-0.5 rounded border border-brand-light/30 transition-all"
+                >
+                  <RefreshCw className="w-2.5 h-2.5" />
+                  {t.inst.changeVersionBtn}
+                </button>
+              </Tip>
             </div>
           </div>
         </div>
 
         {/* 右側按鈕群：更換背景、開啟遊戲資料夾、立即啟動遊戲 */}
         <div className="flex items-center gap-2.5">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSelectCustomBg}
-            className="gap-1.5 text-xs h-8 rounded-lg border-white/15 bg-black/40 backdrop-blur-md hover:bg-white/10 text-slate-200"
-            title={t.inst.customBgAttr}
-          >
-            <ImageIcon className="h-3.5 w-3.5 text-slate-300" />
-            <span>{t.inst.changeBg}</span>
-          </Button>
-
-          {bgImage !== DEFAULT_MC_BG && (
+          <Tip label={t.inst.exportAttr}>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={handleResetBg}
-              className="text-xs h-8 px-2.5 rounded-lg border-white/15 bg-black/40 backdrop-blur-md hover:bg-white/10 text-slate-300"
-              title={t.inst.resetBgAttr}
+              onClick={() => setIsExportOpen(true)}
+              disabled={isRunning || isLaunching}
+              className="gap-1.5 text-xs h-8 rounded-lg border-white/15 bg-black/40 backdrop-blur-md hover:bg-white/10 text-slate-200"
             >
-              <RotateCcw className="h-3.5 w-3.5" />
+              <PackageOpen className="h-3.5 w-3.5 text-slate-300" />
+              <span>{t.inst.export}</span>
             </Button>
-          )}
+          </Tip>
+
+          <Tip label={t.inst.openLogAttr}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => instanceService.openInstanceLogWindow(instance.id).catch((err) => toast(toUserMessage(err), "error"))}
+              className="gap-1.5 text-xs h-8 rounded-lg border-white/15 bg-black/40 backdrop-blur-md hover:bg-white/10 text-slate-200"
+            >
+              <Terminal className="h-3.5 w-3.5 text-slate-300" />
+              <span>{t.inst.openLog}</span>
+            </Button>
+          </Tip>
 
           <Button
             type="button"
@@ -842,17 +896,18 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
                 {t.inst.browseEllipsis}
               </Button>
               {instance.hasIcon && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={isSettingIcon}
-                  onClick={handleResetIcon}
-                  className="text-xs h-8 border-white/10 hover:border-rose-500/30 text-slate-400 hover:text-rose-400"
-                  title={t.inst.resetIconAttr}
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                </Button>
+                <Tip label={t.inst.resetIconAttr}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isSettingIcon}
+                    onClick={handleResetIcon}
+                    className="text-xs h-8 border-white/10 hover:border-rose-500/30 text-slate-400 hover:text-rose-400"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </Button>
+                </Tip>
               )}
             </div>
           </div>
@@ -869,9 +924,11 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
                   onClick={() => handleSelectPresetIcon(preset.id)}
                   className="flex flex-col items-center gap-1 p-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-brand-light/50 transition-all text-center group cursor-pointer"
                 >
-                  <div className="h-9 w-9 rounded-lg bg-gradient-to-tr from-brand to-brand-dark text-white flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
-                    <Package className="h-5 w-5 text-white/90" />
-                  </div>
+                  <img
+                    src={presetIconUrl(preset.id)}
+                    alt=""
+                    className="h-9 w-9 rounded-lg shadow-inner group-hover:scale-105 transition-transform [image-rendering:pixelated]"
+                  />
                   <span className="text-[10px] text-slate-300 group-hover:text-white font-medium truncate max-w-full">
                     {t.inst[preset.labelKey]}
                   </span>
@@ -971,6 +1028,12 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
               onInstanceUpdated(updated);
             }
           }}
+        />
+        <ExportInstanceDialog
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          instanceId={instance.id}
+          instanceName={instance.name}
         />
 
       </div>

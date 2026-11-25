@@ -18,7 +18,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { AccountDropdown } from "./AccountDropdown";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Tooltip, TooltipTrigger, TooltipContent, Tip } from "@/components/ui/tooltip";
 import { PlayerAvatar } from "@/components/ui/PlayerAvatar";
 import {
   MainView,
@@ -303,11 +303,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           exit={{ scale: 0, opacity: 0 }}
                           transition={{ type: "spring", stiffness: 500, damping: 30 }}
                           className="absolute -bottom-1 -right-1 z-10 flex h-4 w-4 items-center justify-center rounded-md border border-slate-900 bg-slate-800 shadow-md overflow-hidden ring-1 ring-brand-light"
-                          title={t.shell.runningAs(runningInfo.accountName || t.shell.player)}
                         >
-                          {runningInfo.accountName && (
-                            <PlayerAvatar username={runningInfo.accountName} size={16} className="rounded-none" />
-                          )}
+                          <Tip label={t.shell.runningAs(runningInfo.accountName || t.shell.player)} className="h-full w-full">
+                            <span className="flex h-full w-full items-center justify-center">
+                              {runningInfo.accountName && (
+                                <PlayerAvatar username={runningInfo.accountName} size={16} className="rounded-none" />
+                              )}
+                            </span>
+                          </Tip>
                         </motion.div>
                       )}
                     </AnimatePresence>

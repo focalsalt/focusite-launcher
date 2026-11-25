@@ -72,6 +72,10 @@ interface VersionLoaderFieldsProps {
   onLoaderVersionChange: (v: string) => void;
   /** Rendered instead of the version fields when the loader is "Custom". */
   customSlot?: React.ReactNode;
+  /** Optional leading icon picker; spans the height of the name + loader rows next to it. */
+  iconSlot?: React.ReactNode;
+  /** Optional name field rendered above the loader picker, beside `iconSlot`. */
+  nameSlot?: React.ReactNode;
 }
 
 /** Loader / Minecraft version / loader version pickers shared by the create and migrate dialogs. */
@@ -87,6 +91,8 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
   loaderVersion,
   onLoaderVersionChange,
   customSlot,
+  iconSlot,
+  nameSlot,
 }) => {
   const { t } = useI18n();
   const [showSnapshots, setShowSnapshots] = useState<boolean>(false);
@@ -150,8 +156,7 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
 
   const old = isVersionOlderThan125(version);
 
-  return (
-    <>
+  const loaderBlock = (
       <div className="space-y-1 shrink-0">
         <label className="font-semibold text-xs text-slate-300">{t.create.loaderLabel}</label>
         <Select value={loader} onValueChange={(v) => onLoaderChange(v as LoaderType)}>
@@ -168,6 +173,21 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
         </Select>
         {old && <p className="text-[11px] text-slate-500">{t.create.vanillaOnlyOld}</p>}
       </div>
+  );
+
+  return (
+    <>
+      {iconSlot || nameSlot ? (
+        <div className="flex shrink-0 items-stretch gap-3">
+          {iconSlot}
+          <div className="min-w-0 flex-1 space-y-3">
+            {nameSlot}
+            {loaderBlock}
+          </div>
+        </div>
+      ) : (
+        loaderBlock
+      )}
 
       {loader === "Custom" ? (
         customSlot

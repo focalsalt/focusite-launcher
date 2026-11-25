@@ -4,11 +4,13 @@
 //! Host side: DataChannel <-> `127.0.0.1:<game port>`. Guest side: `127.0.0.1:<local port>` <-> DataChannel.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
+use sha1::{Digest, Sha1};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Notify};
@@ -44,6 +46,9 @@ fn rtc_err(context: &str, e: impl std::fmt::Display) -> P2pError {
     P2pError::WebRtcError(format!("{context}: {e}"))
 }
 
+/// Longest wait for the next piece of a file transfer before it is given up.
+const FILE_STALL_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// What a registered connection hands back: its queue sender, queue receiver and cancel signal.
 type ConnParts = (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>, Arc<Notify>);
 
@@ -60,6 +65,11 @@ struct Shared {
     /// Host only: the local game port that new tunnel connections are forwarded to.
     target_port: Option<u16>,
     status: Mutex<String>,
+    /// Files this side serves to the peer: sha1 hex -> path. Nothing else is ever sent.
+    files: Mutex<HashMap<String, PathBuf>>,
+    /// Requester side: running downloads by transfer id.
+    transfers: Mutex<HashMap<u16, mpsc::Sender<DataChannelFrame>>>,
+    next_transfer: AtomicU16,
     latency_ms: AtomicU32,
     sent: AtomicU64,
     received: AtomicU64,
@@ -75,6 +85,9 @@ impl Shared {
             next_id: AtomicU16::new(1),
             target_port,
             status: Mutex::new("connecting".into()),
+            files: Mutex::new(HashMap::new()),
+            transfers: Mutex::new(HashMap::new()),
+            next_transfer: AtomicU16::new(1),
             latency_ms: AtomicU32::new(0),
             sent: AtomicU64::new(0),
             received: AtomicU64::new(0),
@@ -188,6 +201,81 @@ async fn run_conn(
     }
 }
 
+fn sha1_hex(digest: impl AsRef<[u8]>) -> String {
+    digest.as_ref().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Provider: streams a whitelisted file as FileData frames; an empty seq-0 frame means refused.
+async fn serve_file(shared: Arc<Shared>, id: u16, wanted: Vec<u8>) {
+    let path = String::from_utf8(wanted)
+        .ok()
+        .and_then(|sha| shared.files.lock().unwrap().get(&sha.to_ascii_lowercase()).cloned());
+    let opened = match path {
+        Some(p) => match tokio::fs::File::open(&p).await {
+            Ok(f) => f.metadata().await.ok().map(|m| (f, m.len())),
+            Err(_) => None,
+        },
+        None => None,
+    };
+    let Some((mut file, size)) = opened else {
+        shared.send(DataChannelFrame::new(id, FrameType::FileData, 0, Vec::new())).await;
+        return;
+    };
+    shared.send(DataChannelFrame::new(id, FrameType::FileData, 0, size.to_be_bytes().to_vec())).await;
+    let mut buf = vec![0u8; CHUNK];
+    let mut seq = 1u32;
+    loop {
+        match file.read(&mut buf).await {
+            Ok(0) => break,
+            Ok(n) => {
+                shared.wait_for_send_room().await;
+                shared.send(DataChannelFrame::new(id, FrameType::FileData, seq, buf[..n].to_vec())).await;
+                seq = seq.wrapping_add(1);
+            }
+            // The requester notices the shortfall and times out.
+            Err(_) => break,
+        }
+    }
+}
+
+async fn next_frame(rx: &mut mpsc::Receiver<DataChannelFrame>) -> Option<DataChannelFrame> {
+    tokio::time::timeout(FILE_STALL_TIMEOUT, rx.recv()).await.ok().flatten()
+}
+
+/// Requester: receives one file into `part`, checking order, size and sha1. Does not rename.
+async fn receive_file(
+    mut rx: mpsc::Receiver<DataChannelFrame>,
+    sha1: &str,
+    size: u64,
+    part: &Path,
+) -> Result<(), P2pError> {
+    let bad = |m: &str| P2pError::FramingError(m.to_string());
+    let head = next_frame(&mut rx).await.ok_or_else(|| bad("檔案傳輸逾時或中斷"))?;
+    let announced = <[u8; 8]>::try_from(head.payload.as_slice())
+        .map(u64::from_be_bytes)
+        .map_err(|_| bad("對方拒絕提供此檔案"))?;
+    if announced != size {
+        return Err(bad("檔案大小與預期不符"));
+    }
+    let mut out = tokio::fs::File::create(part).await?;
+    let (mut hasher, mut got, mut seq) = (Sha1::new(), 0u64, 1u32);
+    while got < size {
+        let f = next_frame(&mut rx).await.ok_or_else(|| bad("檔案傳輸逾時或中斷"))?;
+        got += f.payload.len() as u64;
+        if f.seq != seq || got > size {
+            return Err(bad("檔案資料順序或大小錯誤"));
+        }
+        hasher.update(&f.payload);
+        out.write_all(&f.payload).await?;
+        seq += 1;
+    }
+    out.flush().await?;
+    if sha1_hex(hasher.finalize()) != sha1.to_ascii_lowercase() {
+        return Err(bad("檔案 SHA-1 驗證失敗"));
+    }
+    Ok(())
+}
+
 async fn handle_message(shared: &Arc<Shared>, bytes: &[u8]) {
     let Ok(frame) = DataChannelFrame::decode(bytes) else { return };
     match frame.frame_type {
@@ -229,6 +317,19 @@ async fn handle_message(shared: &Arc<Shared>, bytes: &[u8]) {
         FrameType::Close => {
             if let Some(conn) = shared.drop_conn(frame.channel_id) {
                 conn.cancel.notify_one();
+            }
+        }
+        FrameType::FileRequest => {
+            tokio::spawn(serve_file(shared.clone(), frame.channel_id, frame.payload));
+        }
+        FrameType::FileData => {
+            let id = frame.channel_id;
+            let tx = shared.transfers.lock().unwrap().get(&id).cloned();
+            // A full queue means the disk cannot keep up: drop the transfer so the requester fails fast.
+            if let Some(tx) = tx {
+                if tx.try_send(frame).is_err() {
+                    shared.transfers.lock().unwrap().remove(&id);
+                }
             }
         }
         FrameType::Ping => {
@@ -345,6 +446,39 @@ pub struct Tunnel {
     pub peer_game_port: Option<u16>,
 }
 
+#[derive(Clone)]
+pub struct FileFetcher(Arc<Shared>);
+
+impl FileFetcher {
+    pub async fn fetch(&self, sha1: &str, size: u64, dest: &Path) -> Result<(), P2pError> {
+        let shared = &self.0;
+        let (tx, rx) = mpsc::channel(256);
+        let id = {
+            let mut transfers = shared.transfers.lock().unwrap();
+            let id = (0..u16::MAX)
+                .map(|_| shared.next_transfer.fetch_add(1, Ordering::Relaxed).max(1))
+                .find(|id| !transfers.contains_key(id))
+                .ok_or_else(|| P2pError::FramingError("同時傳輸過多".into()))?;
+            transfers.insert(id, tx);
+            id
+        };
+        shared.send(DataChannelFrame::new(id, FrameType::FileRequest, 0, sha1.as_bytes().to_vec())).await;
+
+        let mut part = dest.as_os_str().to_owned();
+        part.push(".part");
+        let part = PathBuf::from(part);
+        let result = receive_file(rx, sha1, size, &part).await;
+        shared.transfers.lock().unwrap().remove(&id);
+        match result {
+            Ok(()) => tokio::fs::rename(&part, dest).await.map_err(Into::into),
+            Err(e) => {
+                let _ = tokio::fs::remove_file(&part).await;
+                Err(e)
+            }
+        }
+    }
+}
+
 pub struct HostOffer {
     pub tunnel: Tunnel,
     pub offer_code: String,
@@ -451,6 +585,22 @@ impl Tunnel {
         }
     }
 
+    /// Provider: replaces the set of files the peer may fetch (sha1 hex -> path). Anything else is refused.
+    pub fn serve_files(&self, whitelist: HashMap<String, PathBuf>) {
+        let lowered = whitelist.into_iter().map(|(k, v)| (k.to_ascii_lowercase(), v)).collect();
+        *self.shared.files.lock().unwrap() = lowered;
+    }
+
+    /// Requester: downloads a file the peer serves, verifying size and sha1 before moving it to `dest`.
+    pub async fn fetch_file(&self, sha1: &str, size: u64, dest: &Path) -> Result<(), P2pError> {
+        self.fetcher().fetch(sha1, size, dest).await
+    }
+
+    /// A handle that can fetch files without borrowing the tunnel (so a registry lock need not be held).
+    pub fn fetcher(&self) -> FileFetcher {
+        FileFetcher(self.shared.clone())
+    }
+
     pub async fn close(&mut self) {
         self.shared.closed.store(true, Ordering::Relaxed);
         if let Some(task) = self.accept_task.take() {
@@ -554,5 +704,63 @@ mod tests {
         assert!(host.tunnel.apply_answer(&host.offer_code).await.is_err());
         // And an answer is not an offer.
         assert!(Tunnel::accept_offer("not-a-code", 0, &no_stun).await.is_err());
+    }
+
+    async fn connected_pair() -> (HostOffer, GuestAnswer) {
+        let no_stun = StunTurnConfig { stun_servers: Vec::new(), turn_servers: Vec::new() };
+        let host = Tunnel::create_host_offer(25565, "Host".into(), &no_stun).await.unwrap();
+        let guest = Tunnel::accept_offer(&host.offer_code, 0, &no_stun).await.unwrap();
+        host.tunnel.apply_answer(&guest.answer_code).await.unwrap();
+        for _ in 0..100 {
+            if host.tunnel.stats().status == "connected" && guest.tunnel.stats().status == "connected" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert_eq!(guest.tunnel.stats().status, "connected");
+        (host, guest)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_file_transfer_whitelist_and_verification() {
+        let dir = std::env::temp_dir().join(format!("focusite-ft-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Spans several chunks and ends on a partial one.
+        let data: Vec<u8> = (0..CHUNK * 3 + 123).map(|i| (i * 31 % 251) as u8).collect();
+        let src = dir.join("loader.jar");
+        std::fs::write(&src, &data).unwrap();
+        let sha = sha1_hex(Sha1::digest(&data));
+        std::fs::write(dir.join("secret.txt"), b"nope").unwrap();
+
+        let (host, guest) = connected_pair().await;
+        host.tunnel.serve_files(HashMap::from([(sha.clone(), src)]));
+
+        let ok = dir.join("ok.jar");
+        guest.tunnel.fetch_file(&sha, data.len() as u64, &ok).await.unwrap();
+        assert_eq!(std::fs::read(&ok).unwrap(), data);
+        assert!(!dir.join("ok.jar.part").exists());
+
+        // Not on the whitelist, even though the file exists on the provider.
+        let other = sha1_hex(Sha1::digest(b"nope"));
+        let refused = dir.join("refused.bin");
+        assert!(guest.tunnel.fetch_file(&other, 4, &refused).await.is_err());
+        assert!(!refused.exists());
+
+        // Size mismatch is rejected before anything is written.
+        let wrong_size = dir.join("wrong-size.jar");
+        assert!(guest.tunnel.fetch_file(&sha, data.len() as u64 + 1, &wrong_size).await.is_err());
+        assert!(!wrong_size.exists() && !dir.join("wrong-size.jar.part").exists());
+
+        // The provider serves content that does not match the sha1 it was whitelisted under.
+        let liar = sha1_hex(Sha1::digest(b"something else"));
+        host.tunnel.serve_files(HashMap::from([(liar.clone(), dir.join("loader.jar"))]));
+        let bad = dir.join("bad.jar");
+        assert!(guest.tunnel.fetch_file(&liar, data.len() as u64, &bad).await.is_err());
+        assert!(!bad.exists() && !dir.join("bad.jar.part").exists());
+
+        let (mut h, mut g) = (host.tunnel, guest.tunnel);
+        g.close().await;
+        h.close().await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

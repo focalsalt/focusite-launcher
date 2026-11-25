@@ -55,7 +55,7 @@ export interface TooltipTriggerProps
 export const TooltipTrigger = React.forwardRef<
   HTMLDivElement,
   TooltipTriggerProps
->(({ className, children, ...props }, forwardedRef) => {
+>(({ className, children, asChild: _asChild, ...props }, forwardedRef) => {
   const ctx = React.useContext(TooltipContext);
   const internalRef = React.useRef<HTMLDivElement | null>(null);
   const timeoutRef = React.useRef<number | null>(null);
@@ -76,15 +76,21 @@ export const TooltipTrigger = React.forwardRef<
     [forwardedRef]
   );
 
+  // Measure the real child: the wrapper collapses (or sits elsewhere) when the child is absolutely
+  // positioned or transformed.
+  const measure = () => {
+    const node = internalRef.current;
+    if (!node) return null;
+    return (node.firstElementChild ?? node).getBoundingClientRect();
+  };
+
   const updateRectAndOpen = () => {
-    if (internalRef.current) {
-      ctx.setTriggerRect(internalRef.current.getBoundingClientRect());
-    }
+    const rect = measure();
+    if (rect) ctx.setTriggerRect(rect);
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = window.setTimeout(() => {
-      if (internalRef.current) {
-        ctx.setTriggerRect(internalRef.current.getBoundingClientRect());
-      }
+      const r = measure();
+      if (r) ctx.setTriggerRect(r);
       ctx.setOpen(true);
     }, ctx.delayDuration);
   };
@@ -116,6 +122,23 @@ export const TooltipTrigger = React.forwardRef<
       document.removeEventListener("keydown", onAny, true);
     };
   }, [ctx.open, close]);
+
+  // Follow the trigger while open (layout animations, hover scaling, page transitions move it).
+  React.useEffect(() => {
+    if (!ctx.open) return;
+    let raf = 0;
+    const tick = () => {
+      const r = measure();
+      const prev = ctx.triggerRect;
+      if (r && (!prev || r.left !== prev.left || r.top !== prev.top || r.width !== prev.width || r.height !== prev.height)) {
+        ctx.setTriggerRect(r);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx.open, ctx.triggerRect]);
 
   React.useEffect(
     () => () => {
@@ -155,10 +178,20 @@ export const TooltipContent = React.forwardRef<
 >(({ className, side = "top", sideOffset = 8, children, style, ...props }, ref) => {
   const ctx = React.useContext(TooltipContext);
   const [mounted, setMounted] = React.useState<boolean>(false);
+  const [width, setWidth] = React.useState<number>(0);
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  const setRefs = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node) setWidth(node.offsetWidth);
+      if (typeof ref === "function") ref(node);
+      else if (ref) ref.current = node;
+    },
+    [ref]
+  );
 
   if (!ctx || !mounted || typeof document === "undefined") {
     return null;
@@ -173,9 +206,12 @@ export const TooltipContent = React.forwardRef<
   if (triggerRect) {
     const vw = window.innerWidth;
 
-    // 若距離視窗頂部小於 140px，自動翻轉至 Trigger 下方
-    if (triggerRect.top < 140) {
+    // Flip below the trigger only when there is no room above (the tip is about 32px tall).
+    if (triggerRect.top < 48) {
       placeBottom = true;
+    } else if (placeBottom && triggerRect.bottom + sideOffset + 48 > window.innerHeight) {
+      // Requested below but the window ends there.
+      placeBottom = false;
     }
 
     if (placeBottom) {
@@ -186,27 +222,35 @@ export const TooltipContent = React.forwardRef<
 
     // 水平置中於 Trigger，並限制邊距防止超出視窗
     const rawCenter = triggerRect.left + triggerRect.width / 2;
-    left = Math.max(140, Math.min(vw - 140, rawCenter));
+    // Keep the whole tip inside the viewport using its measured width (a fixed 140px guess pushed
+    // short tips far away from their button).
+    const half = width / 2 + 8;
+    left = Math.max(half, Math.min(vw - half, rawCenter));
   }
 
   return createPortal(
     <AnimatePresence>
       {open && triggerRect && (
         <motion.div
-          ref={ref}
+          ref={setRefs}
+          // Centering uses motion's own `x` (not style.transform): motion builds the whole transform
+          // from its values, so a CSS translateX would be overwritten and the tip would sit off-centre.
           initial={{
             opacity: 0,
             scale: 0.95,
+            x: "-50%",
             y: placeBottom ? -4 : 4,
           }}
           animate={{
             opacity: 1,
             scale: 1,
+            x: "-50%",
             y: 0,
           }}
           exit={{
             opacity: 0,
             scale: 0.95,
+            x: "-50%",
           }}
           transition={{ duration: 0.15, ease: "easeOut" }}
           style={{
@@ -214,7 +258,8 @@ export const TooltipContent = React.forwardRef<
             top: placeBottom ? top : undefined,
             bottom: placeBottom ? undefined : window.innerHeight - top,
             left,
-            transform: "translateX(-50%)",
+            // Without this a fixed box near the right edge shrinks to the remaining width and wraps early.
+            width: "max-content",
             zIndex: 99999,
             ...style,
           }}
@@ -232,3 +277,23 @@ export const TooltipContent = React.forwardRef<
   );
 });
 TooltipContent.displayName = "TooltipContent";
+
+export interface TipProps {
+  /** Tooltip text; without it the children render untouched. */
+  label?: React.ReactNode;
+  side?: "top" | "bottom";
+  /** Applied to the wrapper, e.g. to keep an absolutely positioned or full-width child working. */
+  className?: string;
+  children: React.ReactNode;
+}
+
+/** Tooltip + trigger + content in one: wrap any element to give it a hover/focus tip. */
+export const Tip: React.FC<TipProps> = ({ label, side, className, children }) =>
+  label ? (
+    <Tooltip className={className}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side}>{label}</TooltipContent>
+    </Tooltip>
+  ) : (
+    <>{children}</>
+  );

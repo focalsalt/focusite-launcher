@@ -1,6 +1,7 @@
 //! Focusite P2P: LAN world announcement and a WebRTC DataChannel tunnel for Minecraft multiplayer.
 
 pub mod lan_broadcast;
+pub mod lan_listener;
 pub mod mc_protocol;
 pub mod session;
 pub mod tcp_proxy;
@@ -8,6 +9,7 @@ pub mod tunnel;
 pub mod webrtc;
 
 pub use lan_broadcast::{format_lan_packet, parse_lan_packet, LanBroadcaster};
+pub use lan_listener::LanWatcher;
 pub use mc_protocol::{
     create_handshake_packet, create_status_request_packet, parse_status_response_packet, read_varint,
     write_varint, McProtocolError,
@@ -16,7 +18,7 @@ pub use session::{
     P2pHandshakeResult, P2pRole, P2pSessionHandle, P2pSessionInfo, P2pSessionRegistry,
 };
 pub use tcp_proxy::LocalTcpProxy;
-pub use tunnel::{Tunnel, TunnelStats, UDP_PORT_RANGE};
+pub use tunnel::{FileFetcher, Tunnel, TunnelStats, UDP_PORT_RANGE};
 pub use webrtc::{
     decode_offline_signal, encode_offline_signal, DataChannelFrame, FrameType, SignalEnvelope, StunTurnConfig,
     TurnServerEntry,

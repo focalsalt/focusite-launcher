@@ -8,9 +8,14 @@ export interface LauncherSettingsDto {
   curseforgeApiKey?: string | null;
   soundEnabled: boolean;
   instancesDir?: string | null;
+  /** Camp location (real sunrise/sunset and weather); null or missing = the user was not asked yet. */
+  locationEnabled?: boolean | null;
 }
 
 const LOCAL_STORAGE_SETTINGS_KEY = "focusite_launcher_settings_v26";
+
+/** Fired on `window` after the camp location choice changes, so the camp can react at once. */
+export const LOCATION_SETTING_EVENT = "focusite:location-setting";
 
 export const settingsService = {
   /** Folder instances are stored in right now (custom or default). */
@@ -47,14 +52,21 @@ export const settingsService = {
     soundEnabled?: boolean;
     /** Empty string resets to the default folder. */
     instancesDir?: string;
+    locationEnabled?: boolean;
   }): Promise<LauncherSettingsDto> {
+    const notify = () => {
+      if (params.locationEnabled !== undefined) window.dispatchEvent(new Event(LOCATION_SETTING_EVENT));
+    };
     if (isTauri()) {
-      return await invoke<LauncherSettingsDto>("update_launcher_settings", {
+      const saved = await invoke<LauncherSettingsDto>("update_launcher_settings", {
         enableBmclapiMirror: params.enableBmclapiMirror ?? null,
         curseforgeApiKey: params.curseforgeApiKey !== undefined ? params.curseforgeApiKey : null,
         soundEnabled: params.soundEnabled ?? null,
         instancesDir: params.instancesDir ?? null,
+        locationEnabled: params.locationEnabled ?? null,
       });
+      notify();
+      return saved;
     }
     const current = await this.getSettings();
     const updated: LauncherSettingsDto = {
@@ -65,8 +77,10 @@ export const settingsService = {
           : current.curseforgeApiKey,
       soundEnabled: params.soundEnabled ?? current.soundEnabled,
       instancesDir: params.instancesDir !== undefined ? params.instancesDir || null : current.instancesDir,
+      locationEnabled: params.locationEnabled ?? current.locationEnabled,
     };
     localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(updated));
+    notify();
     return updated;
   },
 };

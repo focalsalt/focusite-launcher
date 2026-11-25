@@ -1,5 +1,6 @@
 import * as React from "react";
 import { motion, AnimatePresence, type HTMLMotionProps } from "motion/react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +17,9 @@ export const Dialog: React.FC<DialogProps> = ({
   preventBackdropClose = false,
   children,
 }) => {
-  return (
+  // Portal to <body> so an ancestor transform (page transitions) or scroll container can't
+  // become the containing block of the `fixed` overlay.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <div
@@ -42,7 +45,8 @@ export const Dialog: React.FC<DialogProps> = ({
           {children}
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
 
@@ -64,7 +68,7 @@ export const DialogContent = React.forwardRef<
       exit={{ opacity: 0, scale: 0.95, y: 8 }}
       transition={{ type: "spring", stiffness: 450, damping: 30 }}
       className={cn(
-        "relative z-10 w-full max-w-md rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl space-y-4",
+        "relative z-10 w-full max-w-md max-h-full overflow-y-auto rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl space-y-4",
         className
       )}
       {...props}

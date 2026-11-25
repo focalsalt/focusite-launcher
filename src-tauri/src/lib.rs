@@ -111,6 +111,30 @@ fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+const MAIN_MIN_WIDTH: f64 = 1280.0;
+const MAIN_MIN_HEIGHT: f64 = 720.0;
+
+fn clamp_main_window_min_size(window: &tauri::Window) {
+    if window.is_maximized().unwrap_or(false)
+        || window.is_fullscreen().unwrap_or(false)
+        || window.is_minimized().unwrap_or(false)
+    {
+        return;
+    }
+    let (Ok(size), Ok(scale)) = (window.inner_size(), window.scale_factor()) else {
+        return;
+    };
+    let min_w = (MAIN_MIN_WIDTH * scale).ceil() as u32;
+    let min_h = (MAIN_MIN_HEIGHT * scale).ceil() as u32;
+    // A minimized window reports a tiny size; those are already skipped above.
+    if size.width < min_w || size.height < min_h {
+        let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+            width: size.width.max(min_w),
+            height: size.height.max(min_h),
+        }));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = dotenvy::dotenv();
@@ -128,6 +152,12 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             commands::settings::allow_asset_dirs(app.handle());
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.set_min_size(Some(tauri::LogicalSize::new(
+                    MAIN_MIN_WIDTH,
+                    MAIN_MIN_HEIGHT,
+                )));
+            }
             let show_item = MenuItemBuilder::with_id("show", "顯示主視窗").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "結束 Focusite").build(app)?;
             let menu = MenuBuilder::new(app)
@@ -210,6 +240,14 @@ pub fn run() {
                     clean_shutdown(window.app_handle());
                 }
             } else if window.label() == "main" {
+                // Windows (snap / restore / DPI change) can hand back a size below the configured
+                // minimum on a frameless window; clamp it back up.
+                if matches!(
+                    event,
+                    tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
+                ) {
+                    clamp_main_window_min_size(window);
+                }
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     if commands::launch::has_running_instances() {
                         // Prevent closing, hide window to tray instead
@@ -260,7 +298,11 @@ pub fn run() {
             commands::auth::auth_update_account_skin,
             commands::auth::auth_refresh_profile,
             commands::auth::auth_verify_offline_launch,
-            commands::friends::friends_list_xuids,
+            commands::friends::friends_list,
+            commands::friends::friends_act,
+            commands::friends::party_credentials,
+            commands::friends::party_ice_servers,
+            commands::friends::party_poll,
             commands::skin::skin_list_local,
             commands::skin::skin_save_local,
             commands::skin::skin_delete_local,
@@ -277,8 +319,17 @@ pub fn run() {
             commands::p2p::list_p2p_sessions,
             commands::p2p::p2p_verify_handshake,
             commands::p2p::p2p_create_offer,
+            commands::p2p::lan_world_watch_start,
+            commands::share::instance_share_spec,
+            commands::share::instance_find_match,
+            commands::share::instance_share_files,
+            commands::share::instance_create_from_share,
+            commands::share::instance_provision,
+            commands::p2p::lan_world_watch_stop,
             commands::p2p::p2p_apply_answer,
             commands::p2p::p2p_join_with_offer,
+            commands::p2p::p2p_serve_file,
+            commands::p2p::p2p_fetch_file,
             commands::p2p::p2p_firewall_status,
             commands::p2p::p2p_firewall_setup,
             commands::modpack::import_modpack,
@@ -298,6 +349,9 @@ pub fn run() {
             commands::world::rename_instance_world_cmd,
             commands::world::delete_instance_world_cmd,
             commands::world::backup_instance_world_cmd,
+            commands::world::list_world_datapacks_cmd,
+            commands::world::delete_world_datapack_cmd,
+            commands::world::open_world_datapacks_dir_cmd,
             commands::server::read_instance_servers_cmd,
             commands::server::save_instance_servers_cmd,
             commands::server::ping_server_cmd,
@@ -307,7 +361,16 @@ pub fn run() {
             commands::launch::get_instance_running_status,
             commands::launch::get_running_instances,
             commands::launch::get_instance_log_buffer,
-            commands::launch::allow_asset_image,
+            commands::logs::list_instance_log_files,
+            commands::import_support::cancel_job,
+            commands::modpack::inspect_modpack_file,
+            commands::modpack::retry_pack_downloads,
+            commands::instance_transfer::set_instance_background,
+            commands::instance_transfer::reset_instance_background,
+            commands::instance_transfer::list_export_entries,
+            commands::instance_transfer::export_instance,
+            commands::logs::read_instance_log_file,
+            commands::logs::open_instance_log_window,
             commands::launch::exit_app,
             commands::news::news_fetch_archive_page,
             commands::theme::list_themes,

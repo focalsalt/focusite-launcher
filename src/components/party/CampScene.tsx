@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import {
+  BackSide,
+  BoxGeometry,
   Color,
   Fog,
   Group,
@@ -10,15 +12,18 @@ import {
   Object3D,
   PerspectiveCamera,
   PlaneGeometry,
+  Raycaster,
   Scene,
   SRGBColorSpace,
   Texture,
   TextureLoader,
+  Vector2,
   Vector3,
   WebGLRenderer,
 } from "three";
 import { NameTagObject, PlayerObject } from "skinview3d";
-import minecraftFontUrl from "@/assets/party/mojangles.ttf?url";
+import minecraftFontUrl from "@/assets/party/fonts/mojangles.ttf?url";
+import unifontUrl from "@/assets/party/fonts/unifont_t.otf?url";
 import shadowUrl from "@/assets/party/environment/shadow.png";
 import { toHttps } from "@/lib/assetUrl";
 import { applyEntityLighting, BLOCK, CampWorld, createMcUniforms, loadCampWorld } from "./campWorld";
@@ -36,6 +41,18 @@ const minecraftFont = new FontFace("Minecraft", `url(${minecraftFontUrl}) format
 document.fonts.add(minecraftFont);
 void minecraftFont.load();
 
+// Mojangles has no CJK glyphs; the game falls back to Unifont, drawn at half scale. Unifont is 16 px tall per em, drawn
+// at half scale (8 game px), while Mojangles has 12 game px per em, so its em (8 game px) is two thirds of the Mojangles em (12 game px).
+const unifont = new FontFace("McUnifont", `url(${unifontUrl}) format("opentype")`, {
+  unicodeRange: "U+2E80-D7FF, U+F900-FFEF",
+  sizeAdjust: "67%",
+} as FontFaceDescriptors);
+document.fonts.add(unifont);
+void unifont.load().catch(() => undefined);
+
+/** font-family for text drawn in the game's style. */
+export const MC_FONT_FAMILY = "Minecraft, McUnifont, sans-serif";
+
 export interface CampMember {
   id: string;
   name: string;
@@ -44,14 +61,29 @@ export interface CampMember {
   capeUrl?: string;
   slim?: boolean;
   isSelf?: boolean;
+  /** The host's name tag is yellow. */
+  host?: boolean;
+  /** A smaller second line under the name (the way a scoreboard shows below the name). */
+  subtitle?: string;
 }
 
 interface CampSceneProps {
   members: CampMember[];
   time: McTime;
   weather: Weather;
+  /** How overcast it is, 0..1; dims and greys the sky a little. */
+  cloud?: number;
   /** Whether the first batch of members walks in from below the screen. Later joiners always walk in. */
   playIntro: boolean;
+  /** Called once the camp world has loaded (or failed to), so a loading screen can go away. */
+  onReady?: () => void;
+  /** Loading progress, 0..1. */
+  onProgress?: (fraction: number) => void;
+  /** The member to outline like the Glowing effect (the pointer is on them). */
+  glowId?: string | null;
+  /** Pointer over a member (null: none) with the pointer's page position. */
+  onHoverMember?: (id: string | null, x: number, y: number) => void;
+  onPickMember?: (id: string) => void;
   className?: string;
 }
 
@@ -81,6 +113,12 @@ const walkPath = (from: Vector3, to: Vector3): Vector3[] => {
 };
 /** Visible half-width at the focus point: wide enough for the whole cushion row. */
 const VIEW_HALF_WIDTH = 9 * BLOCK;
+/** World units above the ground that a standing player's name tag reaches (body 32, tag centre at 38, tag 4 tall, a little spare). */
+const SEAT_TOP = 48;
+/** Half the width of the widest name tag (a 16 character name is about 36 units wide), sideways from the seat. */
+const NAME_TAG_HALF_WIDTH = 20;
+/** How much of the half view (NDC) seats may use; the rest is margin. */
+const FIT_LIMIT = 0.97;
 /** The bottom edge of the page always shows the ground this far in front of the fire (toward the camera). */
 const BOTTOM_EDGE_POINT = new Vector3(CAMERA_DIR.x, 0, CAMERA_DIR.z).normalize().multiplyScalar(3.5 * BLOCK);
 /**
@@ -159,6 +197,7 @@ const IDLE_POSES = [
   { armL: [0.45, 0.3], armR: [0.45, -0.3], lean: -0.12 }, // leaning back on the hands
 ];
 const WARM_POSE = 1;
+const LEAN_BACK_POSE = 2;
 /** Seconds between idle pose changes. */
 const POSE_MIN_S = 20;
 const POSE_MAX_S = 40;
@@ -212,6 +251,11 @@ interface Actor {
   /** Lightmap colour where this player is, for its entity lighting. */
   light: { value: Color };
   shadow: Mesh;
+  /** Name tag (and optional subtitle tag) and the text they were drawn for. */
+  tags: NameTagObject[];
+  label: string;
+  /** Outline shells while the pointer glows this player. */
+  glow: Mesh[];
   /** Per-player phase so the idle arm bob is not in step across the party. */
   ageOffset: number;
   /** Look direction relative to the seat (yaw, pitch) and whether it has caught up with its target. */
@@ -228,7 +272,7 @@ interface Actor {
   partY: { head: number; body: number; leftArm: number; rightArm: number };
 }
 
-const createCamp = (canvas: HTMLCanvasElement) => {
+const createCamp = (canvas: HTMLCanvasElement, onReady: () => void, onProgress: (fraction: number) => void) => {
   // No MSAA: vanilla renders without it.
   const renderer = new WebGLRenderer({ canvas, antialias: false });
   renderer.autoClear = false;
@@ -255,11 +299,14 @@ const createCamp = (canvas: HTMLCanvasElement) => {
   let weatherFx: WeatherRenderer | null = null;
   let particles: Particles | null = null;
   let disposed = false;
+  let ready = false;
   let pending: { members: CampMember[]; playIntro: boolean } | null = null;
 
   let time: McTime = { tick: 6000, day: 0 };
   let timeAt = performance.now();
   let weather: Weather = "clear";
+  let cloudTarget = 0;
+  let cloud = 0;
   let rain = 0;
   let thunder = 0;
   let flicker = 0;
@@ -272,21 +319,55 @@ const createCamp = (canvas: HTMLCanvasElement) => {
     if (w === 0 || h === 0) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    // Zoom so VIEW_HALF_WIDTH fills the page width.
-    const dist = VIEW_HALF_WIDTH / (Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
-    camera.position.copy(CAMERA_DIR).multiplyScalar(dist);
-    camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
-    camera.updateMatrixWorld();
-    // Slide the camera up its own axis until BOTTOM_EDGE_POINT sits exactly on the bottom edge of the view.
-    const up = new Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-    const forward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    const rel = BOTTOM_EDGE_POINT.clone().sub(camera.position);
-    const depth = rel.dot(forward);
     const halfTan = Math.tan((camera.fov * Math.PI) / 360);
-    const ndcY = rel.dot(up) / (depth * halfTan);
-    camera.position.addScaledVector(up, (ndcY + 1) * depth * halfTan);
-    camera.updateMatrixWorld();
+    const placeCamera = (dist: number) => {
+      camera.position.copy(CAMERA_DIR).multiplyScalar(dist);
+      camera.lookAt(0, 0, 0);
+      camera.updateMatrixWorld();
+      // Slide the camera up its own axis until BOTTOM_EDGE_POINT sits exactly on the bottom edge of the view.
+      const up = new Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+      const forward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      const rel = BOTTOM_EDGE_POINT.clone().sub(camera.position);
+      const depth = rel.dot(forward);
+      const ndcY = rel.dot(up) / (depth * halfTan);
+      camera.position.addScaledVector(up, (ndcY + 1) * depth * halfTan);
+      camera.updateMatrixWorld();
+    };
+    // Whether every seat, its player and its name tag are inside the view (the bottom edge is pinned, so the tops and sides decide).
+    const point = new Vector3();
+    const seatsVisible = () => {
+      if (!world) return true;
+      for (const seat of world.slots) {
+        for (const side of [-1, 1]) {
+          for (const y of [0, SEAT_TOP]) {
+            point.copy(seat).addScaledVector(RIGHT, side * NAME_TAG_HALF_WIDTH);
+            point.y = y;
+            point.project(camera);
+            if (Math.abs(point.x) > FIT_LIMIT || point.y > FIT_LIMIT) return false;
+          }
+        }
+      }
+      return true;
+    };
+    // Start from the zoom where VIEW_HALF_WIDTH fills the page width, then back off until all seats fit: a short and wide
+    // page would otherwise cut off the heads and name tags.
+    let near = VIEW_HALF_WIDTH / (halfTan * camera.aspect);
+    placeCamera(near);
+    if (seatsVisible()) return;
+    let far = near;
+    for (let i = 0; i < 20 && !seatsVisible(); i++) {
+      near = far;
+      far *= 1.25;
+      placeCamera(far);
+    }
+    for (let i = 0; i < 24; i++) {
+      const mid = (near + far) / 2;
+      placeCamera(mid);
+      if (seatsVisible()) far = mid;
+      else near = mid;
+    }
+    placeCamera(far);
   };
 
   const setSkin = (actor: Actor, url: string | undefined) => {
@@ -338,6 +419,29 @@ const createCamp = (canvas: HTMLCanvasElement) => {
     actor.wrap.rotation.y += wrapAngle(yaw - actor.wrap.rotation.y) * (1 - (1 - BODY_TURN) ** ticks);
   };
 
+  // CJK names fall back to the system fonts, which the Minecraft font does not cover.
+  const TAG_FONT = '48px Minecraft, "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+  /** (Re)draws the name tag: yellow for the host, and with a subtitle the name moves up and a smaller line sits under it. */
+  const setLabels = (actor: Actor, m: CampMember) => {
+    const key = `${m.name}|${m.host ? 1 : 0}|${m.subtitle ?? ""}`;
+    if (actor.label === key) return;
+    actor.label = key;
+    for (const old of actor.tags) {
+      actor.player.remove(old);
+      old.material.map?.dispose();
+      old.material.dispose();
+    }
+    const main = new NameTagObject(m.name, { font: TAG_FONT, textStyle: m.host ? "#ffff55" : "white" });
+    main.position.y = m.subtitle ? 26 : 22;
+    actor.tags = [main];
+    if (m.subtitle) {
+      const sub = new NameTagObject(m.subtitle, { font: TAG_FONT, height: 3 });
+      sub.position.y = 22;
+      actor.tags.push(sub);
+    }
+    actor.player.add(...actor.tags);
+  };
+
   const spawn = (w: CampWorld, m: CampMember, slot: number, animate: boolean, order: number) => {
     const player = new PlayerObject();
     player.skin.modelType = m.slim ? "slim" : "default";
@@ -348,12 +452,6 @@ const createCamp = (canvas: HTMLCanvasElement) => {
       new MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, color: 0x000000 }),
     );
     scene.add(shadow);
-    const tag = new NameTagObject(m.name, {
-      // CJK names fall back to the system fonts, which the Minecraft font does not cover.
-      font: '48px Minecraft, "Noto Sans TC", "Microsoft JhengHei", sans-serif',
-    });
-    tag.position.y = 22;
-    player.add(tag);
     const wrap = new Group();
     wrap.add(player);
     // The player's origin is its centre, so lift it by half its height to stand on the ground.
@@ -375,6 +473,9 @@ const createCamp = (canvas: HTMLCanvasElement) => {
       seatFrom: target.clone(),
       light,
       shadow,
+      tags: [],
+      label: "",
+      glow: [],
       ageOffset: Math.random() * 1000,
       head: { yaw: 0, pitch: 0.4, vYaw: 0, vPitch: 0, target: null, lookAt: "fire", until: rand(...LOOK_SECONDS.fire), settled: false },
       bodyYaw: 0,
@@ -417,6 +518,7 @@ const createCamp = (canvas: HTMLCanvasElement) => {
       actor.sitting = true;
       actor.sit = 1;
     }
+    setLabels(actor, m);
     setSkin(actor, m.skinUrl);
     setCape(actor, m.capeUrl);
     scene.add(wrap);
@@ -424,11 +526,65 @@ const createCamp = (canvas: HTMLCanvasElement) => {
   };
 
   const remove = (actor: Actor) => {
+    if (glowId === actor.id) glowId = null;
     scene.remove(actor.wrap, actor.shadow);
     disposeTree(actor.wrap);
     (actor.shadow.material as Material).dispose();
     actors.delete(actor.id);
   };
+
+  // Pointer picking and the Glowing outline: a white back-face shell, 0.5 units thick, around every box of the player.
+  const raycaster = new Raycaster();
+  const ndc = new Vector2();
+  const hullMaterial = new MeshBasicMaterial({ color: 0xffffff, side: BackSide, fog: false });
+  let glowId: string | null = null;
+  let handlers: { onHover?: (id: string | null, x: number, y: number) => void; onPick?: (id: string) => void } = {};
+
+  const pickAt = (clientX: number, clientY: number): string | null => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    const list = [...actors.values()];
+    const hit = raycaster.intersectObjects(list.map((a) => a.wrap), true)[0];
+    if (!hit) return null;
+    for (let o: Object3D | null = hit.object; o; o = o.parent) {
+      const found = list.find((a) => a.wrap === o);
+      if (found) return found.id;
+    }
+    return null;
+  };
+
+  const setGlow = (id: string | null) => {
+    if (id === glowId) return;
+    const old = glowId ? actors.get(glowId) : undefined;
+    if (old) {
+      for (const hull of old.glow) hull.parent?.remove(hull);
+      old.glow = [];
+    }
+    glowId = id;
+    canvas.style.cursor = id ? "pointer" : "";
+    const actor = id ? actors.get(id) : undefined;
+    if (!actor) return;
+    const boxes: Mesh[] = [];
+    actor.player.traverse((o) => {
+      if (o instanceof Mesh && o.geometry instanceof BoxGeometry) boxes.push(o);
+    });
+    for (const box of boxes) {
+      const { width, height, depth } = (box.geometry as BoxGeometry).parameters;
+      const hull = new Mesh(box.geometry, hullMaterial);
+      hull.scale.set((width + 1) / width, (height + 1) / height, (depth + 1) / depth);
+      box.add(hull);
+      actor.glow.push(hull);
+    }
+  };
+
+  canvas.addEventListener("pointermove", (e) => handlers.onHover?.(pickAt(e.clientX, e.clientY), e.clientX, e.clientY));
+  canvas.addEventListener("pointerleave", () => handlers.onHover?.(null, 0, 0));
+  canvas.addEventListener("click", (e) => {
+    const id = pickAt(e.clientX, e.clientY);
+    if (id) handlers.onPick?.(id);
+  });
 
   const sync = (members: CampMember[], playIntro: boolean) => {
     if (!world) {
@@ -443,6 +599,7 @@ const createCamp = (canvas: HTMLCanvasElement) => {
     for (const m of members.slice(0, Math.min(MAX_PARTY, world.slots.length))) {
       const existing = actors.get(m.id);
       if (existing) {
+        setLabels(existing, m);
         if (existing.skinUrl !== m.skinUrl) setSkin(existing, m.skinUrl);
         if (existing.capeUrl !== m.capeUrl) setCape(existing, m.capeUrl);
         continue;
@@ -458,7 +615,18 @@ const createCamp = (canvas: HTMLCanvasElement) => {
 
   const flatDir: [number, number] = [CAMERA_DIR.x, CAMERA_DIR.z];
   const flatLen = Math.hypot(...flatDir);
-  Promise.all([loadCampWorld(uniforms, [flatDir[0] / flatLen, flatDir[1] / flatLen]), createSky(), createWeather(uniforms), createParticles(uniforms)])
+  let stagesDone = 0;
+  const stage = <T,>(task: Promise<T>): Promise<T> =>
+    task.then((value) => {
+      onProgress(++stagesDone / 4);
+      return value;
+    });
+  Promise.all([
+    stage(loadCampWorld(uniforms, [flatDir[0] / flatLen, flatDir[1] / flatLen])),
+    stage(createSky()),
+    stage(createWeather(uniforms)),
+    stage(createParticles(uniforms)),
+  ])
     .then(([w, s, fx, pt]) => {
       if (disposed) {
         disposeTree(w.group);
@@ -475,8 +643,13 @@ const createCamp = (canvas: HTMLCanvasElement) => {
       scene.add(w.group, fx.group, pt.mesh);
       resize();
       if (pending) sync(pending.members, pending.playIntro);
+      ready = true;
+      onReady();
     })
-    .catch((e) => console.error("CampScene: failed to load camp world", e));
+    .catch((e) => {
+      console.error("CampScene: failed to load camp world", e);
+      onReady();
+    });
 
   /**
    * Lowest point (world y, ground = 0) of the leg boxes for a leg pitch `theta` (negative = forward), with the model's
@@ -650,8 +823,8 @@ const createCamp = (canvas: HTMLCanvasElement) => {
     leftArm.rotation.x -= bobX;
 
     const s = actor.swing;
-    // Only poke at the fire while actually looking at it, and not while warming both hands.
-    const atFire = actor.head.lookAt === "fire" && actor.head.settled && idle.pose !== WARM_POSE;
+    // Only poke at the fire while actually looking at it, and not while warming both hands or leaning back on them.
+    const atFire = actor.head.lookAt === "fire" && actor.head.settled && idle.pose !== WARM_POSE && idle.pose !== LEAN_BACK_POSE;
     // A series stops if the player looks away; a new one waits until they look at the fire again.
     if (s.count > 0 && !atFire) {
       s.count = 0;
@@ -736,11 +909,12 @@ const createCamp = (canvas: HTMLCanvasElement) => {
     const toward = (v: number, target: number) => (v < target ? Math.min(target, v + WEATHER_RATE * dt) : Math.max(target, v - WEATHER_RATE * dt));
     rain = toward(rain, weather === "clear" ? 0 : 1);
     thunder = toward(thunder, weather === "thunder" ? 1 : 0);
+    cloud = toward(cloud, cloudTarget);
     const flash = weatherFx.update(world, camera.position, rain, thunder, weather === "snow", t);
 
     // One real day is one Minecraft day: 1000 ticks per real hour.
     const tick = time.tick + ((performance.now() - timeAt) / 3_600_000) * 1000;
-    const env = environmentAt(tick, rain, thunder, flash);
+    const env = environmentAt(tick, rain, thunder, flash, cloud);
     const lightEnv = { skyFactor: env.skyLightFactor, skyLightColor: env.skyLightColor, flicker };
     fillLightmap(lightmapData, lightEnv);
     uniforms.mcLightmap.value.needsUpdate = true;
@@ -774,6 +948,13 @@ const createCamp = (canvas: HTMLCanvasElement) => {
     particles?.update(world, camera, self ? self.wrap.position : world.firePos, dt, env.skyDarken, { color: fog, near: FOG_START * BLOCK, far: FOG_END * BLOCK });
   };
 
+  const draw = () => {
+    renderer.clear();
+    sky?.render(renderer);
+    renderer.clearDepth();
+    renderer.render(scene, camera);
+  };
+
   let raf = 0;
   let last = performance.now();
   const loop = (now: number) => {
@@ -782,25 +963,46 @@ const createCamp = (canvas: HTMLCanvasElement) => {
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now;
     step(dt, now / 1000);
-    renderer.clear();
-    sky?.render(renderer);
-    renderer.clearDepth();
-    renderer.render(scene, camera);
+    draw();
   };
   raf = requestAnimationFrame(loop);
 
-  const observer = new ResizeObserver(resize);
+  // Resizing clears the canvas and the observer fires after the frame's rAF, so redraw now or the blank buffer gets painted.
+  const observer = new ResizeObserver(() => {
+    resize();
+    draw();
+  });
   if (canvas.parentElement) observer.observe(canvas.parentElement);
   resize();
 
   return {
+    /** Stops drawing while the canvas is off screen; the scene keeps its state. */
+    pause: () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    },
+    /** Starts drawing again in the canvas's current parent. */
+    attach: () => {
+      cancelAnimationFrame(raf);
+      last = performance.now();
+      raf = requestAnimationFrame(loop);
+      observer.disconnect();
+      if (canvas.parentElement) observer.observe(canvas.parentElement);
+      resize();
+    },
+    isReady: () => ready,
     sync,
+    setGlow,
+    setHandlers: (h: typeof handlers) => {
+      handlers = h;
+    },
     setTime: (t: McTime) => {
       time = t;
       timeAt = performance.now();
     },
-    setWeather: (w: Weather) => {
+    setWeather: (w: Weather, cloudCover = 0) => {
       weather = w;
+      cloudTarget = cloudCover;
     },
     dispose: () => {
       disposed = true;
@@ -815,6 +1017,7 @@ const createCamp = (canvas: HTMLCanvasElement) => {
       textures.forEach((t) => t.dispose());
       shadowTex.dispose();
       shadowGeo.dispose();
+      hullMaterial.dispose();
       uniforms.mcLightmap.value.dispose();
       // No forceContextLoss: React StrictMode re-runs the effect on the same canvas, and a lost context stays lost (blank scene).
       renderer.dispose();
@@ -822,40 +1025,84 @@ const createCamp = (canvas: HTMLCanvasElement) => {
   };
 };
 
-export const CampScene: React.FC<CampSceneProps> = ({ members, playIntro, time, weather, className }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const campRef = useRef<ReturnType<typeof createCamp> | null>(null);
+type Camp = ReturnType<typeof createCamp>;
+
+/**
+ * The camp lives for as long as the app: leaving the page only detaches its canvas and pauses drawing, so coming
+ * back finds the same scene (loaded, seated, no walk-in) instead of rebuilding it.
+ */
+let kept: { canvas: HTMLCanvasElement; camp: Camp; progress: number } | null = null;
+const progressListeners = new Set<(fraction: number) => void>();
+
+export const isCampReady = (): boolean => kept?.camp.isReady() ?? false;
+
+export const CampScene: React.FC<CampSceneProps> = ({ members, playIntro, time, weather, cloud = 0, onReady, onProgress, glowId = null, onHoverMember, onPickMember, className }) => {
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const onProgressRef = useRef(onProgress);
+  onProgressRef.current = onProgress;
+  const hoverRef = useRef(onHoverMember);
+  hoverRef.current = onHoverMember;
+  const pickRef = useRef(onPickMember);
+  pickRef.current = onPickMember;
+  const hostRef = useRef<HTMLDivElement>(null);
+  const campRef = useRef<Camp | null>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    // A WebGL failure must not throw here: an uncaught effect error unmounts the whole app, leaving only the background.
-    let camp: ReturnType<typeof createCamp>;
-    try {
-      camp = createCamp(canvas);
-    } catch (e) {
-      console.error("CampScene: failed to create WebGL scene", e);
-      return;
+    const host = hostRef.current;
+    if (!host) return;
+    const report = (fraction: number) => onProgressRef.current?.(fraction);
+    progressListeners.add(report);
+    if (!kept) {
+      const canvas = document.createElement("canvas");
+      canvas.className = "block h-full w-full";
+      host.appendChild(canvas);
+      // A WebGL failure must not throw here: an uncaught effect error unmounts the whole app, leaving only the background.
+      try {
+        const camp = createCamp(
+          canvas,
+          () => onReadyRef.current?.(),
+          (fraction) => progressListeners.forEach((l) => l(fraction)),
+        );
+        kept = { canvas, camp, progress: 0 };
+      } catch (e) {
+        console.error("CampScene: failed to create WebGL scene", e);
+        canvas.remove();
+        onReadyRef.current?.();
+        return () => void progressListeners.delete(report);
+      }
+    } else {
+      host.appendChild(kept.canvas);
+      kept.camp.attach();
+      if (kept.camp.isReady()) onReadyRef.current?.();
     }
-    campRef.current = camp;
+    const current = kept;
+    campRef.current = current.camp;
+    current.camp.setHandlers({ onHover: (id, x, y) => hoverRef.current?.(id, x, y), onPick: (id) => pickRef.current?.(id) });
     return () => {
-      camp.dispose();
+      progressListeners.delete(report);
+      current.camp.pause();
+      current.canvas.remove();
       campRef.current = null;
     };
   }, []);
 
   // These run after the scene effect above, so a first render already finds the camp.
   useEffect(() => {
+    campRef.current?.setGlow(glowId);
+  }, [glowId]);
+
+  useEffect(() => {
     campRef.current?.setTime(time);
   }, [time]);
 
   useEffect(() => {
-    campRef.current?.setWeather(weather);
-  }, [weather]);
+    campRef.current?.setWeather(weather, cloud);
+  }, [weather, cloud]);
 
   useEffect(() => {
     campRef.current?.sync(members, playIntro);
   }, [members, playIntro]);
 
-  return <canvas ref={canvasRef} className={className} />;
+  return <div ref={hostRef} className={className} />;
 };
