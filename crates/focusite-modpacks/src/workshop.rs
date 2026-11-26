@@ -479,7 +479,7 @@ pub async fn resolve_install_plan(
                 if depth > 4 {
                     if let Some(ref pid) = dep.project_id {
                         conflict_warnings.push(format!(
-                            "相依解析已達最大深度上限 (4 層)，專案 '{}' 的深層相依已停止展開",
+                            "E_DEPENDENCY_TOO_DEEP: {}",
                             pid
                         ));
                     }
@@ -487,7 +487,7 @@ pub async fn resolve_install_plan(
                 }
                 if dep.dependency_type == "incompatible" {
                     conflict_warnings.push(format!(
-                        "模組 '{}' 與專案 ID '{:?}' 標記為不相容！",
+                        "E_DEPENDENCY_INCOMPATIBLE: {}: {:?}",
                         detail.name, dep.project_id
                     ));
                 } else if dep.dependency_type == "required" {
@@ -516,7 +516,7 @@ pub async fn resolve_install_plan(
                                 }
                                 Err(e) => {
                                     conflict_warnings.push(format!(
-                                        "無法解析模組 '{}' 的必要前置相依專案 '{}': {}",
+                                        "E_DEPENDENCY_UNRESOLVED: {}: {}: {}",
                                         detail.name, dep_proj_id, e
                                     ));
                                 }

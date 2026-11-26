@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { localizeBackendText } from "@/lib/errorMessage";
 import {
   AlertTriangle,
   Download,
@@ -129,7 +130,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
                 </div>
                 {plan.conflict_warnings.map((w, i) => (
                   <p key={i} className="text-xs text-warning-200/80 leading-relaxed pl-6">
-                    • {w}
+                    • {localizeBackendText(w)}
                   </p>
                 ))}
               </div>

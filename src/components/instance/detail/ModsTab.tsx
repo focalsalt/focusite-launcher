@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { FolderOpen, Package, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,11 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
   const { t } = useI18n();
   const [legacyModTab, setLegacyModTab] = useState<"mods" | "coremods">("mods");
   const pill = useSlidingIndicator(legacyModTab);
+  // Stable callbacks for the memoised rows that still call the parent's latest handlers.
+  const handlers = useRef({ toggleMod, toggleCoremod });
+  handlers.current = { toggleMod, toggleCoremod };
+  const onToggleMod = useCallback((name: string, on: boolean) => void handlers.current.toggleMod(name, on), []);
+  const onToggleCoremod = useCallback((name: string, on: boolean) => void handlers.current.toggleCoremod(name, on), []);
 
   return (
               <motion.div
@@ -118,7 +123,7 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                               version={`${(((mod.sizeBytes ?? mod.size_bytes ?? 0)) / 1024).toFixed(1)} KB`}
                               desc={mod.enabled ? t.common.enabled : t.mods.disabledSuffix}
                               enabled={mod.enabled}
-                              onToggle={(checked) => toggleMod(mod.filename, checked)}
+                              onToggle={onToggleMod}
                             />
                           ))}
                         </div>
@@ -138,7 +143,7 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                             version={`${(((mod.sizeBytes ?? mod.size_bytes ?? 0)) / 1024).toFixed(1)} KB`}
                             desc={mod.enabled ? t.mods.enabledCore : t.mods.disabledSuffix}
                             enabled={mod.enabled}
-                            onToggle={(checked) => toggleCoremod(mod.filename, checked)}
+                            onToggle={onToggleCoremod}
                           />
                         ))}
                       </div>
@@ -189,7 +194,7 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                             version={`${(((mod.sizeBytes ?? mod.size_bytes ?? 0)) / 1024).toFixed(1)} KB`}
                             desc={mod.enabled ? t.common.enabled : t.mods.disabledSuffix}
                             enabled={mod.enabled}
-                            onToggle={(checked) => toggleMod(mod.filename, checked)}
+                            onToggle={onToggleMod}
                           />
                         ))}
                       </div>

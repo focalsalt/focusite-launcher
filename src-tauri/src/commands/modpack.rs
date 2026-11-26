@@ -1,6 +1,7 @@
 //! Modpack import commands supporting .mrpack (Modrinth), .zip (CurseForge), Focusite export archives and
 //! other launchers' instance folders.
 
+use super::ui_language::tr;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::io::Read;
@@ -108,16 +109,16 @@ async fn read_pack_file(path: &Path, session: Option<&JobSession>, allow_large: 
     use tokio::io::AsyncReadExt;
 
     if !path.is_file() {
-        return Err(format!("模組包檔案不存在: {}", path.display()));
+        return Err(format!("E_PACK_NOT_FOUND: {}", path.display()));
     }
     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     if size > HARD_MAX_PACK_BYTES {
-        return Err("檔案超過 4 GiB，無法匯入。請改選實例資料夾，或在匯出時取消勾選 saves 等大型內容".into());
+        return Err("E_PACK_TOO_LARGE".into());
     }
     if size > MAX_PACK_BYTES && !allow_large {
-        return Err("檔案超過 1 GiB，需要先確認才能匯入".into());
+        return Err("E_PACK_NEEDS_CONFIRM".into());
     }
-    let read_err = |e: std::io::Error| format!("無法讀取模組包檔案: {}", e);
+    let read_err = |e: std::io::Error| format!("E_PACK_UNREADABLE: {}", e);
     let mut file = tokio::fs::File::open(path).await.map_err(read_err)?;
     let mut bytes = Vec::with_capacity(size as usize);
     let mut buf = vec![0u8; 1024 * 1024];
@@ -194,10 +195,10 @@ fn inspect_archive(bytes: &[u8], is_mrpack: bool, custom_name: Option<String>) -
     if archive_has(bytes, super::instance::INSTANCE_CONFIG_FILE) {
         return super::instance_transfer::inspect_focusite_zip(bytes, custom_name);
     }
-    let unpacked = archive_unpacked_size(bytes).map_err(|e| format!("無法讀取模組包: {}", e))?;
+    let unpacked = archive_unpacked_size(bytes).map_err(|e| format!("E_PACK_UNREADABLE: {}", e))?;
     if is_mrpack {
-        let index = read_mrpack_index(bytes).map_err(|e| format!("解析 .mrpack 失敗: {}", e))?;
-        let version = index.dependencies.get("minecraft").cloned().ok_or("此模組包沒有指定 Minecraft 版本")?;
+        let index = read_mrpack_index(bytes).map_err(|e| format!("E_PACK_PARSE_FAILED: {}", e))?;
+        let version = index.dependencies.get("minecraft").cloned().ok_or("E_PACK_NO_MC_VERSION")?;
         let (loader, loader_version) = mrpack_loader(&index.dependencies);
         let name = custom_name.unwrap_or_else(|| index.name.clone());
         let download: u64 = index.files.iter().map(|f| f.file_size).sum();
@@ -218,7 +219,7 @@ fn inspect_archive(bytes: &[u8], is_mrpack: bool, custom_name: Option<String>) -
             ..Default::default()
         });
     }
-    let (manifest, _) = read_curseforge_manifest(bytes).map_err(|e| format!("解析 CurseForge 模組包失敗: {}", e))?;
+    let (manifest, _) = read_curseforge_manifest(bytes).map_err(|e| format!("E_PACK_PARSE_FAILED: {}", e))?;
     let (loader, loader_version) = curseforge_loader_of(&manifest);
     let name = custom_name.unwrap_or_else(|| manifest.name.clone());
     let mut imported = vec!["overrides".to_string()];
@@ -275,7 +276,7 @@ pub async fn import_modrinth_modpack(
 ) -> Result<ModpackImportResult, String> {
     let session = JobSession::for_app(app, IMPORT_PROGRESS_EVENT, import_id);
     if project_id.is_empty() || !project_id.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err("無效的模組包專案 ID".into());
+        return Err("E_PACK_INVALID_PROJECT".into());
     }
 
     session.emit("download", "", 0, 0);
@@ -288,12 +289,12 @@ pub async fn import_modrinth_modpack(
         .get(&url)
         .send()
         .await
-        .map_err(super::ctx("無法連線至 Modrinth"))?
+        .map_err(super::ctx("E_CONNECTION"))?
         .error_for_status()
-        .map_err(super::ctx("Modrinth 回應錯誤"))?
+        .map_err(super::ctx("E_SERVER_RESPONSE"))?
         .json()
         .await
-        .map_err(super::ctx("Modrinth 資料格式錯誤"))?;
+        .map_err(super::ctx("E_BAD_RESPONSE"))?;
     session.check()?;
 
     // The API lists newest first: prefer the newest release, otherwise the newest of any type.
@@ -307,26 +308,26 @@ pub async fn import_modrinth_modpack(
             .find(|v| v.version_type == "release")
             .or_else(|| versions.iter().find(has_pack)),
     }
-    .ok_or_else(|| "此模組包沒有可下載的 .mrpack 版本".to_string())?;
+    .ok_or_else(|| "E_PACK_NO_MRPACK".to_string())?;
     let file = chosen
         .files
         .iter()
         .find(|f| f.primary && f.filename.ends_with(".mrpack"))
         .or_else(|| chosen.files.iter().find(|f| f.filename.ends_with(".mrpack")))
-        .ok_or_else(|| "此模組包沒有可下載的 .mrpack 檔案".to_string())?;
+        .ok_or_else(|| "E_PACK_NO_MRPACK".to_string())?;
 
     super::workshop::validate_download_url(&file.url)?;
     if file.size > MAX_PACK_BYTES {
-        return Err("模組包檔案過大（上限 1 GiB）".into());
+        return Err("E_PACK_DOWNLOAD_TOO_LARGE".into());
     }
     ensure_free_space(&std::env::temp_dir(), file.size)?;
 
-    let sha1 = file.hashes.get("sha1").map(String::as_str).ok_or("模組包缺少 SHA-1 雜湊，無法驗證下載的檔案")?;
+    let sha1 = file.hashes.get("sha1").map(String::as_str).ok_or("E_PACK_NO_HASH")?;
     let temp = std::env::temp_dir().join(format!("fc_modpack_{}.mrpack", uuid::Uuid::new_v4()));
     let bytes = download_pack(&session, &file.url, &temp, Some(sha1)).await;
     // The temp file goes away on every path, including failure and cancellation.
     let read = match bytes {
-        Ok(()) => tokio::fs::read(&temp).await.map_err(super::ctx("無法讀取已下載的模組包")),
+        Ok(()) => tokio::fs::read(&temp).await.map_err(super::ctx("E_PACK_DOWNLOAD_FAILED")),
         Err(e) => Err(e),
     };
     let _ = tokio::fs::remove_file(&temp).await;
@@ -348,7 +349,7 @@ async fn download_pack(session: &JobSession, url: &str, dest: &Path, sha1: Optio
     };
     let downloader = focusite_download::Downloader::default();
     let result = tokio::select! {
-        r = downloader.download_file(url, dest, sha1, Some(tx), "modrinth-modpack") => r.map_err(super::ctx("下載模組包失敗")),
+        r = downloader.download_file(url, dest, sha1, Some(tx), "modrinth-modpack") => r.map_err(super::ctx("E_PACK_DOWNLOAD_FAILED")),
         _ = session.cancelled() => Err(CANCELLED_MESSAGE.to_string()),
     };
     forward.abort();
@@ -361,9 +362,9 @@ pub(super) fn create_pack_instance_dir(name: &str) -> Result<(String, PathBuf), 
     let instance_id = unique_folder_name(&base, name)?;
     let inst_dir = base.join(&instance_id);
     // `create_dir` (not `_all`) fails if another import claimed the same name a moment ago.
-    std::fs::create_dir_all(&base).map_err(super::ctx("無法建立實例目錄"))?;
-    std::fs::create_dir(&inst_dir).map_err(super::ctx("無法建立實例目錄"))?;
-    std::fs::create_dir_all(inst_dir.join("minecraft").join("mods")).map_err(super::ctx("無法建立實例目錄"))?;
+    std::fs::create_dir_all(&base).map_err(super::ctx("E_INSTANCE_CREATE_FAILED"))?;
+    std::fs::create_dir(&inst_dir).map_err(super::ctx("E_INSTANCE_CREATE_FAILED"))?;
+    std::fs::create_dir_all(inst_dir.join("minecraft").join("mods")).map_err(super::ctx("E_INSTANCE_CREATE_FAILED"))?;
     Ok((instance_id, inst_dir))
 }
 
@@ -428,11 +429,11 @@ type JobFn = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), String>> + S
 pub(super) fn safe_rel_target(base: &Path, rel: &str) -> Result<PathBuf, String> {
     let rel = rel.replace('\\', "/");
     if rel.is_empty() || rel.starts_with('/') || rel.contains("..") || rel.contains(':') {
-        return Err(format!("偵測到非法 mrpack 檔案路徑: {}", rel));
+        return Err(format!("E_PACK_UNSAFE_PATH: {}", rel));
     }
     let target = base.join(&rel);
     if !target.starts_with(base) {
-        return Err(format!("檔案路徑逃逸出實例目錄: {}", rel));
+        return Err(format!("E_PACK_UNSAFE_PATH: {}", rel));
     }
     Ok(target)
 }
@@ -451,7 +452,7 @@ fn job_for(spec: PackJobSpec, ctx: &FetchCtx) -> JobFn {
                     fetch_pack_file(&ctx.http, &ctx.cas, &url, sha1.as_deref(), size, &target).await
                 }
                 PackJobSpec::Curseforge { project_id, file_id } => {
-                    let key = ctx.api_key.as_deref().ok_or("尚未設定 CurseForge API 金鑰")?;
+                    let key = ctx.api_key.as_deref().ok_or("E_CURSEFORGE_NO_KEY")?;
                     fetch_curseforge_file(&ctx.http, &ctx.cas, key, project_id, file_id, &ctx.mc_dir.join("mods")).await
                 }
             }
@@ -501,7 +502,7 @@ async fn run_pack_jobs(session: &JobSession, jobs: Vec<(PendingJob, JobFn)>) -> 
         let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
         session.emit("mods", &pending.item.file_name, finished, total);
         if let Err(reason) = result {
-            tracing::warn!("模組包檔案 {} 下載失敗：{}", pending.item.name, reason);
+            tracing::warn!("Modpack file {} failed to download: {}", pending.item.name, reason);
             failed.push(pending);
         }
     }
@@ -587,13 +588,13 @@ async fn import_mrpack_internal(
     custom_name: Option<String>,
 ) -> Result<ModpackImportResult, String> {
     session.emit("read", "", 0, 0);
-    let index = read_mrpack_index(archive_bytes).map_err(|e| format!("解析 .mrpack 失敗: {}", e))?;
+    let index = read_mrpack_index(archive_bytes).map_err(|e| format!("E_PACK_PARSE_FAILED: {}", e))?;
 
     let mc_version = index
         .dependencies
         .get("minecraft")
         .cloned()
-        .ok_or("此模組包沒有指定 Minecraft 版本，無法匯入")?;
+        .ok_or("E_PACK_NO_MC_VERSION")?;
     let (loader, loader_version) = mrpack_loader(&index.dependencies);
 
     // Refuse before anything is created when the drive cannot hold the pack.
@@ -603,7 +604,7 @@ async fn import_mrpack_internal(
         .filter(|f| f.env.as_ref().and_then(|e| e.client.as_deref()) != Some("unsupported"))
         .map(|f| f.file_size)
         .sum();
-    let unpacked = archive_unpacked_size(archive_bytes).map_err(|e| format!("無法讀取模組包: {}", e))?;
+    let unpacked = archive_unpacked_size(archive_bytes).map_err(|e| format!("E_PACK_UNREADABLE: {}", e))?;
     ensure_free_space(&get_instances_dir(), (download + unpacked) / 10 * 12)?;
     session.check()?;
 
@@ -619,7 +620,7 @@ async fn import_mrpack_internal(
             session.emit("overrides", "", done as u64, total as u64);
             Ok(())
         })
-        .map_err(|e| unpack_error(session, "解壓 .mrpack 失敗", e))?;
+        .map_err(|e| unpack_error(session, "E_PACK_UNPACK_FAILED", e))?;
 
         let mut cfg = new_disk_config(&instance_id, &name, &mc_version, &loader, loader_version);
         cfg.description = index.summary.clone();
@@ -693,25 +694,25 @@ async fn fetch_pack_file(
     target: &Path,
 ) -> Result<(), String> {
     super::workshop::validate_download_url(url)?;
-    let sha1 = sha1.ok_or("缺少 SHA-1 雜湊，無法驗證檔案")?;
+    let sha1 = sha1.ok_or("E_PACK_NO_HASH")?;
     // The pack index states each file's size; a larger body is refused (0 = not stated).
     let max = if expected_size > 0 { expected_size } else { MAX_PACK_FILE_BYTES };
     let mut resp = http
         .get(url)
         .send()
         .await
-        .map_err(super::ctx("連線失敗"))?
+        .map_err(super::ctx("E_CONNECTION"))?
         .error_for_status()
-        .map_err(super::ctx("伺服器回應錯誤"))?;
+        .map_err(super::ctx("E_SERVER_RESPONSE"))?;
     let mut bytes: Vec<u8> = Vec::new();
-    while let Some(chunk) = resp.chunk().await.map_err(super::ctx("下載中斷"))? {
+    while let Some(chunk) = resp.chunk().await.map_err(super::ctx("E_DOWNLOAD_INTERRUPTED"))? {
         if (bytes.len() + chunk.len()) as u64 > max {
-            return Err("檔案大小超出模組包宣告的大小".into());
+            return Err("E_PACK_SIZE_MISMATCH".into());
         }
         bytes.extend_from_slice(&chunk);
     }
-    let hash = cas.store_bytes(&bytes, Some(sha1)).map_err(super::ctx("雜湊驗證或快取寫入失敗"))?;
-    cas.link_to_instance(&hash, target).map_err(super::ctx("無法放入實例"))?;
+    let hash = cas.store_bytes(&bytes, Some(sha1)).map_err(super::ctx("E_FILE_STORE_FAILED"))?;
+    cas.link_to_instance(&hash, target).map_err(super::ctx("E_FILE_STORE_FAILED"))?;
     Ok(())
 }
 
@@ -730,20 +731,20 @@ async fn fetch_curseforge_file(
         .header("x-api-key", api_key)
         .send()
         .await
-        .map_err(super::ctx("無法連線至 CurseForge"))?
+        .map_err(super::ctx("E_CONNECTION"))?
         .error_for_status()
-        .map_err(super::ctx("CurseForge 回應錯誤"))?
+        .map_err(super::ctx("E_SERVER_RESPONSE"))?
         .json()
         .await
-        .map_err(super::ctx("CurseForge 資料格式錯誤"))?;
+        .map_err(super::ctx("E_BAD_RESPONSE"))?;
     let file_name = Path::new(&info.data.file_name)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or_default();
     validate_safe_filename(file_name)?;
-    let url = info.data.download_url.as_deref().ok_or("作者未開放第三方下載")?;
+    let url = info.data.download_url.as_deref().ok_or("E_DOWNLOAD_BLOCKED")?;
     let sha1 = info.data.hashes.iter().find(|h| h.algo == 1).map(|h| h.value.as_str());
-    std::fs::create_dir_all(mods_dir).map_err(super::ctx("無法建立 mods 資料夾"))?;
+    std::fs::create_dir_all(mods_dir).map_err(super::ctx("E_FILE_STORE_FAILED"))?;
     fetch_pack_file(http, cas, url, sha1, info.data.file_length, &mods_dir.join(file_name)).await
 }
 
@@ -776,12 +777,12 @@ async fn import_curseforge_internal(
 ) -> Result<ModpackImportResult, String> {
     session.emit("read", "", 0, 0);
     let (manifest, modlist_map) =
-        read_curseforge_manifest(archive_bytes).map_err(|e| format!("解析 CurseForge 模組包失敗: {}", e))?;
+        read_curseforge_manifest(archive_bytes).map_err(|e| format!("E_PACK_PARSE_FAILED: {}", e))?;
 
     let mc_version = manifest.minecraft.version.clone();
     let (loader, loader_version) = curseforge_loader_of(&manifest);
 
-    let unpacked = archive_unpacked_size(archive_bytes).map_err(|e| format!("無法讀取模組包: {}", e))?;
+    let unpacked = archive_unpacked_size(archive_bytes).map_err(|e| format!("E_PACK_UNREADABLE: {}", e))?;
     let estimate = unpacked + manifest.files.len() as u64 * 4 * 1024 * 1024;
     ensure_free_space(&get_instances_dir(), estimate / 10 * 12)?;
     session.check()?;
@@ -797,10 +798,10 @@ async fn import_curseforge_internal(
             session.emit("overrides", "", done as u64, total as u64);
             Ok(())
         })
-        .map_err(|e| unpack_error(session, "解壓 CurseForge 模組包失敗", e))?;
+        .map_err(|e| unpack_error(session, "E_PACK_UNPACK_FAILED", e))?;
 
         let mut cfg = new_disk_config(&instance_id, &name, &mc_version, &loader, loader_version);
-        cfg.description = Some(format!("由 CurseForge 模組包「{}」導入", manifest.name));
+        cfg.description = Some(tr!("由 CurseForge 模組包「{}」導入", "Imported from the CurseForge modpack {}", manifest.name));
         let mut imported = vec!["overrides".to_string()];
         // The author's recommended memory becomes the instance's maximum, never below the default.
         if let Some(ram) = manifest.minecraft.recommended_ram.filter(|r| (512..=65536).contains(r)) {
@@ -883,7 +884,7 @@ pub async fn retry_pack_downloads(
     let pending: Vec<PendingJob> = std::fs::read(&pending_path)
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
-        .ok_or("找不到待重試的下載清單")?;
+        .ok_or("E_PACK_NO_RETRY_LIST")?;
 
     let ctx = FetchCtx {
         http: pack_http().clone(),
@@ -931,7 +932,7 @@ pub async fn rescan_instance_missing_mods(
         remaining
     })
     .await
-    .map_err(|e| format!("背景工作執行失敗：{}", e))
+    .map_err(|e| format!("E_BACKGROUND_TASK_FAILED: {}", e))
 }
 
 #[tauri::command]
@@ -939,7 +940,7 @@ pub fn open_external_urls(urls: Vec<String>) -> Result<(), String> {
     for url in urls {
         let trimmed = url.trim();
         if !trimmed.starts_with("https://") && !trimmed.starts_with("http://") {
-            return Err(format!("只能開啟 HTTP 或 HTTPS 連結：{}", trimmed));
+            return Err(format!("E_LINK_UNSUPPORTED: {}", trimmed));
         }
 
         #[cfg(windows)]
@@ -948,7 +949,7 @@ pub fn open_external_urls(urls: Vec<String>) -> Result<(), String> {
             .spawn();
         #[cfg(not(windows))]
         let spawned = std::process::Command::new("xdg-open").arg(trimmed).spawn();
-        spawned.map_err(|e| format!("無法開啟連結 {}：{}", trimmed, e))?;
+        spawned.map_err(|e| format!("E_LINK_OPEN_FAILED: {} {}", trimmed, e))?;
     }
     Ok(())
 }
@@ -972,7 +973,7 @@ mod tests {
         let evil = run(fetch_pack_file(&http, &cas, "http://127.0.0.1/a.jar", Some("0".repeat(40).as_str()), 0, &target));
         assert!(evil.is_err());
         let no_hash = run(fetch_pack_file(&http, &cas, "https://cdn.modrinth.com/a.jar", None, 0, &target));
-        assert!(no_hash.unwrap_err().contains("SHA-1"));
+        assert!(no_hash.unwrap_err().contains("E_PACK_NO_HASH"));
         assert!(!target.exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1002,9 +1003,9 @@ mod tests {
         let info = run(inspect_modpack_file(path.to_string_lossy().to_string(), None)).unwrap();
         assert!(info.large);
         assert_eq!(info.size_bytes, MAX_PACK_BYTES + 1);
-        assert!(run(read_pack_file(&path, None, false)).unwrap_err().contains("確認"));
+        assert!(run(read_pack_file(&path, None, false)).unwrap_err().contains("E_PACK_NEEDS_CONFIRM"));
         std::fs::File::create(&path).unwrap().set_len(HARD_MAX_PACK_BYTES + 1).unwrap();
-        assert!(run(read_pack_file(&path, None, true)).unwrap_err().contains("4 GiB"));
+        assert!(run(read_pack_file(&path, None, true)).unwrap_err().contains("E_PACK_TOO_LARGE"));
         let _ = std::fs::remove_file(path);
     }
 
@@ -1033,7 +1034,7 @@ mod tests {
         let job: JobFn = Arc::new(move || {
             let c = c.clone();
             Box::pin(async move {
-                if c.fetch_add(1, Ordering::SeqCst) < 2 { Err("連線失敗：boom".to_string()) } else { Ok(()) }
+                if c.fetch_add(1, Ordering::SeqCst) < 2 { Err("E_CONNECTION：boom".to_string()) } else { Ok(()) }
             })
         });
         let hard: JobFn = Arc::new(|| Box::pin(async { Err("伺服器回應錯誤：HTTP status client error (404)".to_string()) }));

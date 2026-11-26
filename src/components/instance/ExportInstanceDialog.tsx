@@ -16,7 +16,7 @@ import {
 } from "@/services/modpackService";
 import { TransferProgress, type TransferStage } from "./TransferProgress";
 import { formatBytes } from "@/lib/formatBytes";
-import { toUserMessage } from "@/lib/errorMessage";
+import { isCancelled, toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
 
@@ -200,9 +200,8 @@ export const ExportInstanceDialog: React.FC<ExportInstanceDialogProps> = ({ isOp
       toast(t.exportInst.done(written), "success", 8000);
       onClose();
     } catch (err) {
-      const message = toUserMessage(err);
-      if (message.includes("已取消")) toast(t.exportInst.cancelled, "info");
-      else toast(message, "error");
+      if (isCancelled(err)) toast(t.exportInst.cancelled, "info");
+      else toast(toUserMessage(err), "error");
     } finally {
       unlisten();
       exportingRef.current = false;

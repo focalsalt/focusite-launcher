@@ -81,18 +81,18 @@ fn set_secret(account_id: &str, secret: Option<String>) {
 
 fn message(e: FriendsError) -> String {
     match e {
-        FriendsError::Unauthorized => "登入已失效，請重新登入".into(),
-        FriendsError::BadRequest => "找不到這位玩家".into(),
-        FriendsError::Forbidden => "對方未開啟好友請求，或此帳號沒有有效的 Minecraft 檔案".into(),
+        FriendsError::Unauthorized => "E_SESSION_EXPIRED".into(),
+        FriendsError::BadRequest => "E_PLAYER_NOT_FOUND".into(),
+        FriendsError::Forbidden => "E_FRIEND_REQUEST_BLOCKED".into(),
         FriendsError::Failed(m) => m,
     }
 }
 
 fn credentials(account_id: &str) -> Result<(String, String), String> {
     let (mc, refresh) = CredentialStore::get_credentials(account_id)
-        .map_err(|e| format!("讀取憑證失敗: {}", e))?
-        .ok_or("此帳號沒有登入憑證，請重新登入")?;
-    Ok((mc, refresh.ok_or("此帳號沒有 refresh token，請重新登入")?))
+        .map_err(|e| format!("E_CREDENTIAL_READ_FAILED: {}", e))?
+        .ok_or("E_SESSION_EXPIRED")?;
+    Ok((mc, refresh.ok_or("E_SESSION_EXPIRED")?))
 }
 
 /// Runs `op` with the stored Minecraft token; when it was rejected, refreshes it and runs `op` once more.
@@ -155,7 +155,7 @@ async fn launcher_login(
     uuid: &str,
 ) -> Result<String, String> {
     let (code, body) = worker_json(client, &cfg.server, "/launcher/challenge", serde_json::json!({})).await?;
-    let server_id = body["serverId"].as_str().filter(|_| code == 200).ok_or("啟動器伺服器拒絕了挑戰請求")?;
+    let server_id = body["serverId"].as_str().filter(|_| code == 200).ok_or("E_CHALLENGE_REJECTED")?;
     if body["verify"].as_bool() == Some(true) {
         // with_token reads the stored token itself and refreshes it once when Mojang rejects it.
         with_token(uuid, |token| async move { friends::session_join(client, &token, uuid, server_id).await }).await?;
@@ -171,7 +171,7 @@ async fn launcher_login(
         .as_str()
         .filter(|_| code == 200)
         .map(str::to_string)
-        .ok_or_else(|| format!("啟動器伺服器登入失敗（HTTP {code}：{}）", body["error"].as_str().unwrap_or("")))
+        .ok_or_else(|| format!("E_LAUNCHER_LOGIN_FAILED: {code}: {}", body["error"].as_str().unwrap_or("")))
 }
 
 /// The Worker secret for this account; logs in (through the session server) when we have none or `fresh` is set.
@@ -215,10 +215,10 @@ async fn launcher_sync(
                 return Ok((online.iter().filter_map(|v| v.as_str()).map(str::to_string).collect(), invites));
             }
             401 => set_secret(uuid, None),
-            _ => return Err(format!("啟動器伺服器同步失敗（HTTP {code}）")),
+            _ => return Err(format!("E_LAUNCHER_SYNC_FAILED: {code}")),
         }
     }
-    Err("啟動器伺服器登入狀態無法建立".into())
+    Err("E_LAUNCHER_SESSION_FAILED".into())
 }
 
 /// Keeps invites sent by people we are friends with; the Worker cannot tell who is a friend.
@@ -315,7 +315,7 @@ pub async fn friends_list(
                 on_launcher = set;
                 invites = only_from(pending, &ids);
             }
-            Err(e) => tracing::warn!("啟動器在線登記失敗：{}", e),
+            Err(e) => tracing::warn!("Launcher presence registration failed: {}", e),
         }
     }
 
@@ -341,11 +341,11 @@ pub async fn friends_act(account_id: String, action: FriendActionDto) -> Result<
     let update_type = match action.kind.as_str() {
         "add" => UpdateType::Add,
         "remove" => UpdateType::Remove,
-        other => return Err(format!("未知的好友動作：{other}")),
+        other => return Err(format!("E_FRIEND_ACTION_UNKNOWN: {other}")),
     };
     let name = action.name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
     if name.is_none() && action.profile_id.is_none() {
-        return Err("請輸入玩家名稱".into());
+        return Err("E_PLAYER_NAME_REQUIRED".into());
     }
     let action = FriendAction { name, profile_id: action.profile_id, update_type };
     let client = super::http();

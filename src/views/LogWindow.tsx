@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Terminal,
   Square,
@@ -37,6 +37,57 @@ import { toast } from "@/lib/toast";
 import { Toaster } from "@/components/ui/Toaster";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 
+/** Keeps the newest lines in memory; older ones are dropped. */
+const MAX_LOG_LINES = 10_000;
+/** Incoming lines are collected for this long, so a noisy game does not re-render once per line. */
+const LOG_FLUSH_MS = 80;
+
+// Keys follow the event object, so rows stay mounted while old lines are trimmed off the front.
+const rowKeys = new WeakMap<InstanceLogEvent, number>();
+let nextRowKey = 0;
+function rowKey(log: InstanceLogEvent) {
+  let key = rowKeys.get(log);
+  if (key === undefined) {
+    key = nextRowKey++;
+    rowKeys.set(log, key);
+  }
+  return key;
+}
+
+/**
+ * One terminal line. Memoised so its time is formatted once; `content-visibility` lets the webview skip
+ * layout and paint for off-screen rows while keeping the text selectable.
+ * shortcut: all rows stay in the DOM, add a virtualizer if 10k lines still stutter.
+ */
+const LogRow = React.memo(function LogRow({ log, withMeta }: { log: InstanceLogEvent; withMeta: boolean }) {
+  let streamColor = "text-slate-300";
+  let tagColor = "text-slate-500 border-slate-700 bg-slate-800/40";
+
+  if (log.stream === "system") {
+    streamColor = "text-success-400 font-semibold";
+    tagColor = "text-success-400 border-success-500/30 bg-success-500/10";
+  } else if (log.stream === "stderr") {
+    streamColor = "text-danger-400";
+    tagColor = "text-danger-400 border-danger-500/30 bg-danger-500/10";
+  }
+
+  return (
+    <div className="flex items-start gap-2 hover:bg-white/[0.03] px-1 py-0.5 rounded transition-colors group [content-visibility:auto] [contain-intrinsic-size:auto_18px]">
+      {withMeta && (
+        <>
+          <span className="text-slate-600 select-none shrink-0 w-16">
+            {new Date(log.timestamp).toLocaleTimeString()}
+          </span>
+          <span className={`text-[9px] px-1 rounded border uppercase select-none shrink-0 ${tagColor}`}>
+            {log.stream}
+          </span>
+        </>
+      )}
+      <span className={`break-all whitespace-pre-wrap ${streamColor}`}>{log.line}</span>
+    </div>
+  );
+});
+
 export const LogWindow: React.FC = () => {
   const { t } = useI18n();
   const [logs, setLogs] = useState<InstanceLogEvent[]>([]);
@@ -71,6 +122,21 @@ export const LogWindow: React.FC = () => {
   const autoDiagnosedRef = useRef<boolean>(false);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
+  // Lines received since the last flush.
+  const pendingRef = useRef<InstanceLogEvent[]>([]);
+  const flushTimerRef = useRef<number | undefined>(undefined);
+
+  const flushLogs = useCallback(() => {
+    window.clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = undefined;
+    const batch = pendingRef.current;
+    if (batch.length === 0) return;
+    pendingRef.current = [];
+    setLogs((prev) => {
+      const next = prev.concat(batch);
+      return next.length > MAX_LOG_LINES ? next.slice(next.length - MAX_LOG_LINES) : next;
+    });
+  }, []);
 
   // Past logs and crash reports can be browsed while the game is not running.
   const isLive = status === "running" || status === "launching";
@@ -157,6 +223,7 @@ export const LogWindow: React.FC = () => {
     if (activeInstanceId) {
       instanceService.getInstanceLogBuffer(activeInstanceId).then((buffered) => {
         if (buffered && buffered.length > 0) {
+          flushLogs();
           // Keep live events newer than the snapshot instead of overwriting them.
           const lastTs = buffered[buffered.length - 1].timestamp;
           setLogs((prev) => [...buffered, ...prev.filter((l) => l.timestamp > lastTs)]);
@@ -175,14 +242,10 @@ export const LogWindow: React.FC = () => {
       if (activeInstanceId && event.payload.instance_id && event.payload.instance_id !== activeInstanceId) {
         return;
       }
-      setLogs((prev) => {
-        // Keep max 10,000 lines in memory
-        const next = [...prev, event.payload];
-        if (next.length > 10000) {
-          return next.slice(next.length - 10000);
-        }
-        return next;
-      });
+      pendingRef.current.push(event.payload);
+      if (flushTimerRef.current === undefined) {
+        flushTimerRef.current = window.setTimeout(flushLogs, LOG_FLUSH_MS);
+      }
       if (!activeInstanceId && event.payload.instance_id) {
         setActiveInstanceId(event.payload.instance_id);
       }
@@ -209,6 +272,7 @@ export const LogWindow: React.FC = () => {
           autoDiagnosedRef.current = true;
           // Defer diagnosis slightly to ensure final stderr lines are buffered
           setTimeout(() => {
+            flushLogs();
             setLogs((currentLogs) => {
               runDiagnosis(currentLogs);
               return currentLogs;
@@ -221,13 +285,15 @@ export const LogWindow: React.FC = () => {
     return () => {
       unlistenLog();
       unlistenStatus();
+      flushLogs();
     };
   }, [activeInstanceId]);
 
   // Auto-scroll when new logs arrive
   useEffect(() => {
     if (autoScroll && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+      // Instant: a smooth scroll falls short while off-screen row heights are still estimates.
+      logsEndRef.current.scrollIntoView({ block: "end" });
     }
   }, [logs, autoScroll]);
 
@@ -244,6 +310,7 @@ export const LogWindow: React.FC = () => {
   };
 
   const handleClearLogs = () => {
+    pendingRef.current = [];
     setLogs([]);
   };
 
@@ -257,15 +324,14 @@ export const LogWindow: React.FC = () => {
     }
   };
 
-  const filteredLogs = shownLogs.filter((log) => {
-    if (streamFilter !== "all" && log.stream !== streamFilter) {
-      return false;
-    }
-    if (filterText && !log.line.toLowerCase().includes(filterText.toLowerCase())) {
-      return false;
-    }
-    return true;
-  });
+  const filteredLogs = useMemo(() => {
+    const needle = filterText.toLowerCase();
+    return shownLogs.filter(
+      (log) =>
+        (streamFilter === "all" || log.stream === streamFilter) &&
+        (!needle || log.line.toLowerCase().includes(needle))
+    );
+  }, [shownLogs, streamFilter, filterText]);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-canvas text-slate-200 select-text overflow-hidden font-mono text-xs">
@@ -460,6 +526,7 @@ export const LogWindow: React.FC = () => {
             <button
               type="button"
               onClick={() => setDismissDiagnosis(true)}
+              aria-label={t.common.close}
               className="text-slate-400 hover:text-white transition-colors p-1"
             >
               <X className="h-3.5 w-3.5" />
@@ -511,42 +578,7 @@ export const LogWindow: React.FC = () => {
             </p>
           </div>
         ) : (
-          filteredLogs.map((log, index) => {
-            const timeStr = new Date(log.timestamp).toLocaleTimeString();
-            let streamColor = "text-slate-300";
-            let tagColor = "text-slate-500 border-slate-700 bg-slate-800/40";
-
-            if (log.stream === "system") {
-              streamColor = "text-success-400 font-semibold";
-              tagColor = "text-success-400 border-success-500/30 bg-success-500/10";
-            } else if (log.stream === "stderr") {
-              streamColor = "text-danger-400";
-              tagColor = "text-danger-400 border-danger-500/30 bg-danger-500/10";
-            }
-
-            return (
-              <div
-                key={`${log.timestamp}-${index}`}
-                className="flex items-start gap-2 hover:bg-white/[0.03] px-1 py-0.5 rounded transition-colors group"
-              >
-                {!viewingHistory && (
-                  <>
-                    <span className="text-slate-600 select-none shrink-0 w-16">
-                      {timeStr}
-                    </span>
-                    <span
-                      className={`text-[9px] px-1 rounded border uppercase select-none shrink-0 ${tagColor}`}
-                    >
-                      {log.stream}
-                    </span>
-                  </>
-                )}
-                <span className={`break-all whitespace-pre-wrap ${streamColor}`}>
-                  {log.line}
-                </span>
-              </div>
-            );
-          })
+          filteredLogs.map((log) => <LogRow key={rowKey(log)} log={log} withMeta={!viewingHistory} />)
         )}
         <div ref={logsEndRef} />
       </ScrollArea>

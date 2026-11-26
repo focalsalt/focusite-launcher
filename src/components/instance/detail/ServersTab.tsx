@@ -11,6 +11,7 @@ import type { ServerEntry, ServerPingResult } from "@/services/instanceService";
 import { FramelessEmptyState, tabContentVariants } from "./shared";
 import { useI18n } from "@/i18n";
 import { Tip } from "@/components/ui/tooltip";
+import { localizeBackendText } from "@/lib/errorMessage";
 
 /** servers.dat stores the icon as bare base64, while a ping returns a full data URI. Falls back to a placeholder if it can't be decoded. */
 const ServerIcon: React.FC<{ icon?: string; alt: string }> = ({ icon, alt }) => {
@@ -143,7 +144,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                               </div>
                               <p className="text-xs text-white/40 truncate mt-0.5">
                                 {ping ? (
-                                  <span className="text-white/70">{ping.motd}</span>
+                                  <span className="text-white/70">{localizeBackendText(ping.motd)}</span>
                                 ) : (
                                   t.servers.notPinged
                                 )}
@@ -203,6 +204,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                                 setServers(next);
                                 await instanceService.saveInstanceServers(instance.id, next);
                               }}
+                              aria-label={t.servers.removeAttr}
                               className="h-8 px-2 text-white/40 hover:text-red-400"
                             >
                               <Trash2 className="w-4 h-4" />

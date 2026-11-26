@@ -12,11 +12,11 @@ pub fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path, skip_links: bo
         let kind = entry.file_type()?;
         if kind.is_symlink() {
             if skip_links {
-                tracing::warn!("略過符號連結 {}", entry.path().display());
+                tracing::warn!("Skipping symlink {}", entry.path().display());
                 continue;
             }
             return Err(std::io::Error::other(format!(
-                "含有符號連結 {}，無法跨磁碟搬移",
+                "E_SYMLINK_CROSS_DRIVE: {}",
                 entry.path().display()
             )));
         }
@@ -49,6 +49,7 @@ pub mod settings;
 pub mod share;
 pub mod skin;
 pub mod theme;
+pub mod ui_language;
 pub mod workshop;
 pub mod world;
 
@@ -73,7 +74,7 @@ pub async fn blocking<T: Send + 'static>(
 ) -> Result<T, String> {
     tokio::task::spawn_blocking(work)
         .await
-        .map_err(|e| format!("背景工作執行失敗：{}", e))?
+        .map_err(|e| format!("E_BACKGROUND_TASK_FAILED: {}", e))?
 }
 
 /// Builds a `map_err` adapter that prefixes a short Chinese action description to the cause.

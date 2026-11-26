@@ -158,13 +158,14 @@ pub fn run() {
                     MAIN_MIN_HEIGHT,
                 )));
             }
-            let show_item = MenuItemBuilder::with_id("show", "顯示主視窗").build(app)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "結束 Focusite").build(app)?;
+            let show_item = MenuItemBuilder::with_id("show", commands::ui_language::tray_show_label()).build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", commands::ui_language::tray_quit_label()).build(app)?;
             let menu = MenuBuilder::new(app)
                 .item(&show_item)
                 .separator()
                 .item(&quit_item)
                 .build()?;
+            app.manage(commands::ui_language::TrayItems { show: show_item, quit: quit_item });
 
             let mut tray_builder = TrayIconBuilder::with_id("main-tray")
                 .tooltip("Focusite Launcher")
@@ -266,6 +267,7 @@ pub fn run() {
             get_launcher_info,
             show_splash_window,
             show_main_window,
+            commands::ui_language::set_ui_language,
             commands::manifest::get_version_manifest,
             commands::manifest::get_version_detail,
             commands::manifest::get_loader_versions,

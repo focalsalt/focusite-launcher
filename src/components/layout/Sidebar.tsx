@@ -211,6 +211,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onMouseEnter={preloadImportModpackDialog}
                 onClick={onImportInstance}
+                aria-label={t.shell.importInstance}
                 className="flex h-5 w-5 items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
               >
                 <FolderDown className="h-3.5 w-3.5" />
@@ -225,6 +226,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onMouseEnter={preloadCreateInstanceDialog}
                 onClick={onCreateInstance}
+                aria-label={t.shell.createNewInstance}
                 className="flex h-5 w-5 items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
               >
                 <Plus className="h-3.5 w-3.5" />

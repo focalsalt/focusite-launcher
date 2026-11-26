@@ -234,7 +234,7 @@ pub fn decrypt_account_data(raw_bytes: &[u8]) -> Result<String, AuthError> {
 
     if !raw_bytes.starts_with(MAGIC_HEADER) {
         return Err(AuthError::KeyringError(
-            "檔案格式錯誤：非有效之 DPAPI 加密資料庫".into(),
+            "E_CREDENTIAL_FILE_INVALID".into(),
         ));
     }
 
@@ -245,7 +245,7 @@ pub fn decrypt_account_data(raw_bytes: &[u8]) -> Result<String, AuthError> {
     let decrypted = non_win_dpapi::unprotect(cipher)?;
 
     String::from_utf8(decrypted).map_err(|e| {
-        AuthError::KeyringError(format!("DPAPI 解密後非有效 UTF-8 字串: {}", e))
+        AuthError::KeyringError(format!("E_CREDENTIAL_DECRYPT_FAILED: {}", e))
     })
 }
 

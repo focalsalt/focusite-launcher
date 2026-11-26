@@ -128,7 +128,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
       onInstanceDuplicated?.(duplicated);
       setDuplicateTarget(null);
     } catch (err: any) {
-      setDuplicateError(err?.message || t.instances.dupFailed);
+      setDuplicateError(toUserMessage(err, t.instances.dupFailed));
     } finally {
       setIsDuplicating(false);
     }
@@ -350,6 +350,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                         <button
                           type="button"
                           onClick={() => instanceService.openInstanceDirectory(inst.id, "root")}
+                          aria-label={t.instances.openDir}
                           className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
                         >
                           <FolderOpen className="h-4 w-4" />
@@ -367,6 +368,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                             setDuplicateName(t.inst.copySuffix(inst.name));
                             setDuplicateError(null);
                           }}
+                          aria-label={t.instances.duplicate}
                           className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
                         >
                           <Copy className="h-4 w-4" />
@@ -380,6 +382,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setDeleteTarget(inst)}
+                          aria-label={t.instances.delete}
                           className="p-1.5 rounded-lg text-slate-400 hover:text-danger-400 hover:bg-danger-500/10 transition-colors"
                         >
                           <Trash2 className="h-4 w-4" />

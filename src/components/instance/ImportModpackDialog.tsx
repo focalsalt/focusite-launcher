@@ -41,7 +41,7 @@ import { FilterSidebar, Sort } from "@/components/workshop/FilterSidebar";
 import { ProjectDetailPanel } from "@/components/workshop/ProjectDetailPanel";
 import { useProjectDetail } from "@/components/workshop/useProjectDetail";
 import { useVersionManifest } from "./VersionLoaderFields";
-import { toUserMessage } from "@/lib/errorMessage";
+import { isCancelled, toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { ProjectRow } from "@/components/workshop/ProjectRow";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -282,9 +282,8 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
       }
       // Otherwise the missing-mods view takes over.
     } catch (err: unknown) {
-      const message = toUserMessage(err);
-      if (message.includes("已取消")) toast(t.importPack.cancelled, "info");
-      else toast(message, "error");
+      if (isCancelled(err)) toast(t.importPack.cancelled, "info");
+      else toast(toUserMessage(err), "error");
     } finally {
       unlisten();
       importingRef.current = false;
@@ -578,7 +577,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                             project={proj}
                             active={activeProject?.id === proj.id}
                             checked={selectedProject?.id === proj.id}
-                            onClick={() => setActiveProject(proj)}
+                            onSelect={setActiveProject}
                           />
                         ))}
                       </div>

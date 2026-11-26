@@ -19,10 +19,10 @@ fn list_worlds(instance_id: String) -> Result<Vec<WorldSummary>, String> {
     validate_safe_id(&instance_id)?;
     let instance_dir = get_instances_dir().join(&instance_id);
     if !instance_dir.is_dir() {
-        return Err(format!("找不到實例 '{}'", instance_id));
+        return Err(format!("E_INSTANCE_NOT_FOUND: {}", instance_id));
     }
 
-    list_instance_worlds(&instance_dir).map_err(|e| format!("讀取世界清單失敗：{}", e))
+    list_instance_worlds(&instance_dir).map_err(|e| format!("E_WORLDS_READ_FAILED: {}", e))
 }
 
 #[command]
@@ -33,10 +33,10 @@ pub fn rename_instance_world_cmd(
 ) -> Result<(), String> {
     validate_safe_id(&instance_id)?;
     if super::instance::is_instance_busy(&instance_id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法重新命名存檔", instance_id));
+        return Err("E_INSTANCE_BUSY".into());
     }
     let instance_dir = get_instances_dir().join(&instance_id);
-    rename_world(&instance_dir, &folder_name, &new_name).map_err(|e| format!("重新命名存檔失敗：{}", e))
+    rename_world(&instance_dir, &folder_name, &new_name).map_err(|e| format!("E_WORLD_RENAME_FAILED: {}", e))
 }
 
 #[command]
@@ -47,10 +47,10 @@ pub async fn delete_instance_world_cmd(instance_id: String, folder_name: String)
 fn delete_world_blocking(instance_id: String, folder_name: String) -> Result<(), String> {
     validate_safe_id(&instance_id)?;
     if super::instance::is_instance_busy(&instance_id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法刪除存檔", instance_id));
+        return Err("E_INSTANCE_BUSY".into());
     }
     let instance_dir = get_instances_dir().join(&instance_id);
-    delete_world(&instance_dir, &folder_name).map_err(|e| format!("刪除存檔失敗：{}", e))
+    delete_world(&instance_dir, &folder_name).map_err(|e| format!("E_WORLD_DELETE_FAILED: {}", e))
 }
 
 #[command]
@@ -65,32 +65,32 @@ pub async fn backup_instance_world_cmd(
 fn backup_world_blocking(instance_id: String, folder_name: String, target_zip_path: String) -> Result<(), String> {
     validate_safe_id(&instance_id)?;
     if super::instance::is_instance_busy(&instance_id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法備份存檔", instance_id));
+        return Err("E_INSTANCE_BUSY".into());
     }
 
     let trimmed_path = target_zip_path.trim();
     if trimmed_path.is_empty() {
-        return Err("備份輸出路徑不得為空".into());
+        return Err("E_BACKUP_PATH_EMPTY".into());
     }
     if !trimmed_path.to_lowercase().ends_with(".zip") {
-        return Err("備份檔案必須使用 .zip 副檔名".into());
+        return Err("E_BACKUP_NOT_ZIP".into());
     }
     if trimmed_path.contains("..") {
-        return Err("備份路徑包含非法穿越字元 '..'".into());
+        return Err("E_BACKUP_PATH_TRAVERSAL".into());
     }
 
     let output_zip = PathBuf::from(trimmed_path);
     if output_zip.exists() {
-        return Err("備份檔案已存在，拒絕覆寫既有檔案".into());
+        return Err("E_BACKUP_EXISTS".into());
     }
     if let Some(parent) = output_zip.parent() {
         if !parent.as_os_str().is_empty() && !parent.is_dir() {
-            return Err("備份目標所在目錄不存在".into());
+            return Err("E_BACKUP_NO_FOLDER".into());
         }
     }
 
     let instance_dir = get_instances_dir().join(&instance_id);
-    backup_world(&instance_dir, &folder_name, &output_zip).map_err(|e| format!("備份存檔失敗：{}", e))
+    backup_world(&instance_dir, &folder_name, &output_zip).map_err(|e| format!("E_BACKUP_FAILED: {}", e))
 }
 
 #[command]
@@ -99,7 +99,7 @@ pub async fn list_world_datapacks_cmd(instance_id: String, folder_name: String) 
         // Read-only listing is safe while the game is running.
         validate_safe_id(&instance_id)?;
         let instance_dir = get_instances_dir().join(&instance_id);
-        list_world_datapacks(&instance_dir, &folder_name).map_err(|e| format!("讀取資料包清單失敗：{}", e))
+        list_world_datapacks(&instance_dir, &folder_name).map_err(|e| format!("E_DATAPACKS_READ_FAILED: {}", e))
     })
     .await
 }
@@ -113,10 +113,10 @@ pub async fn delete_world_datapack_cmd(
     super::blocking(move || {
         validate_safe_id(&instance_id)?;
         if super::instance::is_instance_busy(&instance_id) {
-            return Err(format!("實例 '{}' 正在運行或安裝中，無法刪除資料包", instance_id));
+            return Err("E_INSTANCE_BUSY".into());
         }
         let instance_dir = get_instances_dir().join(&instance_id);
-        delete_world_datapack(&instance_dir, &folder_name, &pack_name).map_err(|e| format!("刪除資料包失敗：{}", e))
+        delete_world_datapack(&instance_dir, &folder_name, &pack_name).map_err(|e| format!("E_DATAPACK_DELETE_FAILED: {}", e))
     })
     .await
 }
@@ -125,7 +125,7 @@ pub async fn delete_world_datapack_cmd(
 pub fn open_world_datapacks_dir_cmd(instance_id: String, folder_name: String) -> Result<(), String> {
     validate_safe_id(&instance_id)?;
     let instance_dir = get_instances_dir().join(&instance_id);
-    let dir = world_datapacks_dir(&instance_dir, &folder_name).map_err(|e| format!("找不到資料包資料夾：{}", e))?;
+    let dir = world_datapacks_dir(&instance_dir, &folder_name).map_err(|e| format!("E_DATAPACKS_FOLDER_MISSING: {}", e))?;
     let _ = std::fs::create_dir_all(&dir);
     #[cfg(windows)]
     {

@@ -45,30 +45,30 @@ fn remove_backgrounds(inst_dir: &Path) {
 /// Validates an image from memory (size, readable header, sane dimensions) and stores it as the instance's
 /// `background.<ext>`. Returns the file name.
 pub fn store_background_bytes(inst_dir: &Path, ext: &str, bytes: &[u8]) -> Result<String, String> {
-    let ext = normalize_ext(ext).ok_or("背景圖片僅支援 png / jpg / webp")?;
+    let ext = normalize_ext(ext).ok_or("E_BACKGROUND_FORMAT")?;
     if bytes.len() as u64 > MAX_BACKGROUND_BYTES {
-        return Err("背景圖片過大（上限 20 MiB）".into());
+        return Err("E_BACKGROUND_TOO_LARGE".into());
     }
     let (w, h) = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
-        .map_err(|e| format!("無法讀取圖片: {}", e))?
+        .map_err(|e| format!("E_IMAGE_OPEN_FAILED: {}", e))?
         .into_dimensions()
-        .map_err(|e| format!("不是有效的圖片: {}", e))?;
+        .map_err(|e| format!("E_IMAGE_DECODE_FAILED: {}", e))?;
     if w == 0 || h == 0 || w > MAX_BACKGROUND_SIDE || h > MAX_BACKGROUND_SIDE {
-        return Err("背景圖片尺寸不合理".into());
+        return Err("E_BACKGROUND_DIMENSIONS".into());
     }
     remove_backgrounds(inst_dir);
     let name = format!("background.{ext}");
-    super::atomic_write(&inst_dir.join(&name), bytes).map_err(|e| format!("無法儲存背景圖片: {}", e))?;
+    super::atomic_write(&inst_dir.join(&name), bytes).map_err(|e| format!("E_BACKGROUND_SAVE_FAILED: {}", e))?;
     Ok(name)
 }
 
 pub fn read_limited(path: &Path, max: u64) -> Result<Vec<u8>, String> {
-    let size = fs::metadata(path).map_err(|e| format!("無法讀取圖片檔案: {}", e))?.len();
+    let size = fs::metadata(path).map_err(|e| format!("E_IMAGE_OPEN_FAILED: {}", e))?.len();
     if size > max {
-        return Err("背景圖片過大（上限 20 MiB）".into());
+        return Err("E_BACKGROUND_TOO_LARGE".into());
     }
-    fs::read(path).map_err(|e| format!("無法讀取圖片檔案: {}", e))
+    fs::read(path).map_err(|e| format!("E_IMAGE_OPEN_FAILED: {}", e))
 }
 
 /// Copies a user-chosen image into the instance folder and records it as the instance's background.
@@ -78,7 +78,7 @@ pub async fn set_instance_background(instance_id: String, source_path: String) -
         validate_safe_id(&instance_id)?;
         let inst_dir = get_instances_dir().join(&instance_id);
         if !inst_dir.is_dir() {
-            return Err(format!("找不到實例資料夾: {}", instance_id));
+            return Err("E_INSTANCE_NOT_FOUND".into());
         }
         let src = Path::new(&source_path);
         let ext = src.extension().and_then(|e| e.to_str()).unwrap_or_default();
@@ -99,7 +99,7 @@ pub async fn reset_instance_background(instance_id: String) -> Result<InstanceSu
         validate_safe_id(&instance_id)?;
         let inst_dir = get_instances_dir().join(&instance_id);
         if !inst_dir.is_dir() {
-            return Err(format!("找不到實例資料夾: {}", instance_id));
+            return Err("E_INSTANCE_NOT_FOUND".into());
         }
         remove_backgrounds(&inst_dir);
         let config = update_instance_config(&inst_dir, |c| {
@@ -169,23 +169,23 @@ pub fn describe_settings(cfg: &InstanceDiskConfig) -> Vec<String> {
 }
 
 fn read_zip_config(zip: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>) -> Result<InstanceDiskConfig, String> {
-    let file = zip.by_name(INSTANCE_CONFIG_FILE).map_err(|_| "匯出包缺少實例設定".to_string())?;
+    let file = zip.by_name(INSTANCE_CONFIG_FILE).map_err(|_| "E_EXPORT_NO_CONFIG".to_string())?;
     let mut text = String::new();
-    file.take(16 * 1024 * 1024).read_to_string(&mut text).map_err(|e| format!("無法讀取實例設定: {}", e))?;
-    let cfg: InstanceDiskConfig = serde_json::from_str(&text).map_err(|_| "匯出包的實例設定格式錯誤".to_string())?;
+    file.take(16 * 1024 * 1024).read_to_string(&mut text).map_err(|e| format!("E_INSTANCE_CONFIG_UNREADABLE: {}", e))?;
+    let cfg: InstanceDiskConfig = serde_json::from_str(&text).map_err(|_| "E_EXPORT_CONFIG_INVALID".to_string())?;
     if cfg.version.trim().is_empty() {
-        return Err("匯出包沒有指定 Minecraft 版本".into());
+        return Err("E_EXPORT_NO_MC_VERSION".into());
     }
     // These strings later become folder and file names, so an archive from someone else must not smuggle in paths.
     let fields = [Some(cfg.version.as_str()), Some(cfg.loader.as_str()), cfg.loader_version.as_deref()];
     if fields.into_iter().flatten().any(|v| validate_safe_id(v).is_err()) {
-        return Err("匯出包的版本或載入器欄位含有不安全的字元".into());
+        return Err("E_EXPORT_UNSAFE_FIELD".into());
     }
     Ok(cfg)
 }
 
 pub fn inspect_focusite_zip(bytes: &[u8], custom_name: Option<String>) -> Result<PackInspection, String> {
-    let mut zip = open_zip(bytes).map_err(|e| format!("無法讀取匯出包: {}", e))?;
+    let mut zip = open_zip(bytes).map_err(|e| format!("E_EXPORT_UNREADABLE: {}", e))?;
     let cfg = read_zip_config(&mut zip)?;
     let file_count = zip
         .file_names()
@@ -221,10 +221,10 @@ pub async fn import_focusite_zip(
 ) -> Result<ModpackImportResult, String> {
     session.emit("read", "", 0, 0);
     let src_cfg = {
-        let mut zip = open_zip(bytes).map_err(|e| format!("無法讀取匯出包: {}", e))?;
+        let mut zip = open_zip(bytes).map_err(|e| format!("E_EXPORT_UNREADABLE: {}", e))?;
         read_zip_config(&mut zip)?
     };
-    let unpacked = archive_unpacked_size(bytes).map_err(|e| format!("無法讀取匯出包: {}", e))?;
+    let unpacked = archive_unpacked_size(bytes).map_err(|e| format!("E_EXPORT_UNREADABLE: {}", e))?;
     ensure_free_space(&get_instances_dir(), unpacked / 10 * 11)?;
     session.check()?;
 
@@ -243,7 +243,7 @@ pub async fn import_focusite_zip(
             session.emit("overrides", "", done as u64, total as u64);
             Ok(())
         })
-        .map_err(|e| if session.is_cancelled() { CANCELLED_MESSAGE.to_string() } else { format!("解壓匯出包失敗: {}", e) })?;
+        .map_err(|e| if session.is_cancelled() { CANCELLED_MESSAGE.to_string() } else { format!("E_EXPORT_UNPACK_FAILED: {}", e) })?;
 
         // Identity and play statistics are new; everything the user tuned carries over.
         let mut cfg = new_disk_config(&instance_id, &name, &src_cfg.version, &src_cfg.loader, src_cfg.loader_version.clone());
@@ -324,11 +324,11 @@ fn resolve_rel(base: &Path, rel: &str) -> Result<PathBuf, String> {
     let mut abs = base.to_path_buf();
     for part in rel.split('/') {
         if part.is_empty() || part == "." || part == ".." || part.contains(['\\', ':']) {
-            return Err(format!("無效的項目名稱: {}", rel));
+            return Err(format!("E_EXPORT_ITEM_INVALID: {}", rel));
         }
         abs.push(part);
         if fs::symlink_metadata(&abs).is_ok_and(|m| m.file_type().is_symlink()) {
-            return Err(format!("不支援符號連結: {}", rel));
+            return Err(format!("E_SYMLINK_UNSUPPORTED: {}", rel));
         }
     }
     Ok(abs)
@@ -345,9 +345,9 @@ pub async fn list_export_entries(instance_id: String, sub_path: Option<String>) 
         let dir = if sub.is_empty() { mc.clone() } else { resolve_rel(&mc, &sub)? };
         let top = sub.is_empty();
         if is_in_one_level(&sub) {
-            return Err("此資料夾只列出一層".into());
+            return Err("E_FOLDER_ONE_LEVEL".into());
         }
-        let rd = fs::read_dir(&dir).map_err(|e| format!("無法讀取實例資料夾: {}", e))?;
+        let rd = fs::read_dir(&dir).map_err(|e| format!("E_INSTANCE_FOLDER_UNREADABLE: {}", e))?;
         let mut out: Vec<ExportEntry> = rd
             .flatten()
             .filter_map(|e| {
@@ -398,18 +398,18 @@ fn collect_files(
     out: &mut Vec<ExportFile>,
 ) -> Result<(), String> {
     session.check()?;
-    let meta = fs::symlink_metadata(abs).map_err(|e| format!("無法讀取 {}: {}", abs.display(), e))?;
+    let meta = fs::symlink_metadata(abs).map_err(|e| format!("E_FILE_READ_FAILED: {}: {}", abs.display(), e))?;
     if meta.file_type().is_symlink() {
         return Ok(());
     }
     if meta.is_dir() {
-        for e in fs::read_dir(abs).map_err(|e| format!("無法讀取 {}: {}", abs.display(), e))?.flatten() {
+        for e in fs::read_dir(abs).map_err(|e| format!("E_FILE_READ_FAILED: {}: {}", abs.display(), e))?.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
             collect_files(session, &e.path(), &format!("{rel}/{name}"), out)?;
         }
     } else {
         if out.len() >= MAX_EXPORT_FILES {
-            return Err("檔案數量過多，請取消勾選部分內容後再匯出".into());
+            return Err("E_EXPORT_TOO_MANY_FILES".into());
         }
         out.push(ExportFile { abs: abs.to_path_buf(), rel: rel.to_string(), size: meta.len() });
     }
@@ -453,12 +453,12 @@ fn write_export(
     total: u64,
     tmp: &Path,
 ) -> Result<(), String> {
-    let out = fs::File::create(tmp).map_err(|e| format!("無法建立匯出檔案: {}", e))?;
+    let out = fs::File::create(tmp).map_err(|e| format!("E_EXPORT_CREATE_FAILED: {}", e))?;
     let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(out));
     let deflate = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     let stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-    let werr = |e: zip::result::ZipError| format!("寫入匯出檔案失敗: {}", e);
-    let ioerr = |e: std::io::Error| format!("寫入匯出檔案失敗: {}", e);
+    let werr = |e: zip::result::ZipError| format!("E_EXPORT_WRITE_FAILED: {}", e);
+    let ioerr = |e: std::io::Error| format!("E_EXPORT_WRITE_FAILED: {}", e);
 
     let mut cfg = cfg.clone();
     cfg.last_played_at = None;
@@ -492,7 +492,7 @@ fn write_export(
         session.check()?;
         let opts = if is_already_compressed(&f.rel) { stored } else { deflate }.large_file(f.size >= 3 * 1024 * 1024 * 1024);
         zip.start_file(format!("minecraft{}", f.rel), opts).map_err(werr)?;
-        let mut src = fs::File::open(&f.abs).map_err(|e| format!("無法讀取 {}: {}", f.abs.display(), e))?;
+        let mut src = fs::File::open(&f.abs).map_err(|e| format!("E_FILE_READ_FAILED: {}: {}", f.abs.display(), e))?;
         loop {
             let n = src.read(&mut buf).map_err(ioerr)?;
             if n == 0 {
@@ -510,7 +510,7 @@ fn write_export(
     }
     // Finishing writes the central directory and flushes to disk, which can take a moment on a big archive.
     session.emit_full("pack", "", total, total, 0, None);
-    zip.finish().map_err(werr)?.into_inner().map_err(|e| format!("寫入匯出檔案失敗: {}", e))?.sync_all().map_err(ioerr)?;
+    zip.finish().map_err(werr)?.into_inner().map_err(|e| format!("E_EXPORT_WRITE_FAILED: {}", e))?.sync_all().map_err(ioerr)?;
     Ok(())
 }
 
@@ -528,15 +528,15 @@ pub async fn export_instance(
     super::blocking(move || {
         validate_safe_id(&instance_id)?;
         if is_instance_busy(&instance_id) {
-            return Err("遊戲執行中，請先關閉後再匯出".into());
+            return Err("E_EXPORT_WHILE_RUNNING".into());
         }
         let inst_dir = get_instances_dir().join(&instance_id);
         let cfg = read_instance_config(&inst_dir)?;
         let dest = PathBuf::from(&dest_path);
         if !dest.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")) {
-            return Err("匯出檔案必須是 .zip".into());
+            return Err("E_EXPORT_NOT_ZIP".into());
         }
-        let parent = dest.parent().filter(|p| p.is_dir()).ok_or("目的資料夾不存在")?;
+        let parent = dest.parent().filter(|p| p.is_dir()).ok_or("E_EXPORT_NO_DEST")?;
 
         session.emit("scan", "", 0, 0);
         let mc = inst_dir.join("minecraft");
@@ -565,7 +565,7 @@ pub async fn export_instance(
         let tmp = parent.join(format!(".{}.tmp", uuid::Uuid::new_v4()));
         let result = write_export(&session, &inst_dir, &cfg, &files, total, &tmp).and_then(|_| {
             session.check()?;
-            fs::rename(&tmp, &dest).map_err(|e| format!("無法完成匯出檔案: {}", e))
+            fs::rename(&tmp, &dest).map_err(|e| format!("E_EXPORT_FINISH_FAILED: {}", e))
         });
         if result.is_err() {
             let _ = fs::remove_file(&tmp);

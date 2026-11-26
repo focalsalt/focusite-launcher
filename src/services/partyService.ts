@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { SIGNALING_SERVER } from "@/lib/signalingServer";
 import { p2pService, type TurnServer } from "@/services/p2pService";
+import { toUserMessage } from "@/lib/errorMessage";
 
 export const MAX_CHAT_LINES = 100;
 
@@ -200,7 +201,7 @@ class PartyService {
     if (this.state.partyId === partyId) {
       this.set(IDLE);
       // Our own party failing is shown by the offline screen; only a failed join needs a chat line.
-      if (!create) this.addLine({ kind: "system", code: "connectFailed", target: this.lastError });
+      if (!create) this.addLine({ kind: "system", code: "connectFailed", target: toUserMessage(this.lastError) });
     }
     return false;
   }

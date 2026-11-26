@@ -341,7 +341,7 @@ pub async fn upload_minecraft_skin(
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
-        return Err(AuthError::AuthFailed(format!("上傳 Minecraft 外觀失敗: {}", err_text)));
+        return Err(AuthError::AuthFailed(format!("E_SKIN_UPLOAD_FAILED: {}", err_text)));
     }
 
     let profile: MinecraftProfileResponse = resp.json().await?;
@@ -367,7 +367,7 @@ pub async fn set_active_cape(
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
-        return Err(AuthError::AuthFailed(format!("設置活躍披風失敗: {}", err_text)));
+        return Err(AuthError::AuthFailed(format!("E_CAPE_SET_FAILED: {}", err_text)));
     }
 
     let profile: MinecraftProfileResponse = resp.json().await?;
@@ -387,7 +387,7 @@ pub async fn hide_active_cape(
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
-        return Err(AuthError::AuthFailed(format!("隱藏披風失敗: {}", err_text)));
+        return Err(AuthError::AuthFailed(format!("E_CAPE_REMOVE_FAILED: {}", err_text)));
     }
 
     Ok(())

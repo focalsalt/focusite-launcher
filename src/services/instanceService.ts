@@ -182,7 +182,6 @@ export const instanceService = {
       description,
       hasIcon: !!iconBytes,
       modCount: 0,
-      lastPlayed: "尚未遊玩",
       isFavorite: false,
     };
 
@@ -439,7 +438,6 @@ export const instanceService = {
       ...source,
       id: newId,
       name: newName,
-      lastPlayed: "尚未遊玩",
     };
     const nextList = [...current, duplicated];
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(nextList));

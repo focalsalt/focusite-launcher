@@ -54,7 +54,7 @@ pub async fn start_p2p_host(
         .start_host(instance_id, host_port, alias)
         .await
         .map(P2pSessionDto::from)
-        .map_err(super::ctx("建立 P2P 房間失敗"))
+        .map_err(super::ctx("E_PEER_HOST_FAILED"))
 }
 
 #[tauri::command]
@@ -62,7 +62,7 @@ pub async fn stop_p2p_session(session_id: String) -> Result<(), String> {
     P2P_REGISTRY
         .stop_session(&session_id)
         .await
-        .map_err(super::ctx("關閉 P2P 房間失敗"))
+        .map_err(super::ctx("E_PEER_CLOSE_FAILED"))
 }
 
 #[tauri::command]
@@ -76,7 +76,7 @@ pub async fn p2p_verify_handshake(session_id: String) -> Result<P2pHandshakeResu
     P2P_REGISTRY
         .verify_handshake(&session_id)
         .await
-        .map_err(super::ctx("P2P 握手驗證失敗"))
+        .map_err(super::ctx("E_PEER_HANDSHAKE_FAILED"))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -102,7 +102,7 @@ pub async fn p2p_create_offer(
     let (info, code) = P2P_REGISTRY
         .create_tunnel_offer(instance_id, game_port, alias, &ice_config(turn))
         .await
-        .map_err(super::ctx("建立邀請碼失敗"))?;
+        .map_err(super::ctx("E_PEER_INVITE_FAILED"))?;
     Ok(TunnelCodeDto { session: info.into(), code })
 }
 
@@ -112,7 +112,7 @@ pub async fn p2p_apply_answer(session_id: String, answer_code: String) -> Result
         .apply_tunnel_answer(&session_id, &answer_code)
         .await
         .map(P2pSessionDto::from)
-        .map_err(super::ctx("套用回應碼失敗"))
+        .map_err(super::ctx("E_PEER_ANSWER_FAILED"))
 }
 
 #[tauri::command]
@@ -124,7 +124,7 @@ pub async fn p2p_join_with_offer(
     let (info, code) = P2P_REGISTRY
         .join_tunnel(&offer_code, local_port.unwrap_or(0), &ice_config(turn))
         .await
-        .map_err(super::ctx("加入失敗"))?;
+        .map_err(super::ctx("E_PEER_JOIN_FAILED"))?;
     Ok(TunnelCodeDto { session: info.into(), code })
 }
 
@@ -135,7 +135,7 @@ pub async fn p2p_serve_file(session_id: String, files: std::collections::HashMap
     P2P_REGISTRY
         .serve_files(&session_id, whitelist)
         .await
-        .map_err(super::ctx("設定共享檔案失敗"))
+        .map_err(super::ctx("E_PEER_SHARE_FAILED"))
 }
 
 /// Downloads a file from the session's peer into `dest`, verified against `sha1` and `size`.
@@ -151,7 +151,7 @@ pub async fn p2p_fetch_file(session_id: String, sha1: String, size: u64, dest: S
     P2P_REGISTRY
         .fetch_file(&session_id, &sha1, size, std::path::Path::new(&dest))
         .await
-        .map_err(super::ctx("下載檔案失敗"))
+        .map_err(super::ctx("E_PEER_FETCH_FAILED"))
 }
 
 /// The running LAN world listener; at most one.
@@ -163,7 +163,7 @@ pub async fn lan_world_watch_start(app: AppHandle) -> Result<(), String> {
     if LAN_WATCHER.lock().map_err(|e| e.to_string())?.is_some() {
         return Ok(());
     }
-    let (watcher, mut rx) = LanWatcher::start().map_err(super::ctx("無法監聽區網世界"))?;
+    let (watcher, mut rx) = LanWatcher::start().map_err(super::ctx("E_LAN_LISTEN_FAILED"))?;
     *LAN_WATCHER.lock().map_err(|e| e.to_string())? = Some(watcher);
     tauri::async_runtime::spawn(async move {
         let _ = app.emit("lan-world", *rx.borrow());
@@ -229,12 +229,12 @@ pub async fn p2p_firewall_setup() -> Result<(), String> {
             .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?;
         if !ok {
-            return Err("未取得系統管理員授權，防火牆規則沒有建立".into());
+            return Err("E_FIREWALL_DENIED".into());
         }
         if p2p_firewall_status().await? {
             Ok(())
         } else {
-            Err("防火牆規則沒有建立成功".into())
+            Err("E_FIREWALL_FAILED".into())
         }
     }
     #[cfg(not(windows))]

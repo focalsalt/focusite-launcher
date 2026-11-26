@@ -157,11 +157,11 @@ impl P2pSessionRegistry {
         let lock = self.sessions.read().await;
         let handle = lock
             .get(session_id)
-            .ok_or_else(|| P2pError::SignalingFailed(format!("找不到連線階段: {}", session_id)))?;
+            .ok_or_else(|| P2pError::SignalingFailed(format!("E_ROOM_SESSION_NOT_FOUND: {}", session_id)))?;
         let tunnel = handle
             .tunnel
             .as_ref()
-            .ok_or_else(|| P2pError::SignalingFailed("這個連線階段不是 WebRTC 通道".into()))?;
+            .ok_or_else(|| P2pError::SignalingFailed("E_ROOM_NOT_WEBRTC".into()))?;
         tunnel.apply_answer(answer_code).await?;
         Ok(handle.snapshot())
     }
@@ -204,7 +204,7 @@ impl P2pSessionRegistry {
         let lock = self.sessions.read().await;
         lock.get(session_id)
             .and_then(|h| h.tunnel.as_ref())
-            .ok_or_else(|| P2pError::SignalingFailed(format!("找不到 WebRTC 連線階段: {}", session_id)))?
+            .ok_or_else(|| P2pError::SignalingFailed(format!("E_ROOM_SESSION_NOT_FOUND: {}", session_id)))?
             .serve_files(whitelist);
         Ok(())
     }
@@ -215,7 +215,7 @@ impl P2pSessionRegistry {
             let lock = self.sessions.read().await;
             lock.get(session_id)
                 .and_then(|h| h.tunnel.as_ref())
-                .ok_or_else(|| P2pError::SignalingFailed(format!("找不到 WebRTC 連線階段: {}", session_id)))?
+                .ok_or_else(|| P2pError::SignalingFailed(format!("E_ROOM_SESSION_NOT_FOUND: {}", session_id)))?
                 .fetcher()
         };
         fetcher.fetch(sha1, size, dest).await
@@ -275,7 +275,7 @@ impl P2pSessionRegistry {
             let lock = self.sessions.read().await;
             let handle = lock
                 .get(session_id)
-                .ok_or_else(|| P2pError::SignalingFailed(format!("找不到連線階段: {}", session_id)))?;
+                .ok_or_else(|| P2pError::SignalingFailed(format!("E_ROOM_SESSION_NOT_FOUND: {}", session_id)))?;
             handle.info.local_port
         };
 
@@ -290,8 +290,8 @@ impl P2pSessionRegistry {
                     session_id: session_id.to_string(),
                     success: false,
                     latency_ms: 0,
-                    motd: format!("TCP 連線失敗 ({}): {}", target_addr, e),
-                    server_version: "未知".to_string(),
+                    motd: format!("E_PING_CONNECT_FAILED: {}: {}", target_addr, e),
+                    server_version: String::new(),
                 });
             }
             Err(_) => {
@@ -299,8 +299,8 @@ impl P2pSessionRegistry {
                     session_id: session_id.to_string(),
                     success: false,
                     latency_ms: 0,
-                    motd: format!("TCP 連線逾時 ({})", target_addr),
-                    server_version: "未知".to_string(),
+                    motd: format!("E_PING_CONNECT_TIMEOUT: {}", target_addr),
+                    server_version: String::new(),
                 });
             }
         };
@@ -313,8 +313,8 @@ impl P2pSessionRegistry {
                 session_id: session_id.to_string(),
                 success: false,
                 latency_ms: 0,
-                motd: format!("發送 Handshake 封包失敗: {}", e),
-                server_version: "未知".to_string(),
+                motd: format!("E_PING_SEND_FAILED: {}", e),
+                server_version: String::new(),
             });
         }
 
@@ -323,8 +323,8 @@ impl P2pSessionRegistry {
                 session_id: session_id.to_string(),
                 success: false,
                 latency_ms: 0,
-                motd: format!("發送 Status Request 封包失敗: {}", e),
-                server_version: "未知".to_string(),
+                motd: format!("E_PING_SEND_FAILED: {}", e),
+                server_version: String::new(),
             });
         }
 
@@ -337,8 +337,8 @@ impl P2pSessionRegistry {
                     session_id: session_id.to_string(),
                     success: false,
                     latency_ms: 0,
-                    motd: "伺服器未回傳狀態資料 (EOF)".to_string(),
-                    server_version: "未知".to_string(),
+                    motd: "E_PING_NO_DATA".to_string(),
+                    server_version: String::new(),
                 });
             }
             Ok(Err(e)) => {
@@ -346,8 +346,8 @@ impl P2pSessionRegistry {
                     session_id: session_id.to_string(),
                     success: false,
                     latency_ms: 0,
-                    motd: format!("讀取狀態回應失敗: {}", e),
-                    server_version: "未知".to_string(),
+                    motd: format!("E_PING_READ_FAILED: {}", e),
+                    server_version: String::new(),
                 });
             }
             Err(_) => {
@@ -355,8 +355,8 @@ impl P2pSessionRegistry {
                     session_id: session_id.to_string(),
                     success: false,
                     latency_ms: 0,
-                    motd: "等待伺服器狀態回應逾時".to_string(),
-                    server_version: "未知".to_string(),
+                    motd: "E_PING_TIMEOUT".to_string(),
+                    server_version: String::new(),
                 });
             }
         };
@@ -382,8 +382,8 @@ impl P2pSessionRegistry {
                 session_id: session_id.to_string(),
                 success: false,
                 latency_ms,
-                motd: format!("解析 Minecraft 狀態回應失敗: {}", e),
-                server_version: "未知".to_string(),
+                motd: format!("E_PING_BAD_RESPONSE: {}", e),
+                server_version: String::new(),
             }),
         }
     }

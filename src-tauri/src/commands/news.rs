@@ -56,7 +56,7 @@ pub struct NewsArchivePage {
 #[tauri::command]
 pub async fn news_fetch_archive_page(page: u32) -> Result<NewsArchivePage, String> {
     if page == 0 {
-        return Err("頁碼必須從 1 開始".into());
+        return Err("E_NEWS_PAGE_INVALID".into());
     }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
@@ -74,16 +74,16 @@ pub async fn news_fetch_archive_page(page: u32) -> Result<NewsArchivePage, Strin
         ])
         .send()
         .await
-        .map_err(|e| format!("無法連線新聞伺服器: {}", e))?;
+        .map_err(|e| format!("E_NEWS_CONNECTION_FAILED: {}", e))?;
 
     if !resp.status().is_success() {
-        return Err(format!("新聞伺服器回應錯誤: HTTP {}", resp.status()));
+        return Err(format!("E_NEWS_SERVER_ERROR: {}", resp.status()));
     }
 
     let envelope: SearchEnvelope = resp
         .json()
         .await
-        .map_err(|e| format!("新聞資料格式錯誤: {}", e))?;
+        .map_err(|e| format!("E_NEWS_BAD_DATA: {}", e))?;
 
     let items: Vec<NewsArchiveItem> = envelope
         .result

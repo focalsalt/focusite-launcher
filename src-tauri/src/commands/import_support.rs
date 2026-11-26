@@ -12,7 +12,8 @@ use tauri::{AppHandle, Emitter};
 
 pub const IMPORT_PROGRESS_EVENT: &str = "modpack-import-progress";
 pub const EXPORT_PROGRESS_EVENT: &str = "instance-export-progress";
-pub const CANCELLED_MESSAGE: &str = "已取消";
+/// Error code for a user cancel; the UI localises it (`CANCELLED_CODE` in `errorMessage.ts`).
+pub const CANCELLED_MESSAGE: &str = "E_CANCELLED";
 /// How often a pack file is retried before it is reported as missing.
 pub const MAX_RETRIES: u32 = 3;
 
@@ -162,7 +163,7 @@ pub fn ensure_free_space(dir: &Path, needed: u64) -> Result<(), String> {
     let needed = needed.saturating_add(64 * 1024 * 1024);
     match available_space(dir) {
         Some(free) if free < needed => Err(format!(
-            "磁碟空間不足：需要約 {}，目前可用 {}",
+            "E_DISK_FULL: {} / {}",
             format_bytes(needed),
             format_bytes(free)
         )),
@@ -173,7 +174,7 @@ pub fn ensure_free_space(dir: &Path, needed: u64) -> Result<(), String> {
 /// Whether a failed pack-file download is worth another attempt: network trouble, server errors and
 /// corrupted bodies are; refused hosts, client errors, missing hashes and size violations are not.
 pub fn is_retryable(err: &str) -> bool {
-    ["連線失敗", "無法連線", "下載中斷", "server error", "Hash mismatch", "timed out", "429"]
+    ["E_CONNECTION", "E_DOWNLOAD_INTERRUPTED", "server error", "Hash mismatch", "timed out", "429"]
         .iter()
         .any(|m| err.contains(m))
 }
@@ -189,13 +190,13 @@ mod tests {
 
     #[test]
     fn retry_rules() {
-        assert!(is_retryable("連線失敗：error sending request"));
-        assert!(is_retryable("伺服器回應錯誤：HTTP status server error (503 Service Unavailable)"));
-        assert!(is_retryable("雜湊驗證或快取寫入失敗：Hash mismatch: expected a, actual b"));
-        assert!(!is_retryable("伺服器回應錯誤：HTTP status client error (404 Not Found)"));
-        assert!(!is_retryable("不受信任的下載來源：evil.example"));
-        assert!(!is_retryable("缺少 SHA-1 雜湊，無法驗證檔案"));
-        assert!(!is_retryable("檔案大小超出模組包宣告的大小"));
+        assert!(is_retryable("E_CONNECTION：error sending request"));
+        assert!(is_retryable("E_SERVER_RESPONSE：HTTP status server error (503 Service Unavailable)"));
+        assert!(is_retryable("E_FILE_STORE_FAILED：Hash mismatch: expected a, actual b"));
+        assert!(!is_retryable("E_SERVER_RESPONSE：HTTP status client error (404 Not Found)"));
+        assert!(!is_retryable("E_DOWNLOAD_UNTRUSTED: evil.example"));
+        assert!(!is_retryable("E_PACK_NO_HASH"));
+        assert!(!is_retryable("E_PACK_SIZE_MISMATCH"));
         assert_eq!(retry_delay(1), Duration::from_secs(1));
         assert_eq!(retry_delay(3), Duration::from_secs(4));
     }

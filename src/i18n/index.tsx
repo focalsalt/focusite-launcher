@@ -1,16 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { zhTW, I18nDictionary } from "./locales/zh-TW";
-import { enUS } from "./locales/en-US";
 import { listen, emit } from "@tauri-apps/api/event";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { currentLanguage, dictionaries, isSupportedLanguage, LANGUAGE_KEY, SupportedLanguage } from "./language";
 
-export type SupportedLanguage = "zh-TW" | "en-US";
-
-const dictionaries: Record<SupportedLanguage, I18nDictionary> = {
-  "zh-TW": zhTW,
-  "en-US": enUS,
-};
-
-const STORAGE_KEY = "focusite_language";
+export type { SupportedLanguage };
 
 interface I18nContextValue {
   language: SupportedLanguage;
@@ -25,13 +19,10 @@ const I18nContext = createContext<I18nContextValue>({
 });
 
 export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [language, setLanguageState] = useState<SupportedLanguage>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as SupportedLanguage | null;
-    return saved === "en-US" || saved === "zh-TW" ? saved : "zh-TW";
-  });
+  const [language, setLanguageState] = useState<SupportedLanguage>(currentLanguage);
 
   const setLanguage = (lang: SupportedLanguage) => {
-    localStorage.setItem(STORAGE_KEY, lang);
+    localStorage.setItem(LANGUAGE_KEY, lang);
     setLanguageState(lang);
     // Broadcast to other webview windows (log-window, workshop)
     emit("focusite:language-changed", { language: lang }).catch(() => {});
@@ -40,6 +31,8 @@ export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Keep <html lang> in sync for screen readers and font selection.
   useEffect(() => {
     document.documentElement.lang = language;
+    // The backend writes some text itself (progress, console lines, tray, window titles).
+    if (isTauri()) invoke("set_ui_language", { language }).catch(console.error);
   }, [language]);
 
   useEffect(() => {
@@ -48,7 +41,7 @@ export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       "focusite:language-changed",
       (event) => {
         if (event.payload.language && event.payload.language !== language) {
-          localStorage.setItem(STORAGE_KEY, event.payload.language);
+          localStorage.setItem(LANGUAGE_KEY, event.payload.language);
           setLanguageState(event.payload.language);
         }
       }
@@ -56,10 +49,9 @@ export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Listen for same-origin storage changes
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        const next = e.newValue as SupportedLanguage;
-        if (next === "zh-TW" || next === "en-US") {
-          setLanguageState(next);
+      if (e.key === LANGUAGE_KEY && e.newValue) {
+        if (isSupportedLanguage(e.newValue)) {
+          setLanguageState(e.newValue);
         }
       }
     };

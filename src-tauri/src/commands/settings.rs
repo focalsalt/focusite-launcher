@@ -82,7 +82,7 @@ pub fn custom_instances_dir() -> Option<PathBuf> {
 fn reject_unsafe_instances_dir(path: &std::path::Path) -> Result<(), String> {
     // "C:\" has two components (prefix + root); a usable folder needs at least one more.
     if path.components().count() < 3 {
-        return Err("不可使用磁碟根目錄，請選擇其中的一個資料夾".into());
+        return Err("E_FOLDER_DRIVE_ROOT".into());
     }
     let lower = |p: &std::path::Path| p.to_string_lossy().to_lowercase().replace('/', "\\");
     let candidate = lower(path);
@@ -90,7 +90,7 @@ fn reject_unsafe_instances_dir(path: &std::path::Path) -> Result<(), String> {
     for var in ["USERPROFILE", "HOME"] {
         if let Ok(home) = std::env::var(var) {
             if candidate == lower(std::path::Path::new(&home)).trim_end_matches('\\') {
-                return Err("不可直接使用使用者資料夾，請選擇其中的子資料夾".into());
+                return Err("E_FOLDER_USER_HOME".into());
             }
         }
     }
@@ -99,7 +99,7 @@ fn reject_unsafe_instances_dir(path: &std::path::Path) -> Result<(), String> {
             let sys = lower(std::path::Path::new(&sys));
             let sys = sys.trim_end_matches('\\');
             if !sys.is_empty() && (candidate == sys || candidate.starts_with(&format!("{sys}\\"))) {
-                return Err("不可使用系統資料夾".into());
+                return Err("E_FOLDER_SYSTEM".into());
             }
         }
     }
@@ -110,12 +110,12 @@ fn reject_unsafe_instances_dir(path: &std::path::Path) -> Result<(), String> {
 fn validate_instances_dir(raw: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(raw.trim());
     if !path.is_absolute() {
-        return Err("請選擇完整的資料夾路徑".into());
+        return Err("E_FOLDER_NOT_ABSOLUTE".into());
     }
     reject_unsafe_instances_dir(&path)?;
-    std::fs::create_dir_all(&path).map_err(|e| format!("無法建立資料夾：{e}"))?;
+    std::fs::create_dir_all(&path).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {e}"))?;
     let probe = path.join(".focusite_write_test");
-    std::fs::write(&probe, b"").map_err(|e| format!("資料夾無法寫入：{e}"))?;
+    std::fs::write(&probe, b"").map_err(|e| format!("E_FOLDER_NOT_WRITABLE: {e}"))?;
     let _ = std::fs::remove_file(probe);
     Ok(path)
 }
@@ -184,10 +184,10 @@ pub fn load_settings_from_disk() -> LauncherSettings {
 
 fn save_disk_settings_internal(path: &std::path::Path, disk_settings: &DiskSettings) -> Result<(), String> {
     let json = serde_json::to_string_pretty(disk_settings)
-        .map_err(|e| format!("儲存設定失敗（序列化）：{}", e))?;
+        .map_err(|e| format!("E_SETTINGS_SAVE_FAILED: {}", e))?;
 
     super::atomic_write(path, json.as_bytes())
-        .map_err(|e| format!("儲存設定失敗（寫入）：{}", e))
+        .map_err(|e| format!("E_SETTINGS_SAVE_FAILED: {}", e))
 }
 
 pub fn save_settings_to_disk(settings: &LauncherSettings) -> Result<(), String> {
@@ -221,7 +221,7 @@ pub async fn update_launcher_settings(
         update_settings_blocking(enable_bmclapi_mirror, curseforge_api_key, sound_enabled, instances_dir, location_enabled)
     })
     .await
-    .map_err(|e| format!("設定更新失敗：{e}"))?;
+    .map_err(|e| format!("E_SETTINGS_UPDATE_FAILED: {e}"))?;
     if changes_dir {
         allow_asset_dirs(&app);
     }
@@ -235,7 +235,7 @@ pub fn allow_asset_dirs(app: &tauri::AppHandle) {
     let scope = app.asset_protocol_scope();
     for dir in [super::get_app_data_dir(), super::instance::get_instances_dir()] {
         if let Err(e) = scope.allow_directory(&dir, true) {
-            tracing::warn!("無法開放資源目錄 {}：{}", dir.display(), e);
+            tracing::warn!("Couldn't allow asset directory {}: {}", dir.display(), e);
         }
     }
 }
@@ -261,7 +261,7 @@ fn update_settings_blocking(
             current.curseforge_api_key = None;
         } else {
             CredentialStore::save_token(CURSEFORGE_KEY_ACCOUNT, &trimmed)
-                .map_err(|e| format!("無法將 API 金鑰存入系統憑證庫：{}", e))?;
+                .map_err(|e| format!("E_API_KEY_SAVE_FAILED: {}", e))?;
             current.curseforge_api_key = Some(trimmed);
         }
     }
@@ -322,7 +322,7 @@ fn move_instances(old: &std::path::Path, new: &std::path::Path) -> Result<(), St
     if !old.is_dir() {
         return Ok(());
     }
-    std::fs::create_dir_all(new).map_err(|e| format!("無法建立資料夾：{e}"))?;
+    std::fs::create_dir_all(new).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {e}"))?;
     let (old_c, new_c) = (
         std::fs::canonicalize(old).map_err(|e| e.to_string())?,
         std::fs::canonicalize(new).map_err(|e| e.to_string())?,
@@ -331,20 +331,20 @@ fn move_instances(old: &std::path::Path, new: &std::path::Path) -> Result<(), St
         return Ok(());
     }
     if new_c.starts_with(&old_c) || old_c.starts_with(&new_c) {
-        return Err("新舊資料夾不可互相包含".into());
+        return Err("E_FOLDERS_NESTED".into());
     }
 
     let entries: Vec<_> = std::fs::read_dir(old)
-        .map_err(|e| format!("無法讀取實例資料夾：{e}"))?
+        .map_err(|e| format!("E_INSTANCE_FOLDER_UNREADABLE: {e}"))?
         .flatten()
         .collect();
     for entry in &entries {
         let name = entry.file_name().to_string_lossy().to_string();
         if super::instance::is_instance_busy(&name) {
-            return Err(format!("實例「{name}」正在執行或安裝中，請先關閉再更改資料夾"));
+            return Err(format!("E_MOVE_INSTANCE_BUSY: {name}"));
         }
         if new.join(&name).exists() {
-            return Err(format!("新資料夾已有同名項目「{name}」，請選擇空的資料夾"));
+            return Err(format!("E_MOVE_NAME_TAKEN: {name}"));
         }
     }
 
@@ -355,7 +355,7 @@ fn move_instances(old: &std::path::Path, new: &std::path::Path) -> Result<(), St
             for (from, to) in moved.into_iter().rev() {
                 let _ = move_entry(&to, &from);
             }
-            return Err(format!("搬移實例失敗，已還原：{e}"));
+            return Err(format!("E_MOVE_FAILED: {e}"));
         }
         moved.push((src, dst));
     }

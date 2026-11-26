@@ -60,11 +60,11 @@ fn load_account_store() -> AccountStoreFile {
 fn save_account_store(store: &AccountStoreFile) -> Result<(), String> {
     let path = get_accounts_file_path();
     let json = serde_json::to_string_pretty(store)
-        .map_err(|e| format!("儲存帳號資料失敗（序列化）：{}", e))?;
+        .map_err(|e| format!("E_ACCOUNT_SAVE_FAILED: {}", e))?;
     let encrypted = focusite_auth::dpapi::encrypt_account_data(&json)
-        .map_err(|e| format!("儲存帳號資料失敗（加密）：{}", e))?;
+        .map_err(|e| format!("E_ACCOUNT_SAVE_FAILED: {}", e))?;
     super::atomic_write(&path, &encrypted)
-        .map_err(|e| format!("儲存帳號資料失敗（寫入）：{}", e))?;
+        .map_err(|e| format!("E_ACCOUNT_SAVE_FAILED: {}", e))?;
     Ok(())
 }
 
@@ -93,14 +93,14 @@ pub fn auth_check_client_id() -> Result<bool, String> {
 }
 
 const MISSING_CLIENT_ID: &str =
-    "缺少 MICROSOFT_CLIENT_ID。開發時請寫在專案根目錄的 .env；發布版需在建置時設定此環境變數。";
+    "E_NO_CLIENT_ID";
 
 #[tauri::command]
 pub async fn auth_start_device_code() -> Result<DeviceCodeResponse, String> {
     let client_id = oauth::get_microsoft_client_id().map_err(|_| MISSING_CLIENT_ID.to_string())?;
     oauth::start_device_code(super::http(), &client_id)
         .await
-        .map_err(|e| format!("啟動裝置登入失敗: {}", e))
+        .map_err(|e| format!("E_DEVICE_LOGIN_FAILED: {}", e))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,16 +122,16 @@ pub async fn auth_poll_device_code(app: tauri::AppHandle, device_code: String) -
     let client = super::http();
     let (status, maybe_token) = oauth::poll_device_code_once(client, &client_id, &device_code)
         .await
-        .map_err(|e| format!("輪詢認證失敗: {}", e))?;
+        .map_err(|e| format!("E_AUTH_POLL_FAILED: {}", e))?;
 
     let token_resp = match status {
         oauth::DeviceCodePollStatus::Pending => return Ok(DevicePollResult::waiting("pending", None)),
         oauth::DeviceCodePollStatus::SlowDown => return Ok(DevicePollResult::waiting("slow_down", None)),
         oauth::DeviceCodePollStatus::Expired => {
-            return Ok(DevicePollResult::waiting("expired", Some("裝置登入代碼已逾時，請重新獲取代碼".into())))
+            return Ok(DevicePollResult::waiting("expired", Some("E_DEVICE_CODE_EXPIRED".into())))
         }
         oauth::DeviceCodePollStatus::Error(err) => return Ok(DevicePollResult::waiting("error", Some(err))),
-        oauth::DeviceCodePollStatus::Success => maybe_token.ok_or("登入回應缺少憑證，請重試")?,
+        oauth::DeviceCodePollStatus::Success => maybe_token.ok_or("E_LOGIN_NO_TOKEN")?,
     };
 
     // Progress for the login dialog: authorised in the browser, then each step of the chain.
@@ -141,7 +141,7 @@ pub async fn auth_poll_device_code(app: tauri::AppHandle, device_code: String) -
     emit_step("microsoft");
     let (mc_auth, profile) = xbox::login_chain_with_progress(client, &token_resp.access_token, emit_step)
         .await
-        .map_err(|e| format!("Minecraft 登入流程失敗：{}", e))?;
+        .map_err(|e| format!("E_MINECRAFT_LOGIN_FAILED: {}", e))?;
     emit_step("saving");
 
     if let Err(e) = focusite_auth::keyring_store::CredentialStore::save_credentials(
@@ -188,7 +188,7 @@ pub async fn auth_list_accounts() -> Result<Vec<UserAccountDto>, String> {
         Ok(store.accounts)
     })
     .await
-    .map_err(|e| format!("背景工作執行失敗：{}", e))?
+    .map_err(|e| format!("E_BACKGROUND_TASK_FAILED: {}", e))?
 }
 
 #[tauri::command]
@@ -259,7 +259,7 @@ pub(super) async fn silent_refresh(
 pub async fn auth_refresh_profile(id: String) -> Result<UserAccountDto, String> {
     let client = super::http();
     let maybe_creds = focusite_auth::keyring_store::CredentialStore::get_credentials(&id)
-        .map_err(|e| format!("讀取憑證失敗: {}", e))?;
+        .map_err(|e| format!("E_CREDENTIAL_READ_FAILED: {}", e))?;
     let had_creds = maybe_creds.is_some();
 
     // 1. The cached Minecraft token; when it has expired, a silent refresh with the Microsoft refresh token.
@@ -271,7 +271,7 @@ pub async fn auth_refresh_profile(id: String) -> Result<UserAccountDto, String> 
                 if let Some(refresh_token) = maybe_refresh {
                     match silent_refresh(client, &id, &mc_token, &refresh_token).await {
                         Ok(p) => profile = Some(p),
-                        Err(e) => tracing::warn!("帳號 {} 靜默刷新失敗：{}", id, e),
+                        Err(e) => tracing::warn!("Silent refresh failed for account {}: {}", id, e),
                     }
                 }
             }
@@ -291,7 +291,7 @@ pub async fn auth_refresh_profile(id: String) -> Result<UserAccountDto, String> 
             .accounts
             .iter_mut()
             .find(|a| a.id == id)
-            .ok_or_else(|| "找不到對應帳號".to_string())?;
+            .ok_or_else(|| "E_ACCOUNT_NOT_FOUND".to_string())?;
         if let Some(p) = profile {
             let (skin_url, skin_model, active_cape) = skin_fields(&p);
             acc.username = p.name;
@@ -331,11 +331,11 @@ pub fn auth_verify_offline_launch(id: String) -> Result<bool, String> {
         .accounts
         .iter()
         .find(|a| a.id == id)
-        .ok_or_else(|| "帳號不存在於本機帳號清單中".to_string())?;
+        .ok_or_else(|| "E_ACCOUNT_NOT_FOUND".to_string())?;
 
     // Check if token exists in Keyring
     let has_stored_token = focusite_auth::keyring_store::CredentialStore::get_token(&id)
-        .map_err(|e| format!("查詢安全憑證庫失敗: {}", e))?
+        .map_err(|e| format!("E_CREDENTIAL_STORE_FAILED: {}", e))?
         .is_some();
 
     // Verify offline entitlement gate
@@ -344,7 +344,7 @@ pub fn auth_verify_offline_launch(id: String) -> Result<bool, String> {
         true,
         has_stored_token,
     )
-    .map_err(|e| format!("離線遊玩權限校驗失敗: {}", e))?;
+    .map_err(|e| format!("E_OFFLINE_CHECK_FAILED: {}", e))?;
 
     Ok(true)
 }
@@ -366,7 +366,7 @@ pub async fn ensure_valid_minecraft_token(
     let acc = match target_acc {
         Some(a) => a,
         None => {
-            return Err("未配置有效的微軟帳號，請先登入帳號".into());
+            return Err("E_NOT_SIGNED_IN".into());
         }
     };
 
@@ -402,7 +402,7 @@ pub async fn ensure_valid_minecraft_token(
                     "legacy".into(),
                 ))
             } else {
-                Err("無法驗證微軟帳號，請檢查網路連線或重新登入".into())
+                Err("E_AUTH_UNVERIFIED".into())
             }
         }
     }

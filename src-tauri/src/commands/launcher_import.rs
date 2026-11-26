@@ -60,14 +60,14 @@ fn detect(dir: &Path) -> Result<Detected, String> {
     if dir.join(format!("{}.json", folder_name(dir))).is_file() {
         return detect_pcl(dir);
     }
-    Err("無法辨識此資料夾：請選擇 Focusite / Prism Launcher 的實例資料夾，或 PCL 的版本資料夾（.minecraft\\versions\\<版本名>）".into())
+    Err("E_IMPORT_UNKNOWN_FOLDER".into())
 }
 
 fn detect_focusite(dir: &Path) -> Result<Detected, String> {
     let cfg = read_instance_config(dir)?;
     let game_dir = dir.join("minecraft");
     if !game_dir.is_dir() {
-        return Err("找不到實例的 minecraft 資料夾".into());
+        return Err("E_IMPORT_NO_MC_FOLDER".into());
     }
     let extras = Extras {
         icon: Some(dir.join("icon.png")).filter(|p| p.is_file()),
@@ -100,9 +100,9 @@ fn prism_icon(dir: &Path, icon_key: Option<&str>) -> Option<PathBuf> {
 
 fn detect_prism(dir: &Path) -> Result<Detected, String> {
     let pack: Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("mmc-pack.json")).map_err(|e| format!("無法讀取 mmc-pack.json：{e}"))?,
+        &std::fs::read_to_string(dir.join("mmc-pack.json")).map_err(|e| format!("E_IMPORT_PACK_JSON_UNREADABLE: {e}"))?,
     )
-    .map_err(|e| format!("mmc-pack.json 格式錯誤：{e}"))?;
+    .map_err(|e| format!("E_IMPORT_PACK_JSON_INVALID: {e}"))?;
 
     let mut version = None;
     let (mut loader, mut loader_version) = ("Vanilla".to_string(), None);
@@ -129,7 +129,7 @@ fn detect_prism(dir: &Path) -> Result<Detected, String> {
         .iter()
         .map(|d| dir.join(d))
         .find(|p| p.is_dir())
-        .ok_or("找不到實例的 minecraft 資料夾")?;
+        .ok_or("E_IMPORT_NO_MC_FOLDER")?;
     let cfg = std::fs::read_to_string(dir.join("instance.cfg")).ok().map(|c| PrismInstanceCfg::parse(&c));
     let name = cfg.as_ref().map(|c| c.name.clone()).unwrap_or_else(|| folder_name(dir));
     let extras = cfg
@@ -148,7 +148,7 @@ fn detect_prism(dir: &Path) -> Result<Detected, String> {
 
     Ok(Detected {
         name,
-        version: version.ok_or("實例沒有指定 Minecraft 版本")?,
+        version: version.ok_or("E_IMPORT_NO_MC_VERSION")?,
         loader,
         loader_version,
         game_dir,
@@ -174,9 +174,9 @@ fn split_forge_version(v: &str) -> Option<(&str, &str)> {
 fn detect_pcl(dir: &Path) -> Result<Detected, String> {
     let name = folder_name(dir);
     let json: Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.join(format!("{name}.json"))).map_err(|e| format!("無法讀取版本 JSON：{e}"))?,
+        &std::fs::read_to_string(dir.join(format!("{name}.json"))).map_err(|e| format!("E_IMPORT_VERSION_JSON_UNREADABLE: {e}"))?,
     )
-    .map_err(|e| format!("版本 JSON 格式錯誤：{e}"))?;
+    .map_err(|e| format!("E_IMPORT_VERSION_JSON_INVALID: {e}"))?;
 
     let mut mc_version = json["inheritsFrom"]
         .as_str()
@@ -220,7 +220,7 @@ fn detect_pcl(dir: &Path) -> Result<Detected, String> {
             .filter(|id| id.chars().next().is_some_and(|c| c.is_ascii_digit()))
             .map(str::to_string);
     }
-    let version = mc_version.ok_or("無法判斷此 PCL 版本的 Minecraft 版本")?;
+    let version = mc_version.ok_or("E_IMPORT_PCL_NO_MC_VERSION")?;
 
     // PCL "version isolation" keeps mods/saves inside the version folder; otherwise they live in the shared
     // `.minecraft`, where only the settings and packs that belong to a setup are taken.
@@ -243,7 +243,7 @@ fn detect_pcl(dir: &Path) -> Result<Detected, String> {
         let root = dir
             .parent()
             .and_then(Path::parent)
-            .ok_or("找不到 PCL 的 .minecraft 資料夾")?
+            .ok_or("E_IMPORT_PCL_NO_ROOT")?
             .to_path_buf();
         (
             root,
@@ -296,7 +296,7 @@ fn scan_tree(path: &Path, files: &mut u64, bytes: &mut u64) {
 
 fn measure(found: &Detected) -> Result<(u64, u64), String> {
     let (mut files, mut bytes) = (0, 0);
-    let rd = std::fs::read_dir(&found.game_dir).map_err(|e| format!("無法讀取來源資料夾：{e}"))?;
+    let rd = std::fs::read_dir(&found.game_dir).map_err(|e| format!("E_IMPORT_SOURCE_UNREADABLE: {e}"))?;
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
         if !wanted(found, &name) {
@@ -338,18 +338,18 @@ impl CopyProgress<'_> {
 }
 
 fn copy_tree(src: &Path, dst: &Path, p: &mut CopyProgress) -> Result<(), String> {
-    std::fs::create_dir_all(dst).map_err(|e| format!("複製實例檔案失敗：{e}"))?;
-    for entry in std::fs::read_dir(src).map_err(|e| format!("複製實例檔案失敗：{e}"))? {
-        let entry = entry.map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+    std::fs::create_dir_all(dst).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
+    for entry in std::fs::read_dir(src).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))? {
+        let entry = entry.map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
         p.session.check()?;
         let to = dst.join(entry.file_name());
-        let kind = entry.file_type().map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+        let kind = entry.file_type().map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
         if kind.is_symlink() {
-            tracing::warn!("匯入時略過符號連結 {}", entry.path().display());
+            tracing::warn!("Skipping symlink during import: {}", entry.path().display());
         } else if kind.is_dir() {
             copy_tree(&entry.path(), &to, p)?;
         } else {
-            let size = std::fs::copy(entry.path(), &to).map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+            let size = std::fs::copy(entry.path(), &to).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
             p.file_done(&entry.file_name().to_string_lossy(), size);
         }
     }
@@ -357,7 +357,7 @@ fn copy_tree(src: &Path, dst: &Path, p: &mut CopyProgress) -> Result<(), String>
 }
 
 fn copy_game_files(found: &Detected, dst: &Path, session: &JobSession, total: (u64, u64)) -> Result<(), String> {
-    std::fs::create_dir_all(dst).map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+    std::fs::create_dir_all(dst).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
     let mut p = CopyProgress {
         session,
         total_files: total.0,
@@ -368,21 +368,21 @@ fn copy_game_files(found: &Detected, dst: &Path, session: &JobSession, total: (u
         last_emit: Instant::now(),
     };
     session.emit("copy", "", 0, total.1);
-    for entry in std::fs::read_dir(&found.game_dir).map_err(|e| format!("複製實例檔案失敗：{e}"))? {
-        let entry = entry.map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+    for entry in std::fs::read_dir(&found.game_dir).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))? {
+        let entry = entry.map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
         session.check()?;
         let name = entry.file_name().to_string_lossy().to_string();
         if !wanted(found, &name) {
             continue;
         }
         let to = dst.join(&name);
-        let kind = entry.file_type().map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+        let kind = entry.file_type().map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
         if kind.is_symlink() {
-            tracing::warn!("匯入時略過符號連結 {}", entry.path().display());
+            tracing::warn!("Skipping symlink during import: {}", entry.path().display());
         } else if kind.is_dir() {
             copy_tree(&entry.path(), &to, &mut p)?;
         } else {
-            let size = std::fs::copy(entry.path(), to).map_err(|e| format!("複製實例檔案失敗：{e}"))?;
+            let size = std::fs::copy(entry.path(), to).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
             p.file_done(&name, size);
         }
     }
@@ -473,7 +473,7 @@ fn import_into(
     let inst_dir = base.join(&folder);
     // Importing the instances folder into itself would recurse forever.
     if inst_dir.starts_with(&found.game_dir) {
-        return Err("來源資料夾包含目標實例資料夾，請選擇其他來源".into());
+        return Err("E_IMPORT_SOURCE_CONTAINS_TARGET".into());
     }
     let total = measure(&found)?;
     ensure_free_space(base, total.1 / 10 * 11)?;

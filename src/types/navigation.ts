@@ -62,7 +62,6 @@ export interface MinecraftInstance {
   modCount: number;
   /** The folder has no config of ours yet; the user must pick version and loader first. */
   needsSetup?: boolean;
-  lastPlayed: string;
   /** Unix epoch milliseconds of the last launch. */
   lastPlayedAt?: number;
   /** Accumulated game process run time in milliseconds. */

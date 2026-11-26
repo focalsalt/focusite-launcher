@@ -297,6 +297,7 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                           <button
                             type="button"
                             onClick={handleClearIcon}
+                            aria-label={t.create.removeIcon}
                             className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500/90 text-white shadow hover:bg-red-600 transition-colors"
                           >
                             <X className="h-2.5 w-2.5" />
@@ -350,6 +351,7 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                           <button
                             type="button"
                             onClick={handleClearJar}
+                            aria-label={t.create.removeJar}
                             className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
                           >
                             <X className="h-4 w-4" />

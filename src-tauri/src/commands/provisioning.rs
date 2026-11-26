@@ -1,5 +1,6 @@
 //! Automated pre-launch provisioning engine: manifests, client jar, libraries, assets, and Mojang JRE.
 
+use super::ui_language::tr;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -66,17 +67,17 @@ async fn run_forge_installer(
     let url = focusite_core::installer::forge_installer_url(&cfg.loader, &cfg.version, ldr_ver)
         .map_err(|e| e.to_string())?;
     let installer = app_data.join("installers").join(format!("{}-installer.jar", profile_id));
-    emit_progress(app, instance_id, "loader", &format!("正在下載 {} 安裝程式...", cfg.loader), 0, 0, 0);
+    emit_progress(app, instance_id, "loader", &tr!("正在下載 {} 安裝程式...", "Downloading the {} installer...", cfg.loader), 0, 0, 0);
     downloader
         .download_file(&url, &installer, None, None, &format!("installer-{}", profile_id))
         .await
-        .map_err(|e| format!("下載 {} 安裝程式失敗: {}", cfg.loader, e))?;
+        .map_err(|e| format!("E_LOADER_DOWNLOAD_FAILED: {} {}", cfg.loader, e))?;
 
     // The installer refuses to run without a launcher profile file in the target directory.
     let profiles = app_data.join("launcher_profiles.json");
     if !profiles.is_file() {
         super::atomic_write(&profiles, br#"{"profiles":{},"version":3}"#)
-            .map_err(|e| format!("無法寫入 launcher_profiles.json: {}", e))?;
+            .map_err(|e| format!("E_LOADER_INSTALL_FAILED: {}", e))?;
     }
 
     // java.exe (not javaw.exe) so the installer's output is captured.
@@ -88,9 +89,9 @@ async fn run_forge_installer(
         flag.to_string(),
         app_data.to_string_lossy().to_string(),
     ];
-    emit_progress(app, instance_id, "loader", &format!("正在執行 {} 安裝程式...", cfg.loader), 0, 0, 0);
+    emit_progress(app, instance_id, "loader", &tr!("正在執行 {} 安裝程式...", "Running the {} installer...", cfg.loader), 0, 0, 0);
     let mut child = focusite_core::process::ProcessLauncher::spawn_direct_with_env(&java, app_data, &args, None)
-        .map_err(|e| format!("無法啟動 {} 安裝程式: {}", cfg.loader, e))?;
+        .map_err(|e| format!("E_LOADER_INSTALL_FAILED: {} {}", cfg.loader, e))?;
     let pid = child.id();
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -119,13 +120,13 @@ async fn run_forge_installer(
     };
     match tokio::time::timeout(Duration::from_secs(15 * 60), run).await {
         Ok(Ok(st)) if st.success() => Ok(()),
-        Ok(Ok(st)) => Err(format!("{} 安裝程式失敗 ({})：{}", cfg.loader, st, tail.into_iter().collect::<Vec<_>>().join(" | "))),
-        Ok(Err(e)) => Err(format!("等待 {} 安裝程式時出錯: {}", cfg.loader, e)),
+        Ok(Ok(st)) => Err(format!("E_LOADER_INSTALL_FAILED: {} {} {}", cfg.loader, st, tail.into_iter().collect::<Vec<_>>().join(" | "))),
+        Ok(Err(e)) => Err(format!("E_LOADER_INSTALL_FAILED: {} {}", cfg.loader, e)),
         Err(_) => {
             if let Some(pid) = pid {
                 let _ = focusite_core::process::terminate_process_tree(pid).await;
             }
-            Err(format!("{} 安裝程式逾時，已終止", cfg.loader))
+            Err(format!("E_LOADER_INSTALL_TIMEOUT: {}", cfg.loader))
         }
     }
 }
@@ -232,7 +233,7 @@ pub async fn ensure_instance_provisioned(
     {
         let mut s = PROVISIONING_INSTANCES.lock().map_err(|e| e.to_string())?;
         if s.contains(instance_id) {
-            return Err(format!("實例 '{}' 正在執行安裝流程中，請勿重複啟動", instance_id));
+            return Err("E_ALREADY_INSTALLING".into());
         }
         s.insert(instance_id.to_string());
     }
@@ -264,7 +265,7 @@ pub async fn ensure_instance_provisioned(
     // ==========================================
     // 1. Version JSON Manifest
     // ==========================================
-    emit_progress(app, instance_id, "manifest", "正在解析遊戲版本設定資訊...", 0, 1, 0);
+    emit_progress(app, instance_id, "manifest", &tr!("正在解析遊戲版本設定資訊...", "Reading the game version settings..."), 0, 1, 0);
 
     let version_id = &instance_config.version;
     let version_folder = versions_dir.join(version_id);
@@ -272,13 +273,13 @@ pub async fn ensure_instance_provisioned(
 
     let manifest = if version_json_path.is_file() {
         let content = std::fs::read_to_string(&version_json_path)
-            .map_err(|e| format!("無法讀取本地版本設定檔: {}", e))?;
+            .map_err(|e| format!("E_VERSION_FILE_BROKEN: {}", e))?;
         serde_json::from_str::<VersionManifest>(&content)
-            .map_err(|e| format!("版本設定檔格式損毀: {}", e))?
+            .map_err(|e| format!("E_VERSION_FILE_BROKEN: {}", e))?
     } else {
         // Fetch from Mojang Version Manifest V2
         std::fs::create_dir_all(&version_folder)
-            .map_err(|e| format!("無法建立版本資料夾: {}", e))?;
+            .map_err(|e| format!("E_VERSION_FILE_WRITE_FAILED: {}", e))?;
 
         let manifest_root_url = MirrorManager::rewrite_url(
             "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
@@ -287,24 +288,24 @@ pub async fn ensure_instance_provisioned(
 
         let v2 = VersionManifestV2::fetch_remote(&manifest_root_url)
             .await
-            .map_err(|e| format!("無法取得 Mojang 核心版本清單: {}", e))?;
+            .map_err(|e| format!("E_VERSION_LIST_FAILED: {}", e))?;
 
         let entry = v2
             .versions
             .into_iter()
             .find(|v| &v.id == version_id)
-            .ok_or_else(|| format!("在官方版本清單中未找到版本 '{}'", version_id))?;
+            .ok_or_else(|| format!("E_VERSION_NOT_FOUND: {}", version_id))?;
 
         let detail_url = MirrorManager::rewrite_url(&entry.url, provider);
         let detail = VersionManifest::fetch_remote(&detail_url)
             .await
-            .map_err(|e| format!("無法取得版本詳細設定檔: {}", e))?;
+            .map_err(|e| format!("E_VERSION_LIST_FAILED: {}", e))?;
 
         let serialized = serde_json::to_string_pretty(&detail)
-            .map_err(|e| format!("序列化版本設定檔失敗: {}", e))?;
+            .map_err(|e| format!("E_VERSION_FILE_WRITE_FAILED: {}", e))?;
         // Atomic, so an interrupted write never leaves a half file that blocks every later launch.
         super::atomic_write(&version_json_path, serialized.as_bytes())
-            .map_err(|e| format!("無法寫入版本設定檔: {}", e))?;
+            .map_err(|e| format!("E_VERSION_FILE_WRITE_FAILED: {}", e))?;
 
         detail
     };
@@ -318,7 +319,7 @@ pub async fn ensure_instance_provisioned(
                     app,
                     instance_id,
                     "manifest",
-                    &format!("正在安裝 {} 模組載入器設定檔...", loader_str),
+                    &tr!("正在安裝 {} 模組載入器設定檔...", "Installing the {} loader profile...", loader_str),
                     0,
                     1,
                     0,
@@ -339,7 +340,7 @@ pub async fn ensure_instance_provisioned(
                         &versions_dir,
                     )
                     .await
-                    .map_err(|e| format!("安裝模組載入器失敗: {}", e))?,
+                    .map_err(|e| format!("E_LOADER_INSTALL_FAILED: {}", e))?,
                 }
             } else {
                 manifest
@@ -362,7 +363,7 @@ pub async fn ensure_instance_provisioned(
                 app,
                 instance_id,
                 "client_jar",
-                "正在下載 Minecraft 客戶端核心 (自動 HTTP Range 分塊)...",
+                &tr!("正在下載 Minecraft 客戶端核心 (自動 HTTP Range 分塊)...", "Downloading the Minecraft client..."),
                 0,
                 client_dl.size,
                 0,
@@ -372,7 +373,7 @@ pub async fn ensure_instance_provisioned(
             let in_cas = cas.exists(&client_dl.sha1);
             if in_cas {
                 cas.link_to_instance(&client_dl.sha1, &client_jar_path)
-                    .map_err(|e| format!("從 CAS 擷取核心失敗: {}", e))?;
+                    .map_err(|e| format!("E_CACHE_FAILED: {}", e))?;
             } else {
                 let temp_jar = std::env::temp_dir().join(format!("fc_client_{}_{}.jar", version_id, instance_id));
                 let target_url = MirrorManager::rewrite_url(&client_dl.url, provider);
@@ -386,13 +387,13 @@ pub async fn ensure_instance_provisioned(
                         &format!("client-{}", version_id),
                     )
                     .await
-                    .map_err(|e| format!("下載核心失敗: {}", e))?;
+                    .map_err(|e| format!("E_CLIENT_DOWNLOAD_FAILED: {}", e))?;
 
                 cas.store_file(&temp_jar, Some(&client_dl.sha1))
-                    .map_err(|e| format!("寫入本機快取失敗：{}", e))?;
+                    .map_err(|e| format!("E_CACHE_FAILED: {}", e))?;
 
                 cas.link_to_instance(&client_dl.sha1, &client_jar_path)
-                    .map_err(|e| format!("匯出核心檔案失敗: {}", e))?;
+                    .map_err(|e| format!("E_CACHE_FAILED: {}", e))?;
 
                 let _ = tokio::fs::remove_file(&temp_jar).await;
             }
@@ -415,9 +416,9 @@ pub async fn ensure_instance_provisioned(
                 early_java = Some(java);
             }
             let content = std::fs::read_to_string(&profile_path)
-                .map_err(|e| format!("安裝程式未產生版本設定檔 {}：{}", profile_path.display(), e))?;
+                .map_err(|e| format!("E_LOADER_NO_PROFILE: {} {}", profile_path.display(), e))?;
             let profile: VersionManifest = serde_json::from_str(&content)
-                .map_err(|e| format!("載入器版本設定檔格式損毀: {}", e))?;
+                .map_err(|e| format!("E_VERSION_FILE_BROKEN: {}", e))?;
             manifest = if profile.inherits_from.is_some() { profile.merge_parent(&manifest) } else { profile };
         }
     }
@@ -515,15 +516,15 @@ pub async fn ensure_instance_provisioned(
             app,
             instance_id,
             "libraries",
-            &format!("正在下載核心依賴庫 (共 {} 個項目)...", total_libs),
+            &tr!("正在下載核心依賴庫 (共 {} 個項目)...", "Downloading libraries ({} items)...", total_libs),
             0,
             total_libs,
             0,
         );
 
-        download_with_progress(&downloader, app, instance_id, "libraries", "正在下載核心依賴庫", lib_tasks)
+        download_with_progress(&downloader, app, instance_id, "libraries", &tr!("正在下載核心依賴庫", "Downloading libraries"), lib_tasks)
             .await
-            .map_err(|e| format!("下載依賴庫失敗: {}", e))?;
+            .map_err(|e| format!("E_LIBRARIES_DOWNLOAD_FAILED: {}", e))?;
     }
 
     // Extract natives to instance natives dir
@@ -545,7 +546,7 @@ pub async fn ensure_instance_provisioned(
     if let Some(ref index_ref) = manifest.asset_index {
         let index_dir = assets_dir.join("indexes");
         std::fs::create_dir_all(&index_dir)
-            .map_err(|e| format!("無法建立 assets/indexes 資料夾: {}", e))?;
+            .map_err(|e| format!("E_ASSETS_DOWNLOAD_FAILED: {}", e))?;
 
         let index_file_path = index_dir.join(format!("{}.json", index_ref.id));
         if !index_file_path.is_file() {
@@ -553,7 +554,7 @@ pub async fn ensure_instance_provisioned(
                 app,
                 instance_id,
                 "assets",
-                "正在取得遊戲資源索引 (Asset Index)...",
+                &tr!("正在取得遊戲資源索引 (Asset Index)...", "Fetching the asset index..."),
                 0,
                 1,
                 0,
@@ -568,16 +569,16 @@ pub async fn ensure_instance_provisioned(
                     &format!("asset-index-{}", index_ref.id),
                 )
                 .await
-                .map_err(|e| format!("下載資源索引失敗: {}", e))?;
+                .map_err(|e| format!("E_ASSETS_DOWNLOAD_FAILED: {}", e))?;
         }
 
         // Parse index objects
         let index_content = std::fs::read_to_string(&index_file_path)
-            .map_err(|e| format!("無法讀取資源索引檔: {}", e))?;
+            .map_err(|e| format!("E_ASSETS_DOWNLOAD_FAILED: {}", e))?;
         let asset_index_obj = serde_json::from_str::<AssetIndexFile>(&index_content)
             .map_err(|e| {
                 let _ = std::fs::remove_file(&index_file_path);
-                format!("資源索引損毀 (已自動移除以便重試): {}", e)
+                format!("E_ASSETS_DOWNLOAD_FAILED: {}", e)
             })?;
 
         let objects_dir = assets_dir.join("objects");
@@ -611,15 +612,15 @@ pub async fn ensure_instance_provisioned(
                 app,
                 instance_id,
                 "assets",
-                &format!("正在下載遊戲聲音與貼圖資源 (共 {} 個檔案)...", total_assets),
+                &tr!("正在下載遊戲聲音與貼圖資源 (共 {} 個檔案)...", "Downloading sounds and textures ({} files)...", total_assets),
                 0,
                 total_assets,
                 0,
             );
 
-            download_with_progress(&downloader, app, instance_id, "assets", "正在下載遊戲資源檔案", asset_tasks)
+            download_with_progress(&downloader, app, instance_id, "assets", &tr!("正在下載遊戲資源檔案", "Downloading game assets"), asset_tasks)
                 .await
-                .map_err(|e| format!("下載遊戲資源檔案失敗: {}", e))?;
+                .map_err(|e| format!("E_ASSETS_DOWNLOAD_FAILED: {}", e))?;
         }
     }
 
@@ -640,7 +641,7 @@ pub async fn ensure_instance_provisioned(
         }
     };
 
-    emit_progress(app, instance_id, "done", "所有依賴資源已全數就緒！", 100, 100, 0);
+    emit_progress(app, instance_id, "done", &tr!("所有依賴資源已全數就緒！", "Everything is ready!"), 100, 100, 0);
     info!("Instance {} provisioning succeeded. Java at {:?}", instance_id, resolved_java);
 
     Ok(resolved_java)
@@ -667,7 +668,7 @@ async fn ensure_java(
                 app,
                 instance_id,
                 "java",
-                &format!("正在下載 Mojang 官方 Java {} 執行階段環境 ({component})...", required_major),
+                &tr!("正在下載 Mojang 官方 Java {} 執行階段環境 ({})...", "Downloading Mojang's Java {} runtime ({})...", required_major, component),
                 0,
                 100,
                 0,
@@ -681,12 +682,12 @@ async fn ensure_java(
                 ("osx", _) => "mac-os",
                 ("linux", "x86") => "linux-i386",
                 ("linux", _) => "linux",
-                _ => return Err(format!("不支援的系統平台組合以自動下載 Mojang JRE: ({}, {})", os_name, os_arch)),
+                _ => return Err(format!("E_JAVA_UNSUPPORTED_PLATFORM: {} {}", os_name, os_arch)),
             };
 
             let jre_items = fetch_mojang_runtime_download_list(component, runtime_os)
                 .await
-                .map_err(|e| format!("無法取得 Mojang JRE 下載清單: {}", e))?;
+                .map_err(|e| format!("E_JAVA_DOWNLOAD_FAILED: {}", e))?;
 
             let comp_dir = runtime_dir.join(component);
             let mut jre_tasks = Vec::new();
@@ -706,13 +707,13 @@ async fn ensure_java(
             }
 
             if !jre_tasks.is_empty() {
-                download_with_progress(downloader, app, instance_id, "java", "正在下載 Mojang JRE", jre_tasks)
+                download_with_progress(downloader, app, instance_id, "java", &tr!("正在下載 Mojang JRE", "Downloading the Mojang JRE"), jre_tasks)
                     .await
-                    .map_err(|e| format!("下載 Mojang JRE 失敗: {}", e))?;
+                    .map_err(|e| format!("E_JAVA_DOWNLOAD_FAILED: {}", e))?;
             }
 
             resolve_or_locate_java(required_major, None)
-                .map_err(|e| format!("JRE 安裝完成但無法定位可執行檔: {}", e))?
+                .map_err(|e| format!("E_JAVA_DOWNLOAD_FAILED: {}", e))?
         }
     };
 
@@ -736,7 +737,7 @@ fn extract_natives_excluding_meta_inf(jar_path: &Path, target_dir: &Path) -> Res
         if name.ends_with(".dll") || name.ends_with(".so") || name.ends_with(".dylib") {
             let file_name = Path::new(&name)
                 .file_name()
-                .ok_or_else(|| "無效的原生函式庫檔名".to_string())?;
+                .ok_or_else(|| "E_NATIVES_INVALID".to_string())?;
             let dest_file = target_dir.join(file_name);
             let mut outfile = std::fs::File::create(&dest_file).map_err(|e| e.to_string())?;
             std::io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;

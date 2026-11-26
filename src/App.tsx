@@ -21,10 +21,12 @@ import { closeWindow, exitApp, hideWindow } from "@/lib/tauriWindow";
 import { listenSafe } from "@/lib/listenSafe";
 import { themeService } from "@/services/themeService";
 import { LocationConsentDialog } from "@/components/layout/LocationConsentDialog";
+import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
 import { Toaster } from "@/components/ui/Toaster";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useBootSequence } from "@/hooks/useBootSequence";
 import { useFirstRun } from "@/hooks/useFirstRun";
+import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { useInstances } from "@/hooks/useInstances";
 import { useNavigation } from "@/hooks/useNavigation";
 import { useRunningInstances } from "@/hooks/useRunningInstances";
@@ -97,6 +99,7 @@ function MainApp() {
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState<boolean>(false);
   const [isCreateInstanceOpen, setIsCreateInstanceOpen] = useState<boolean>(false);
   const [isImportModpackOpen, setIsImportModpackOpen] = useState<boolean>(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
   // Keep modals mounted briefly after closing so their exit animation can play.
   const loginMounted = useExitMount(isLoginModalOpen);
   const createMounted = useExitMount(isCreateInstanceOpen);
@@ -176,6 +179,18 @@ function MainApp() {
     setSelectedInstanceId(newInstance.id);
     showView("instance-detail");
   };
+
+  useGlobalShortcuts(bootStage === "ready" && accounts.length > 0 && !showOnboarding, (action) => {
+    if (action.type === "help") setIsShortcutsOpen(true);
+    else if (action.type === "navigate") navigate(action.view);
+    else {
+      // The open instance page wins; elsewhere this is the QuickPlay instance.
+      const target = currentView === "instance-detail" ? activeInstance : homeInstance;
+      if (target && !target.needsSetup && !launchingInstanceIds[target.id] && !runningInstances[target.id]) {
+        launchGame(target.id);
+      }
+    }
+  });
 
   const titlebarProps = {
     newsNav: news.nav,
@@ -446,6 +461,8 @@ function MainApp() {
       </Suspense>
 
       <LocationConsentDialog open={askLocation && bootStage === "ready" && !showOnboarding} onAnswer={answerLocation} />
+
+      <ShortcutsDialog open={isShortcutsOpen} onOpenChange={setIsShortcutsOpen} />
 
       {/* Exit Confirmation Dialog */}
       <ExitConfirmationDialog

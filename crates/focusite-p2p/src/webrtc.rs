@@ -32,7 +32,7 @@ impl TryFrom<u8> for FrameType {
             0x04 => Ok(FrameType::Close),
             0x05 => Ok(FrameType::FileRequest),
             0x06 => Ok(FrameType::FileData),
-            other => Err(P2pError::FramingError(format!("未知幀類型: 0x{:02X}", other))),
+            other => Err(P2pError::FramingError(format!("E_FRAME_UNKNOWN_TYPE: {:02X}", other))),
         }
     }
 }
@@ -75,7 +75,7 @@ impl DataChannelFrame {
     pub fn decode(bytes: &[u8]) -> Result<Self, P2pError> {
         if bytes.len() < Self::HEADER_SIZE {
             return Err(P2pError::FramingError(format!(
-                "資料長度過短 ({} 位元組)，至少需要 {} 位元組首部長度",
+                "E_FRAME_TOO_SHORT: {}: {}",
                 bytes.len(),
                 Self::HEADER_SIZE
             )));
@@ -88,7 +88,7 @@ impl DataChannelFrame {
 
         if bytes.len() < Self::HEADER_SIZE + payload_len {
             return Err(P2pError::FramingError(format!(
-                "封包 Payload 截斷：宣告長度為 {} 位元組，但剩餘僅 {} 位元組",
+                "E_FRAME_TRUNCATED: {}: {}",
                 payload_len,
                 bytes.len() - Self::HEADER_SIZE
             )));
@@ -152,15 +152,15 @@ const SIGNAL_PREFIX: &str = "focusite://p2p/";
 /// Compresses a SignalEnvelope with Gzip and encodes to a URL-safe Base64 invite string.
 pub fn encode_offline_signal(envelope: &SignalEnvelope) -> Result<String, P2pError> {
     let json_bytes = serde_json::to_vec(envelope)
-        .map_err(|e| P2pError::SignalingFailed(format!("信令序列化失敗: {}", e)))?;
+        .map_err(|e| P2pError::SignalingFailed(format!("E_SIGNAL_ENCODE_FAILED: {}", e)))?;
 
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
     encoder
         .write_all(&json_bytes)
-        .map_err(|e| P2pError::SignalingFailed(format!("Gzip 壓縮失敗: {}", e)))?;
+        .map_err(|e| P2pError::SignalingFailed(format!("E_SIGNAL_ENCODE_FAILED: {}", e)))?;
     let compressed = encoder
         .finish()
-        .map_err(|e| P2pError::SignalingFailed(format!("Gzip 結束失敗: {}", e)))?;
+        .map_err(|e| P2pError::SignalingFailed(format!("E_SIGNAL_ENCODE_FAILED: {}", e)))?;
 
     let b64 = BASE64_STANDARD.encode(&compressed);
     Ok(format!("{}{}", SIGNAL_PREFIX, b64))
@@ -173,22 +173,22 @@ pub fn decode_offline_signal(raw_str: &str) -> Result<SignalEnvelope, P2pError> 
     let stripped = raw_str.trim().strip_prefix(SIGNAL_PREFIX).unwrap_or(raw_str.trim());
     let compressed = BASE64_STANDARD
         .decode(stripped.as_bytes())
-        .map_err(|e| P2pError::SignalingFailed(format!("Base64 解碼失敗: {}", e)))?;
+        .map_err(|e| P2pError::SignalingFailed(format!("E_SIGNAL_ENCODE_FAILED: {}", e)))?;
 
     let mut decoder = GzDecoder::new(&compressed[..]).take(MAX_DECOMPRESSED_SIGNAL_SIZE + 1);
     let mut decompressed = Vec::new();
     decoder
         .read_to_end(&mut decompressed)
-        .map_err(|e| P2pError::SignalingFailed(format!("Gzip 解壓縮失敗: {}", e)))?;
+        .map_err(|e| P2pError::SignalingFailed(format!("E_SIGNAL_ENCODE_FAILED: {}", e)))?;
 
     if decompressed.len() as u64 > MAX_DECOMPRESSED_SIGNAL_SIZE {
         return Err(P2pError::SignalingFailed(
-            "信令資料解壓縮後超過安全上限 (64KB)".into(),
+            "E_SIGNAL_TOO_LARGE".into(),
         ));
     }
 
     let envelope: SignalEnvelope = serde_json::from_slice(&decompressed)
-        .map_err(|e| P2pError::SignalingFailed(format!("信令反序列化失敗: {}", e)))?;
+        .map_err(|e| P2pError::SignalingFailed(format!("E_SIGNAL_ENCODE_FAILED: {}", e)))?;
 
     Ok(envelope)
 }

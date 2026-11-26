@@ -1,6 +1,7 @@
 //! High-performance offline crash log AST analysis engine.
 //! Guarantees sub-5ms (< 5000 µs) structured diagnostics.
 
+use crate::localized;
 use regex::{Regex, RegexSet};
 use std::sync::LazyLock;
 use std::time::Instant;
@@ -30,7 +31,7 @@ pub fn class_file_version_to_java(version: &str) -> &'static str {
         "67" => "Java 23",
         "68" => "Java 24",
         "69" => "Java 25",
-        _ => "未知 Java 版本",
+        _ => "Java ?",
     }
 }
 
@@ -163,8 +164,8 @@ impl LogDiagnosticEngine {
         if matches.matched(2) || matches.matched(3) {
             if let Some(caps) = RE_FABRIC_REQ.captures(log_content).or_else(|| RE_FABRIC_INCOMPAT.captures(log_content)) {
                 doc.fabric_resolutions.push(FabricResolutionNode {
-                    mod_name: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_else(|| "未知模組".into()),
-                    missing_dependency: caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_else(|| "相依".into()),
+                    mod_name: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_else(|| "?".into()),
+                    missing_dependency: caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_else(|| "?".into()),
                 });
             }
         }
@@ -174,7 +175,7 @@ impl LogDiagnosticEngine {
             if let Some(caps) = RE_DUPLICATE_MOD.captures(log_content) {
                 let id = caps.get(1).or_else(|| caps.get(2)).or_else(|| caps.get(3))
                     .map(|m| m.as_str().to_string())
-                    .unwrap_or_else(|| "未知衝突".into());
+                    .unwrap_or_else(|| "?".into());
                 doc.duplicates.push(ModDuplicateNode { duplicate_mod_id: id });
             }
         }
@@ -186,7 +187,7 @@ impl LogDiagnosticEngine {
     }
 
     /// Performs structured AST and root-cause analysis on Minecraft logs in under 5 milliseconds.
-    pub fn diagnose_structured(&self, log_content: &str) -> DiagnosticResult {
+    pub fn diagnose_structured(&self, log_content: &str, zh: bool) -> DiagnosticResult {
         let start = Instant::now();
         let ast = self.parse_ast(log_content);
 
@@ -201,15 +202,17 @@ impl LogDiagnosticEngine {
             return DiagnosticResult {
                 has_crash: true,
                 root_cause_type: "JavaMismatch".into(),
-                summary: format!(
+                summary: localized!(
+                    zh,
                     "Java 版本過舊：模組需要 {} (類別版本 {})，當前運行環境為 {} (類別版本 {})",
+                    "Java is too old: a mod needs {} (class version {}), but {} (class version {}) is running",
                     req_name, req_ver, cur_name, cur_ver
                 ),
                 details: vec![
-                    format!("需要 Java：{} ({})", req_name, req_ver),
-                    format!("當前 Java：{} ({})", cur_name, cur_ver),
+                    localized!(zh, "需要 Java：{} ({})", "Required Java: {} ({})", req_name, req_ver),
+                    localized!(zh, "當前 Java：{} ({})", "Current Java: {} ({})", cur_name, cur_ver),
                 ],
-                suggestion: format!("請前往實例設定中將 Java 執行環境切換至 {} 或更新版本。", req_name),
+                suggestion: localized!(zh, "請前往實例設定中將 Java 執行環境切換至 {} 或更新版本。", "Switch the Java runtime in the instance settings to {} or newer.", req_name),
                 execution_time_micros,
             };
         }
@@ -221,12 +224,12 @@ impl LogDiagnosticEngine {
             return DiagnosticResult {
                 has_crash: true,
                 root_cause_type: "OutOfMemory".into(),
-                summary: format!("JVM 記憶體空間耗盡 ({})", oom_type),
+                summary: localized!(zh, "JVM 記憶體空間耗盡 ({})", "The JVM ran out of memory ({})", oom_type),
                 details: vec![
-                    format!("耗盡空間類型：{}", oom_type),
-                    "JVM 堆疊記憶體 (Heap Space) 已達上限，無法分配新物件".into(),
+                    localized!(zh, "耗盡空間類型：{}", "Exhausted space: {}", oom_type),
+                    localized!(zh, "JVM 堆疊記憶體 (Heap Space) 已達上限，無法分配新物件", "The JVM heap is full, so no new objects can be allocated"),
                 ],
-                suggestion: "請前往實例設定將「JVM 最大分配記憶體 (Max Heap)」調大（建議至少 4096 MB 或 6144 MB）。".into(),
+                suggestion: localized!(zh, "請前往實例設定將「JVM 最大分配記憶體 (Max Heap)」調大（建議至少 4096 MB 或 6144 MB）。", "Raise the maximum JVM memory (Max Heap) in the instance settings, to at least 4096 MB or 6144 MB."),
                 execution_time_micros,
             };
         }
@@ -237,12 +240,12 @@ impl LogDiagnosticEngine {
             return DiagnosticResult {
                 has_crash: true,
                 root_cause_type: "MissingFabricApi".into(),
-                summary: format!("Fabric 模組「{}」缺少前置依賴：{}", node.mod_name, node.missing_dependency),
+                summary: localized!(zh, "Fabric 模組「{}」缺少前置依賴：{}", "The Fabric mod {} is missing a dependency: {}", node.mod_name, node.missing_dependency),
                 details: vec![
-                    format!("觸發模組：{}", node.mod_name),
-                    format!("缺少相依：{}", node.missing_dependency),
+                    localized!(zh, "觸發模組：{}", "Mod: {}", node.mod_name),
+                    localized!(zh, "缺少相依：{}", "Missing dependency: {}", node.missing_dependency),
                 ],
-                suggestion: format!("請於模組工作坊搜尋並下載安裝相應的依賴模組（如 {}）。", node.missing_dependency),
+                suggestion: localized!(zh, "請於模組工作坊搜尋並下載安裝相應的依賴模組（如 {}）。", "Search the mod workshop and install the dependency ({}).", node.missing_dependency),
                 execution_time_micros,
             };
         }
@@ -253,12 +256,12 @@ impl LogDiagnosticEngine {
             return DiagnosticResult {
                 has_crash: true,
                 root_cause_type: "DuplicateMods".into(),
-                summary: format!("偵測到重複安裝的模組：{}", dup.duplicate_mod_id),
+                summary: localized!(zh, "偵測到重複安裝的模組：{}", "A mod is installed more than once: {}", dup.duplicate_mod_id),
                 details: vec![
-                    format!("衝突模組識別：{}", dup.duplicate_mod_id),
-                    "實例 mods 資料夾中同時存在同一模組的多個不同版本 .jar".into(),
+                    localized!(zh, "衝突模組識別：{}", "Conflicting mod ID: {}", dup.duplicate_mod_id),
+                    localized!(zh, "實例 mods 資料夾中同時存在同一模組的多個不同版本 .jar", "The instance mods folder holds several .jar versions of the same mod"),
                 ],
-                suggestion: "請開啟實例 mods 資料夾，檢查並刪除重複的舊版 .jar 檔案。".into(),
+                suggestion: localized!(zh, "請開啟實例 mods 資料夾，檢查並刪除重複的舊版 .jar 檔案。", "Open the instance mods folder and delete the older duplicate .jar files."),
                 execution_time_micros,
             };
         }
@@ -271,23 +274,23 @@ impl LogDiagnosticEngine {
             has_crash,
             root_cause_type: if has_crash { "UnknownCrash".into() } else { "Clean".into() },
             summary: if has_crash {
-                "遊戲進程異常中斷，日誌中偵測到未分類之異常例外。".into()
+                localized!(zh, "遊戲進程異常中斷，日誌中偵測到未分類之異常例外。", "The game stopped unexpectedly with an exception that isn't recognised.")
             } else {
-                "日誌正常，未偵測到遊戲崩潰或重大異常。".into()
+                localized!(zh, "日誌正常，未偵測到遊戲崩潰或重大異常。", "The log looks fine. No crash or serious problem was found.")
             },
             details: Vec::new(),
             suggestion: if has_crash {
-                "可複製完整日誌內容尋求社群或模組作者協助。".into()
+                localized!(zh, "可複製完整日誌內容尋求社群或模組作者協助。", "Copy the full log and ask the community or the mod author for help.")
             } else {
-                "無須修復。".into()
+                localized!(zh, "無須修復。", "Nothing to fix.")
             },
             execution_time_micros,
         }
     }
 
     /// Legacy compatible analyze_log method returning DiagnosticReport list.
-    pub fn analyze_log(&self, log_content: &str) -> Vec<DiagnosticReport> {
-        let res = self.diagnose_structured(log_content);
+    pub fn analyze_log(&self, log_content: &str, zh: bool) -> Vec<DiagnosticReport> {
+        let res = self.diagnose_structured(log_content, zh);
         if !res.has_crash || res.root_cause_type == "Clean" {
             return Vec::new();
         }
@@ -327,7 +330,7 @@ mod tests {
         [12:00:00] [main/ERROR]: Minecraft has crashed!
         java.lang.UnsupportedClassVersionError: net/minecraft/client/main/Main has been compiled by a more recent version of the Java Runtime (class file version 65.0), this version of the Java Runtime only recognizes class file versions up to 61.0
         "#;
-        let res = engine.diagnose_structured(log);
+        let res = engine.diagnose_structured(log, true);
         assert!(res.has_crash);
         assert_eq!(res.root_cause_type, "JavaMismatch");
         assert!(res.summary.contains("Java 21"));
@@ -342,7 +345,7 @@ mod tests {
         Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
         at java.base/java.util.Arrays.copyOf(Arrays.java:3537)
         "#;
-        let res = engine.diagnose_structured(log);
+        let res = engine.diagnose_structured(log, true);
         assert!(res.has_crash);
         assert_eq!(res.root_cause_type, "OutOfMemory");
         assert!(res.suggestion.contains("4096 MB"));
@@ -354,7 +357,7 @@ mod tests {
         let log = r#"
         net.fabricmc.loader.impl.FormattedException: Mod 'Sodium' (sodium) 0.5.8 requires fabric-api, which is missing!
         "#;
-        let res = engine.diagnose_structured(log);
+        let res = engine.diagnose_structured(log, true);
         assert!(res.has_crash);
         assert_eq!(res.root_cause_type, "MissingFabricApi");
         assert!(res.summary.contains("Sodium"));
@@ -367,7 +370,7 @@ mod tests {
         let log = r#"
         Duplicate mod id found: create
         "#;
-        let res = engine.diagnose_structured(log);
+        let res = engine.diagnose_structured(log, true);
         assert!(res.has_crash);
         assert_eq!(res.root_cause_type, "DuplicateMods");
         assert!(res.summary.contains("create"));
@@ -389,14 +392,14 @@ mod tests {
 
         // Warm up JIT/cache
         for _ in 0..5 {
-            let _ = engine.diagnose_structured(&log);
+            let _ = engine.diagnose_structured(&log, true);
         }
 
         // Benchmark: measure across runs to eliminate OS thread scheduling jitter in unoptimized debug mode
         let mut min_elapsed = std::time::Duration::from_secs(10);
         for _ in 0..3 {
             let start = Instant::now();
-            let result = engine.diagnose_structured(&log);
+            let result = engine.diagnose_structured(&log, true);
             let elapsed = start.elapsed();
             assert!(result.has_crash);
             assert_eq!(result.root_cause_type, "OutOfMemory");

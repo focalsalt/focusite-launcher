@@ -250,20 +250,20 @@ async fn receive_file(
     part: &Path,
 ) -> Result<(), P2pError> {
     let bad = |m: &str| P2pError::FramingError(m.to_string());
-    let head = next_frame(&mut rx).await.ok_or_else(|| bad("檔案傳輸逾時或中斷"))?;
+    let head = next_frame(&mut rx).await.ok_or_else(|| bad("E_TRANSFER_INTERRUPTED"))?;
     let announced = <[u8; 8]>::try_from(head.payload.as_slice())
         .map(u64::from_be_bytes)
-        .map_err(|_| bad("對方拒絕提供此檔案"))?;
+        .map_err(|_| bad("E_TRANSFER_REFUSED"))?;
     if announced != size {
-        return Err(bad("檔案大小與預期不符"));
+        return Err(bad("E_TRANSFER_SIZE_MISMATCH"));
     }
     let mut out = tokio::fs::File::create(part).await?;
     let (mut hasher, mut got, mut seq) = (Sha1::new(), 0u64, 1u32);
     while got < size {
-        let f = next_frame(&mut rx).await.ok_or_else(|| bad("檔案傳輸逾時或中斷"))?;
+        let f = next_frame(&mut rx).await.ok_or_else(|| bad("E_TRANSFER_INTERRUPTED"))?;
         got += f.payload.len() as u64;
         if f.seq != seq || got > size {
-            return Err(bad("檔案資料順序或大小錯誤"));
+            return Err(bad("E_TRANSFER_BAD_CHUNK"));
         }
         hasher.update(&f.payload);
         out.write_all(&f.payload).await?;
@@ -271,7 +271,7 @@ async fn receive_file(
     }
     out.flush().await?;
     if sha1_hex(hasher.finalize()) != sha1.to_ascii_lowercase() {
-        return Err(bad("檔案 SHA-1 驗證失敗"));
+        return Err(bad("E_TRANSFER_HASH_MISMATCH"));
     }
     Ok(())
 }
@@ -389,7 +389,7 @@ async fn new_peer(shared: &Arc<Shared>, stun: &StunTurnConfig) -> Result<Arc<RTC
     }
     let config = RTCConfiguration { ice_servers, ..Default::default() };
     let mut engine = SettingEngine::default();
-    let udp = EphemeralUDP::new(UDP_PORT_RANGE.0, UDP_PORT_RANGE.1).map_err(|e| rtc_err("UDP 連接埠範圍無效", e))?;
+    let udp = EphemeralUDP::new(UDP_PORT_RANGE.0, UDP_PORT_RANGE.1).map_err(|e| rtc_err("E_RTC_PORT_RANGE", e))?;
     engine.set_udp_network(UDPNetwork::Ephemeral(udp));
     let pc = Arc::new(
         APIBuilder::new()
@@ -397,7 +397,7 @@ async fn new_peer(shared: &Arc<Shared>, stun: &StunTurnConfig) -> Result<Arc<RTC
             .build()
             .new_peer_connection(config)
             .await
-            .map_err(|e| rtc_err("建立 PeerConnection 失敗", e))?,
+            .map_err(|e| rtc_err("E_RTC_CONNECTION_FAILED", e))?,
     );
 
     let state = shared.clone();
@@ -417,13 +417,13 @@ async fn new_peer(shared: &Arc<Shared>, stun: &StunTurnConfig) -> Result<Arc<RTC
 /// Waits for ICE gathering and returns the full local description (candidates included).
 async fn gathered_sdp(pc: &RTCPeerConnection, desc: RTCSessionDescription) -> Result<String, P2pError> {
     let mut gather_done = pc.gathering_complete_promise().await;
-    pc.set_local_description(desc).await.map_err(|e| rtc_err("設定本機描述失敗", e))?;
+    pc.set_local_description(desc).await.map_err(|e| rtc_err("E_RTC_LOCAL_DESCRIPTION_FAILED", e))?;
     // A timeout still leaves usable host/srflx candidates gathered so far.
     let _ = tokio::time::timeout(SETUP_TIMEOUT, gather_done.recv()).await;
     pc.local_description()
         .await
         .map(|d| d.sdp)
-        .ok_or_else(|| P2pError::WebRtcError("無法取得本機 SDP".into()))
+        .ok_or_else(|| P2pError::WebRtcError("E_RTC_NO_LOCAL_SDP".into()))
 }
 
 /// Point-in-time numbers of a running tunnel.
@@ -458,7 +458,7 @@ impl FileFetcher {
             let id = (0..u16::MAX)
                 .map(|_| shared.next_transfer.fetch_add(1, Ordering::Relaxed).max(1))
                 .find(|id| !transfers.contains_key(id))
-                .ok_or_else(|| P2pError::FramingError("同時傳輸過多".into()))?;
+                .ok_or_else(|| P2pError::FramingError("E_TRANSFER_TOO_MANY".into()))?;
             transfers.insert(id, tx);
             id
         };
@@ -501,10 +501,10 @@ impl Tunnel {
         let dc = pc
             .create_data_channel("focusite", None)
             .await
-            .map_err(|e| rtc_err("建立 DataChannel 失敗", e))?;
+            .map_err(|e| rtc_err("E_RTC_CHANNEL_FAILED", e))?;
         attach_channel(&shared, dc);
 
-        let offer = pc.create_offer(None).await.map_err(|e| rtc_err("建立 Offer 失敗", e))?;
+        let offer = pc.create_offer(None).await.map_err(|e| rtc_err("E_RTC_OFFER_FAILED", e))?;
         let sdp = gathered_sdp(&pc, offer).await?;
         let offer_code = encode_offline_signal(&SignalEnvelope {
             version: 1,
@@ -523,10 +523,10 @@ impl Tunnel {
     pub async fn apply_answer(&self, answer_code: &str) -> Result<(), P2pError> {
         let env = decode_offline_signal(answer_code)?;
         if env.sdp_type != "answer" {
-            return Err(P2pError::SignalingFailed("傳入的代碼不是有效的 Answer 代碼".into()));
+            return Err(P2pError::SignalingFailed("E_ROOM_NOT_ANSWER_CODE".into()));
         }
-        let desc = RTCSessionDescription::answer(env.sdp).map_err(|e| rtc_err("Answer 格式錯誤", e))?;
-        self.pc.set_remote_description(desc).await.map_err(|e| rtc_err("套用 Answer 失敗", e))
+        let desc = RTCSessionDescription::answer(env.sdp).map_err(|e| rtc_err("E_RTC_ANSWER_FAILED", e))?;
+        self.pc.set_remote_description(desc).await.map_err(|e| rtc_err("E_RTC_ANSWER_FAILED", e))
     }
 
     /// Guest: takes the host's offer code, opens a loopback listener and returns the answer code.
@@ -537,9 +537,9 @@ impl Tunnel {
     ) -> Result<GuestAnswer, P2pError> {
         let env = decode_offline_signal(offer_code)?;
         if env.sdp_type != "offer" {
-            return Err(P2pError::SignalingFailed("傳入的代碼不是有效的 Offer 代碼".into()));
+            return Err(P2pError::SignalingFailed("E_ROOM_NOT_OFFER_CODE".into()));
         }
-        let offer = RTCSessionDescription::offer(env.sdp).map_err(|e| rtc_err("Offer 格式錯誤", e))?;
+        let offer = RTCSessionDescription::offer(env.sdp).map_err(|e| rtc_err("E_RTC_OFFER_APPLY_FAILED", e))?;
 
         let shared = Shared::new(None);
         let pc = new_peer(&shared, stun).await?;
@@ -549,8 +549,8 @@ impl Tunnel {
             Box::pin(async {})
         }));
 
-        pc.set_remote_description(offer).await.map_err(|e| rtc_err("套用 Offer 失敗", e))?;
-        let answer = pc.create_answer(None).await.map_err(|e| rtc_err("建立 Answer 失敗", e))?;
+        pc.set_remote_description(offer).await.map_err(|e| rtc_err("E_RTC_OFFER_APPLY_FAILED", e))?;
+        let answer = pc.create_answer(None).await.map_err(|e| rtc_err("E_RTC_ANSWER_CREATE_FAILED", e))?;
         let sdp = gathered_sdp(&pc, answer).await?;
         let answer_code = encode_offline_signal(&SignalEnvelope {
             version: 1,

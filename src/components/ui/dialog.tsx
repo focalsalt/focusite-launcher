@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { DURATION, SPRING_DIALOG } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n";
 
 interface DialogProps {
   open: boolean;
@@ -61,6 +62,7 @@ export const DialogContent = React.forwardRef<
   HTMLDivElement,
   DialogContentProps
 >(({ className, children, onClose, ...props }, ref) => {
+  const { t } = useI18n();
   return (
     <motion.div
       ref={ref}
@@ -78,6 +80,7 @@ export const DialogContent = React.forwardRef<
         <button
           type="button"
           onClick={onClose}
+          aria-label={t.common.close}
           className="absolute right-4 top-4 rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-slate-200 transition-colors"
         >
           <X className="h-4 w-4" />

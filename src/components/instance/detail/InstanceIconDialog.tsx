@@ -127,6 +127,7 @@ export const InstanceIconDialog: React.FC<InstanceIconDialogProps> = ({
                     size="sm"
                     disabled={isSettingIcon}
                     onClick={handleResetIcon}
+                    aria-label={t.inst.resetIconAttr}
                     className="text-xs h-8 border-white/10 hover:border-danger-500/30 text-slate-400 hover:text-danger-400"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />

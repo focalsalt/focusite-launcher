@@ -11,17 +11,18 @@ interface ProjectRowProps {
   active: boolean;
   /** Shows a check mark when the project is in the install list. */
   checked?: boolean;
-  onClick: () => void;
+  /** Pass a stable function, or the row re-renders with its list. */
+  onSelect: (project: WorkshopProjectSummary) => void;
 }
 
 const compact = (n: number) =>
   new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
 
 /** One Modrinth search hit; shared by the workshop window and the modpack import dialog. */
-export const ProjectRow: React.FC<ProjectRowProps> = ({ project, active, checked, onClick }) => (
+export const ProjectRow = React.memo(({ project, active, checked, onSelect }: ProjectRowProps) => (
   <motion.button
     type="button"
-    onClick={onClick}
+    onClick={() => onSelect(project)}
     initial={{ opacity: 0, y: 6 }}
     animate={{ opacity: 1, y: 0 }}
     whileTap={{ scale: 0.985 }}
@@ -71,4 +72,4 @@ export const ProjectRow: React.FC<ProjectRowProps> = ({ project, active, checked
       {checked && <Check className="mt-1 h-4 w-4 text-brand-light" />}
     </div>
   </motion.button>
-);
+));

@@ -1,5 +1,6 @@
 //! Minecraft process launching, JRE resolution, and stdout/stderr event streaming.
 
+use super::ui_language::tr;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::path::PathBuf;
@@ -180,7 +181,7 @@ pub fn ensure_or_create_log_window(
         &win_label,
         tauri::WebviewUrl::App(url_str.into()),
     )
-    .title(format!("Focusite 即時控制台 — {}", instance_name))
+    .title(tr!("Focusite 即時控制台 — {}", "Focusite Live Console — {}", instance_name))
     .inner_size(1072.0, 603.0)
     .min_inner_size(1072.0, 603.0)
     .decorations(false)
@@ -197,7 +198,7 @@ pub fn ensure_or_create_log_window(
 
     let win = builder
     .build()
-    .map_err(super::ctx("無法開啟控制台視窗"))?;
+    .map_err(super::ctx("E_CONSOLE_WINDOW_FAILED"))?;
 
     Ok(win)
 }
@@ -236,12 +237,12 @@ pub async fn kill_instance(instance_id: String) -> Result<(), String> {
     if let Some(pid) = pid_opt {
         terminate_process_tree(pid)
             .await
-            .map_err(|e| format!("無法終止遊戲進程（PID {}）：{}", pid, e))?;
+            .map_err(|e| format!("E_KILL_FAILED: {}: {}", pid, e))?;
         let mut map = RUNNING_PROCESSES.lock().map_err(|e| e.to_string())?;
         map.remove(&instance_id);
         Ok(())
     } else {
-        Err(format!("實例 '{}' 目前未在運行", instance_id))
+        Err("E_NOT_RUNNING".into())
     }
 }
 
@@ -259,31 +260,58 @@ pub async fn launch_instance(
     // 1. Single instance mutex check:同一實例不可重複啟動
     {
         let map = RUNNING_PROCESSES.lock().map_err(|e| e.to_string())?;
-        if let Some(existing) = map.get(&instance_id) {
-            let _ = existing;
-            return Err(format!("實例 '{}' 已在運行中，無法重複啟動", instance_id));
+        if map.contains_key(&instance_id) {
+            return Err("E_ALREADY_RUNNING".into());
         }
     }
     let _launch_guard = {
         let mut s = LAUNCHING.lock().map_err(|e| e.to_string())?;
         if !s.insert(instance_id.clone()) {
-            return Err(format!("實例 '{}' 正在啟動中，請稍候", instance_id));
+            return Err("E_ALREADY_LAUNCHING".into());
         }
         LaunchGuard(instance_id.clone())
     };
 
+    // The refusals above leave the other launch untouched; every failure from here on ends this one.
+    let result = start_instance(
+        app_handle.clone(),
+        instance_id.clone(),
+        account_id,
+        account_name,
+        quick_play_type,
+        quick_play_target,
+    )
+    .await;
+    if result.is_err() {
+        let _ = app_handle.emit(
+            "instance-status",
+            InstanceStatusPayload {
+                instance_id,
+                status: "stopped".into(),
+                exit_code: None,
+                pid: None,
+            },
+        );
+    }
+    result
+}
+
+/// Provisions, spawns and watches the game for an instance that holds the launch guard.
+async fn start_instance(
+    app_handle: AppHandle,
+    instance_id: String,
+    account_id: Option<String>,
+    account_name: Option<String>,
+    quick_play_type: Option<String>,
+    quick_play_target: Option<String>,
+) -> Result<u32, String> {
     // 2. Read instance configuration
     let base_dir = get_instances_dir().join(&instance_id);
     let mut instance_config: InstanceDiskConfig = super::instance::read_instance_config(&base_dir)?;
 
-    // Update last_played_at timestamp
-    let played_at = chrono::Utc::now().timestamp_millis();
-    instance_config.last_played_at = Some(played_at);
-    let _ = super::instance::update_instance_config(&base_dir, |c| c.last_played_at = Some(played_at));
-
     // A custom loader jar replaces the client jar. Everything else (libraries, assets, Java) comes from
     // the Minecraft version the jar declares, so launch as a vanilla instance of that version.
-    // The change is made after the config was saved, so it never reaches disk.
+    // The change stays in memory and never reaches disk.
     let mut custom_client_jar: Option<PathBuf> = None;
     if instance_config.loader.eq_ignore_ascii_case("custom") {
         let (jar, mc_version) = super::instance::resolve_custom_jar(&base_dir, &instance_config)?;
@@ -300,7 +328,7 @@ pub async fn launch_instance(
             let _ = std::fs::rename(&legacy_dir, &game_dir);
         } else {
             std::fs::create_dir_all(&game_dir)
-                .map_err(|e| format!("無法建立 minecraft 資料夾：{}", e))?;
+                .map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}", e))?;
         }
     }
 
@@ -330,16 +358,7 @@ pub async fn launch_instance(
                     speed_bytes_per_sec: 0,
                 },
             );
-            let _ = app_handle.emit(
-                "instance-status",
-                InstanceStatusPayload {
-                    instance_id: instance_id.clone(),
-                    status: "stopped".into(),
-                    exit_code: None,
-                    pid: None,
-                },
-            );
-            return Err(format!("準備遊戲檔案失敗：{}", e));
+            return Err(format!("E_PREPARE_FAILED: {}", e));
         }
     };
 
@@ -363,8 +382,9 @@ pub async fn launch_instance(
         InstanceLogPayload {
             instance_id: instance_id.clone(),
             stream: "system".into(),
-            line: format!(
+            line: tr!(
                 "[Focusite] 正在為實例 '{}' (Minecraft {}) 啟動 Java 進程...",
+                "[Focusite] Starting Java for instance '{}' (Minecraft {})...",
                 instance_config.name, instance_config.version
             ),
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -376,7 +396,7 @@ pub async fn launch_instance(
         InstanceLogPayload {
             instance_id: instance_id.clone(),
             stream: "system".into(),
-            line: format!("[Focusite] 使用 Java：{}", java_path.display()),
+            line: tr!("[Focusite] 使用 Java：{}", "[Focusite] Using Java: {}", java_path.display()),
             timestamp: chrono::Utc::now().timestamp_millis(),
         },
     );
@@ -413,7 +433,7 @@ pub async fn launch_instance(
     let (auth_player, auth_uuid_val, auth_token, auth_user_type) = if let Some(ref acc_id) = account_id {
         super::auth::ensure_valid_minecraft_token(Some(acc_id))
             .await
-            .map_err(|e| format!("微軟正版帳號驗證失敗: {}", e))?
+            .map_err(|e| format!("E_AUTH_FAILED: {}", e))?
     } else {
         match super::auth::ensure_valid_minecraft_token(None).await {
             Ok(creds) => creds,
@@ -421,7 +441,7 @@ pub async fn launch_instance(
                 if let Some(ref name) = account_name {
                     (name.clone(), offline_uuid(name), "0".into(), "legacy".into())
                 } else {
-                    return Err("尚未登入微軟帳號，也未指定離線玩家名稱".to_string());
+                    return Err("E_NOT_SIGNED_IN".to_string());
                 }
             }
         }
@@ -551,9 +571,9 @@ pub async fn launch_instance(
         // list would only end in a ClassNotFoundException the user cannot act on.
         let read_manifest = |path: &std::path::Path| -> Result<VersionManifest, String> {
             let content = std::fs::read_to_string(path)
-                .map_err(|e| format!("無法讀取版本檔 {}：{}", path.display(), e))?;
+                .map_err(|e| format!("E_VERSION_FILE_BROKEN: {}: {}", path.display(), e))?;
             serde_json::from_str(&content).map_err(|e| {
-                format!("版本檔 {} 已損毀（{}），請刪除後重新安裝此版本", path.display(), e)
+                format!("E_VERSION_FILE_BROKEN: {}: {}", path.display(), e)
             })
         };
         let mut manifest = if manifest_path.is_file() {
@@ -610,9 +630,13 @@ pub async fn launch_instance(
         &args,
         instance_config.environment_vars.as_ref(),
     )
-    .map_err(|e| format!("子進程生成失敗: {}", e))?;
+    .map_err(|e| format!("E_SPAWN_FAILED: {}", e))?;
 
-    let pid = child.id().ok_or_else(|| "無法取得子進程 PID".to_string())?;
+    let pid = child.id().ok_or_else(|| "E_SPAWN_NO_PID".to_string())?;
+
+    // Only a game that actually started counts as played.
+    let played_at = chrono::Utc::now().timestamp_millis();
+    let _ = super::instance::update_instance_config(&base_dir, |c| c.last_played_at = Some(played_at));
 
     // Record running process
     {
@@ -641,7 +665,7 @@ pub async fn launch_instance(
     let sys_log = InstanceLogPayload {
         instance_id: instance_id.clone(),
         stream: "system".into(),
-        line: format!("[Focusite] 遊戲進程已成功啟動，PID: {}", pid),
+        line: tr!("[Focusite] 遊戲進程已成功啟動，PID: {}", "[Focusite] The game started, PID: {}", pid),
         timestamp: chrono::Utc::now().timestamp_millis(),
     };
     append_instance_log(sys_log.clone());
@@ -729,8 +753,8 @@ pub async fn launch_instance(
             instance_id: inst_id_wait.clone(),
             stream: "system".into(),
             line: match exit_code {
-                Some(code) => format!("[Focusite] 遊戲進程已終止，結束狀態碼：{}", code),
-                None => "[Focusite] 遊戲進程已終止（無結束狀態碼）".to_string(),
+                Some(code) => tr!("[Focusite] 遊戲進程已終止，結束狀態碼：{}", "[Focusite] The game exited with code {}", code),
+                None => tr!("[Focusite] 遊戲進程已終止（無結束狀態碼）", "[Focusite] The game exited without an exit code"),
             },
             timestamp: chrono::Utc::now().timestamp_millis(),
         };

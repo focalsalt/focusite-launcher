@@ -20,7 +20,7 @@ fn resolve_servers_dat_path(instance_id: &str) -> Result<PathBuf, String> {
 #[command]
 pub fn read_instance_servers_cmd(instance_id: String) -> Result<Vec<ServerEntry>, String> {
     let path = resolve_servers_dat_path(&instance_id)?;
-    read_servers_dat(&path).map_err(super::ctx("讀取伺服器清單失敗"))
+    read_servers_dat(&path).map_err(super::ctx("E_SERVERS_READ_FAILED"))
 }
 
 #[command]
@@ -30,10 +30,10 @@ pub fn save_instance_servers_cmd(
 ) -> Result<(), String> {
     validate_safe_id(&instance_id)?;
     if super::instance::is_instance_busy(&instance_id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法修改伺服器清單", instance_id));
+        return Err("E_INSTANCE_BUSY".into());
     }
     let path = resolve_servers_dat_path(&instance_id)?;
-    write_servers_dat(&path, &servers).map_err(super::ctx("儲存伺服器清單失敗"))
+    write_servers_dat(&path, &servers).map_err(super::ctx("E_SERVERS_SAVE_FAILED"))
 }
 
 #[command]
@@ -41,7 +41,7 @@ pub async fn ping_server_cmd(host: String, port: Option<u16>) -> Result<ServerPi
     let effective_port = port.unwrap_or(25565);
     ping_minecraft_server(&host, effective_port, Duration::from_millis(3000))
         .await
-        .map_err(super::ctx("伺服器連線測試失敗"))
+        .map_err(super::ctx("E_SERVER_PING_FAILED"))
 }
 
 #[cfg(test)]

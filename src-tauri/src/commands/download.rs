@@ -3,16 +3,16 @@
 /// Validates that a version ID contains only safe characters.
 pub fn validate_version_id(id: &str) -> Result<(), String> {
     if id.is_empty() {
-        return Err("版本 ID 不可為空".into());
+        return Err("E_VERSION_ID_EMPTY".into());
     }
     if id.contains('/') || id.contains('\\') || id.contains("..") {
-        return Err("版本 ID 含有路徑穿越字元".into());
+        return Err("E_VERSION_ID_TRAVERSAL".into());
     }
     if !id
         .chars()
         .all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_')
     {
-        return Err("版本 ID 含有不允許的字元".into());
+        return Err("E_VERSION_ID_INVALID".into());
     }
     Ok(())
 }

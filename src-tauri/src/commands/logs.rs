@@ -26,7 +26,7 @@ fn kind_dir(instance_dir: &Path, kind: &str) -> Result<PathBuf, String> {
     match kind {
         "log" => Ok(mc.join("logs")),
         "crash" => Ok(mc.join("crash-reports")),
-        _ => Err("未知的記錄類型".into()),
+        _ => Err("E_LOG_KIND_UNKNOWN".into()),
     }
 }
 
@@ -71,27 +71,27 @@ fn list_files(instance_dir: &Path) -> Vec<LogFileEntry> {
 /// Reads one file as text (gzip is unpacked); long files are cut to their last `MAX_READ_BYTES`.
 fn read_file(instance_dir: &Path, kind: &str, name: &str) -> Result<String, String> {
     if name.is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") || name.contains(':') {
-        return Err("無效的檔案名稱".into());
+        return Err("E_FILE_NAME_INVALID".into());
     }
     if !is_wanted(kind, name) {
-        return Err("不支援的檔案類型".into());
+        return Err("E_FILE_KIND_UNSUPPORTED".into());
     }
     let path = kind_dir(instance_dir, kind)?.join(name);
     if !path.is_file() {
-        return Err("找不到檔案".into());
+        return Err("E_FILE_NOT_FOUND".into());
     }
-    let raw = fs::File::open(&path).map_err(|e| format!("無法開啟檔案：{}", e))?;
+    let raw = fs::File::open(&path).map_err(|e| format!("E_FILE_OPEN_FAILED: {}", e))?;
     let mut bytes = Vec::new();
     // Cap the unpacked size too, so a hostile archive cannot fill memory.
     if name.to_lowercase().ends_with(".gz") {
         flate2::read::GzDecoder::new(raw)
             .take(64 * 1024 * 1024)
             .read_to_end(&mut bytes)
-            .map_err(|e| format!("無法解壓縮檔案：{}", e))?;
+            .map_err(|e| format!("E_FILE_DECOMPRESS_FAILED: {}", e))?;
     } else {
         raw.take(64 * 1024 * 1024)
             .read_to_end(&mut bytes)
-            .map_err(|e| format!("無法讀取檔案：{}", e))?;
+            .map_err(|e| format!("E_LOG_READ_FAILED: {}", e))?;
     }
     if bytes.len() > MAX_READ_BYTES {
         bytes.drain(..bytes.len() - MAX_READ_BYTES);
@@ -105,7 +105,7 @@ pub async fn list_instance_log_files(instance_id: String) -> Result<Vec<LogFileE
         validate_safe_id(&instance_id)?;
         let dir = get_instances_dir().join(&instance_id);
         if !dir.is_dir() {
-            return Err(format!("找不到實例 '{}'", instance_id));
+            return Err(format!("E_INSTANCE_NOT_FOUND: {}", instance_id));
         }
         Ok(list_files(&dir))
     })

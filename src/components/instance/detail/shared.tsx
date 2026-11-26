@@ -77,7 +77,7 @@ export function PackItem({
   );
 }
 
-export function ModItem({
+export const ModItem = React.memo(function ModItem({
   name,
   version,
   desc,
@@ -88,7 +88,8 @@ export function ModItem({
   version: string;
   desc: string;
   enabled: boolean;
-  onToggle: (checked: boolean) => void;
+  /** Pass a stable function, or the row re-renders with its list. */
+  onToggle: (name: string, checked: boolean) => void;
 }) {
   const { t } = useI18n();
   return (
@@ -106,11 +107,11 @@ export function ModItem({
         <span className="text-2xs text-slate-400 font-medium">
           {enabled ? t.common.enabled : t.common.disabled}
         </span>
-        <Switch checked={enabled} onCheckedChange={onToggle} />
+        <Switch checked={enabled} onCheckedChange={(checked) => onToggle(name, checked)} />
       </div>
     </div>
   );
-}
+});
 
 
 /** Placeholder rows shown while an instance's files are being listed. */

@@ -23,7 +23,7 @@ pub async fn get_version_manifest(mirror: Option<String>) -> Result<VersionManif
 
     match VersionManifestV2::fetch_remote(&target_url).await {
         Ok(v2) => Ok(v2),
-        Err(e) => Err(format!("無法取得版本清單：{}", e)),
+        Err(e) => Err(format!("E_VERSION_LIST_FAILED: {}", e)),
     }
 }
 
@@ -49,7 +49,7 @@ pub async fn get_version_detail(
 
     match VersionManifest::fetch_remote(&target_url).await {
         Ok(m) => Ok(m),
-        Err(e) => Err(format!("無法取得版本詳細資料：{}", e)),
+        Err(e) => Err(format!("E_VERSION_DETAIL_FAILED: {}", e)),
     }
 }
 
@@ -68,5 +68,5 @@ pub async fn get_loader_versions(
 
     LoaderVersionInfo::fetch_remote_loaders(kind, &mc_version)
         .await
-        .map_err(|e| format!("無法取得 Minecraft {1} 的 {0} 版本清單：{2}", loader, mc_version, e))
+        .map_err(|e| format!("E_LOADER_VERSIONS_FAILED: {1}: {0}: {2}", loader, mc_version, e))
 }

@@ -1,5 +1,6 @@
 //! Workshop commands for Modrinth browsing, dependency resolution, and stack migration.
 
+use super::ui_language::tr;
 use std::path::PathBuf;
 use std::time::Duration;
 use focusite_cas::CasManager;
@@ -30,11 +31,11 @@ pub fn sanitize_safe_package_filename(filename: &str) -> Result<String, String> 
         || trimmed.contains(':')
         || trimmed.starts_with('.')
     {
-        return Err(format!("檔案名稱包含非法路徑字符: '{}'", filename));
+        return Err(format!("E_FILE_NAME_ILLEGAL: {}", filename));
     }
 
     if !(trimmed.ends_with(".jar") || trimmed.ends_with(".zip") || trimmed.ends_with(".mrpack")) {
-        return Err(format!("不允許的檔案類型副檔名: '{}'", trimmed));
+        return Err(format!("E_FILE_TYPE_BLOCKED: {}", trimmed));
     }
 
     Ok(trimmed.to_string())
@@ -43,9 +44,9 @@ pub fn sanitize_safe_package_filename(filename: &str) -> Result<String, String> 
 /// Validates that a download URL uses HTTPS from approved reputable CDN domains. Plain HTTP is refused:
 /// a file without a published hash could otherwise be swapped in transit.
 pub fn validate_download_url(url_str: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(url_str).map_err(|e| format!("無效的下載 URL: {}", e))?;
+    let parsed = url::Url::parse(url_str).map_err(|e| format!("E_DOWNLOAD_URL_INVALID: {}", e))?;
     if parsed.scheme() != "https" {
-        return Err("下載協定必須為 HTTPS".into());
+        return Err("E_DOWNLOAD_NOT_HTTPS".into());
     }
     let host = parsed.host_str().unwrap_or("");
     let allowed_exact = [
@@ -62,7 +63,7 @@ pub fn validate_download_url(url_str: &str) -> Result<(), String> {
         || host.ends_with(".forgecdn.net");
 
     if !is_allowed {
-        return Err(format!("不受信任的下載來源：{}", host));
+        return Err(format!("E_DOWNLOAD_UNTRUSTED: {}", host));
     }
     Ok(())
 }
@@ -110,9 +111,9 @@ pub async fn open_instance_workshop_window(
         url::form_urlencoded::byte_serialize(project_type.as_bytes()).collect::<String>();
 
     let type_label = match project_type.as_str() {
-        "resourcepack" => "材質包工作坊",
-        "shader" => "光影包工作坊",
-        _ => "模組工作坊",
+        "resourcepack" => tr!("材質包工作坊", "Resource Pack Workshop"),
+        "shader" => tr!("光影包工作坊", "Shader Workshop"),
+        _ => tr!("模組工作坊", "Mod Workshop"),
     };
 
     let url_str = format!(
@@ -149,7 +150,7 @@ pub async fn open_instance_workshop_window(
     #[cfg(windows)]
     let builder = builder.additional_browser_args(crate::get_webview2_browser_arguments());
 
-    builder.build().map_err(super::ctx("無法開啟工作坊視窗"))?;
+    builder.build().map_err(super::ctx("E_WORKSHOP_WINDOW_FAILED"))?;
     Ok(())
 }
 
@@ -175,21 +176,21 @@ pub async fn workshop_search_projects(
         limit.unwrap_or(20),
     )
     .await
-    .map_err(super::ctx("搜尋工作坊失敗"))
+    .map_err(super::ctx("E_WORKSHOP_SEARCH_FAILED"))
 }
 
 #[tauri::command]
 pub async fn workshop_list_categories(project_type: String) -> Result<Vec<WorkshopCategory>, String> {
     list_categories(super::http(), &project_type)
         .await
-        .map_err(super::ctx("載入分類失敗"))
+        .map_err(super::ctx("E_WORKSHOP_CATEGORIES_FAILED"))
 }
 
 #[tauri::command]
 pub async fn workshop_get_project(project_id: String) -> Result<WorkshopProjectDetail, String> {
     get_project_detail(super::http(), &project_id)
         .await
-        .map_err(super::ctx("載入專案資訊失敗"))
+        .map_err(super::ctx("E_WORKSHOP_PROJECT_FAILED"))
 }
 
 #[tauri::command]
@@ -205,7 +206,7 @@ pub async fn workshop_list_versions(
         loader.as_deref(),
     )
     .await
-    .map_err(super::ctx("載入版本清單失敗"))
+    .map_err(super::ctx("E_WORKSHOP_VERSIONS_FAILED"))
 }
 
 #[tauri::command]
@@ -215,7 +216,7 @@ pub async fn workshop_resolve_install_plan(
 ) -> Result<InstallPlan, String> {
     validate_safe_id(&instance_id)?;
     let inst_dir = get_instances_dir().join(&instance_id);
-    let cfg = read_instance_config(&inst_dir).map_err(super::ctx("無法讀取實例設定"))?;
+    let cfg = read_instance_config(&inst_dir).map_err(super::ctx("E_INSTANCE_CONFIG_UNREADABLE"))?;
     let mods_dir = inst_dir.join("minecraft").join("mods");
 
     let client = super::http().clone();
@@ -227,7 +228,7 @@ pub async fn workshop_resolve_install_plan(
         &cfg.loader,
     )
     .await
-    .map_err(super::ctx("解析相依項目失敗"))
+    .map_err(super::ctx("E_DEPENDENCIES_FAILED"))
 }
 
 #[tauri::command]
@@ -238,7 +239,7 @@ pub async fn workshop_execute_install_plan(
 ) -> Result<usize, String> {
     validate_safe_id(&instance_id)?;
     if is_instance_busy(&instance_id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法安裝工作坊項目", instance_id));
+        return Err("E_INSTANCE_BUSY".into());
     }
     let inst_dir = get_instances_dir().join(&instance_id);
     let mc_dir = inst_dir.join("minecraft");
@@ -248,13 +249,13 @@ pub async fn workshop_execute_install_plan(
         "shader" => mc_dir.join("shaderpacks"),
         _ => mc_dir.join("mods"),
     };
-    std::fs::create_dir_all(&target_dir).map_err(super::ctx("無法建立目標資料夾"))?;
+    std::fs::create_dir_all(&target_dir).map_err(super::ctx("E_TARGET_FOLDER_CREATE_FAILED"))?;
 
     // Verify target directory has no traversal
-    let canon_target = target_dir.canonicalize().map_err(super::ctx("無法驗證目標資料夾"))?;
-    let canon_mc = mc_dir.canonicalize().map_err(super::ctx("無法驗證遊戲資料夾"))?;
+    let canon_target = target_dir.canonicalize().map_err(super::ctx("E_TARGET_FOLDER_INVALID"))?;
+    let canon_mc = mc_dir.canonicalize().map_err(super::ctx("E_GAME_FOLDER_INVALID"))?;
     if !canon_target.starts_with(&canon_mc) {
-        return Err("目標資料夾路徑存在越界異常".into());
+        return Err("E_TARGET_FOLDER_OUTSIDE".into());
     }
 
     let app_data = super::get_app_data_dir();
@@ -278,7 +279,7 @@ pub async fn workshop_execute_install_plan(
 
     let mut download_tasks = Vec::new();
     let temp_cache_dir = std::env::temp_dir().join(format!("fc_ws_{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&temp_cache_dir).map_err(super::ctx("無法建立暫存資料夾"))?;
+    std::fs::create_dir_all(&temp_cache_dir).map_err(super::ctx("E_TEMP_FOLDER_CREATE_FAILED"))?;
 
     // Sanitize all items before taking action
     for item in &items_to_download {
@@ -311,7 +312,7 @@ pub async fn workshop_execute_install_plan(
     if !download_tasks.is_empty() {
         if let Err(e) = downloader.download_batch(download_tasks, None).await {
             let _ = std::fs::remove_dir_all(&temp_cache_dir);
-            return Err(format!("下載模組項目失敗: {}", e));
+            return Err(format!("E_MOD_DOWNLOAD_FAILED: {}", e));
         }
     }
 
@@ -341,7 +342,7 @@ pub async fn workshop_execute_install_plan(
                 installed_count += 1;
             } else {
                 let _ = std::fs::remove_dir_all(&temp_cache_dir);
-                return Err(format!("無法將模組 '{}' 連結或複製到目標資料夾", safe_filename));
+                return Err(format!("E_MOD_PLACE_FAILED: {}", safe_filename));
             }
         } else if dest_file.is_file() {
             // Already placed or linked via CAS
@@ -370,12 +371,12 @@ fn validate_migration_target(
         "fabric" | "quilt" => {
             let v = target_loader_version.map(str::trim).unwrap_or("");
             if v.is_empty() {
-                return Err("請指定載入器版本 (Fabric/Quilt 不支援自動解析)".into());
+                return Err("E_LOADER_VERSION_REQUIRED".into());
             }
             super::download::validate_version_id(v)?;
         }
         other => {
-            return Err(format!("目前尚不支援遷移至載入器 '{}'", other));
+            return Err(format!("E_MIGRATE_LOADER_UNSUPPORTED: {}", other));
         }
     }
     Ok(())
@@ -389,11 +390,11 @@ pub async fn instance_plan_stack_migration(
 ) -> Result<MigrationPlan, String> {
     validate_safe_id(&instance_id)?;
     if is_instance_busy(&instance_id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法規劃模組遷移", instance_id));
+        return Err("E_INSTANCE_BUSY".into());
     }
     super::download::validate_version_id(&target_version)?;
     let inst_dir = get_instances_dir().join(&instance_id);
-    let cfg = read_instance_config(&inst_dir).map_err(super::ctx("無法讀取實例設定"))?;
+    let cfg = read_instance_config(&inst_dir).map_err(super::ctx("E_INSTANCE_CONFIG_UNREADABLE"))?;
     let mods_dir = inst_dir.join("minecraft").join("mods");
 
     if target_loader.eq_ignore_ascii_case("custom") {
@@ -410,7 +411,7 @@ pub async fn instance_plan_stack_migration(
         &target_loader,
     )
     .await
-    .map_err(super::ctx("分析模組相容性失敗"))
+    .map_err(super::ctx("E_COMPATIBILITY_FAILED"))
 }
 
 /// A custom loader has no Modrinth metadata, so mods are left exactly as they are.
@@ -436,13 +437,13 @@ pub async fn instance_execute_stack_migration(
 ) -> Result<super::instance::InstanceSummaryDto, String> {
     validate_safe_id(&instance_id)?;
     if is_instance_busy(&instance_id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法執行模組遷移", instance_id));
+        return Err("E_INSTANCE_BUSY".into());
     }
     validate_migration_target(&target_version, &target_loader, target_loader_version.as_deref())?;
     let inst_dir = get_instances_dir().join(&instance_id);
-    let cfg = read_instance_config(&inst_dir).map_err(super::ctx("無法讀取實例設定"))?;
+    let cfg = read_instance_config(&inst_dir).map_err(super::ctx("E_INSTANCE_CONFIG_UNREADABLE"))?;
     let mods_dir = inst_dir.join("minecraft").join("mods");
-    std::fs::create_dir_all(&mods_dir).map_err(super::ctx("無法建立 mods 資料夾"))?;
+    std::fs::create_dir_all(&mods_dir).map_err(super::ctx("E_MODS_FOLDER_CREATE_FAILED"))?;
 
     // Authoritatively re-generate migration plan on backend to prevent client-side tampering
     let client = super::http().clone();
@@ -450,7 +451,7 @@ pub async fn instance_execute_stack_migration(
     if is_custom {
         let jar = target_loader_version.as_deref().map(str::trim).unwrap_or("");
         if !inst_dir.join(super::instance::CUSTOM_JAR_DIR).join(jar).is_file() {
-            return Err(format!("{} 資料夾中找不到 '{}'", super::instance::CUSTOM_JAR_DIR, jar));
+            return Err(format!("E_JAR_NOT_FOUND: {}: {}", super::instance::CUSTOM_JAR_DIR, jar));
         }
     }
     let verified_plan = if is_custom {
@@ -465,12 +466,12 @@ pub async fn instance_execute_stack_migration(
             &target_loader,
         )
         .await
-        .map_err(|e| format!("重新解析模組遷移計畫失敗: {}", e))?
+        .map_err(|e| format!("E_MIGRATION_PLAN_FAILED: {}", e))?
     };
 
     // Atomic preparation: pre-download all upgradable files into temp directory first
     let temp_stage_dir = std::env::temp_dir().join(format!("fc_migr_{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&temp_stage_dir).map_err(super::ctx("無法建立暫存資料夾"))?;
+    std::fs::create_dir_all(&temp_stage_dir).map_err(super::ctx("E_TEMP_FOLDER_CREATE_FAILED"))?;
 
     let downloader = Downloader::default();
     let mut staged_downloads = Vec::new();
@@ -492,7 +493,7 @@ pub async fn instance_execute_stack_migration(
             .await
         {
             let _ = std::fs::remove_dir_all(&temp_stage_dir);
-            return Err(format!("升級模組 '{}' 下載失敗 (交易已回滾): {}", up.mod_name, e));
+            return Err(format!("E_MIGRATION_DOWNLOAD_FAILED: {}: {}", up.mod_name, e));
         }
 
         staged_downloads.push((safe_orig_name, safe_new_name, stage_dest));
@@ -546,7 +547,7 @@ pub async fn instance_execute_stack_migration(
             }
         }
         let _ = std::fs::remove_dir_all(&temp_stage_dir);
-        return Err(format!("模組檔案提交失敗，已回滾所有變更: {}", e));
+        return Err(format!("E_MIGRATION_COMMIT_FAILED: {}", e));
     }
 
     let _ = std::fs::remove_dir_all(&temp_stage_dir);
@@ -572,7 +573,7 @@ pub async fn instance_execute_stack_migration(
                     }
                 }
             }
-            return Err(format!("寫入實例設定失敗，已回滾所有檔案更動: {}", e));
+            return Err(format!("E_MIGRATION_CONFIG_FAILED: {}", e));
         }
     };
 

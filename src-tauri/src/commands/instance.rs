@@ -1,6 +1,7 @@
 //! Instance management commands operating directly on disk with strict path traversal validation.
 //! Implements instance folder structure: <instance_name>/minecraft/ & focusite-instance.json
 
+use super::ui_language::tr;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -52,8 +53,6 @@ pub struct InstanceSummaryDto {
     pub background_path: Option<String>,
     #[serde(rename = "modCount")]
     pub mod_count: usize,
-    #[serde(rename = "lastPlayed")]
-    pub last_played: String,
     #[serde(rename = "isFavorite")]
     pub is_favorite: bool,
     /// The folder has no config of ours yet: the user must pick version and loader before using it.
@@ -161,10 +160,10 @@ pub struct ScreenshotFileDto {
 /// Validates that a file name is safe and does not contain path traversal characters.
 pub fn validate_safe_filename(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
-        return Err("檔案名稱不能為空".into());
+        return Err("E_FILE_NAME_EMPTY".into());
     }
     if name.contains('/') || name.contains('\\') || name.contains("..") {
-        return Err("無效的檔案名稱：偵測到路徑穿越字元".into());
+        return Err("E_FILE_NAME_TRAVERSAL".into());
     }
     Ok(())
 }
@@ -172,18 +171,18 @@ pub fn validate_safe_filename(name: &str) -> Result<(), String> {
 /// Validates that an instance ID/name is safe and does not contain path traversal characters.
 pub fn validate_safe_id(id: &str) -> Result<(), String> {
     if id.trim().is_empty() {
-        return Err("實例名稱不能為空".into());
+        return Err("E_NAME_EMPTY".into());
     }
     if id.contains('/') || id.contains('\\') || id.contains("..") {
-        return Err("實例名稱含有路徑穿越字元".into());
+        return Err("E_NAME_TRAVERSAL".into());
     }
     let forbidden = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
     if id.chars().any(|c| forbidden.contains(&c) || c.is_control()) {
-        return Err("實例名稱含有檔案系統不允許的字元".into());
+        return Err("E_NAME_FORBIDDEN_CHAR".into());
     }
     // Windows silently strips trailing dots/spaces and reserves device names.
     if id.ends_with('.') || id.ends_with(' ') {
-        return Err("實例名稱不可以句點或空白結尾".into());
+        return Err("E_NAME_TRAILING".into());
     }
     let stem = id.split('.').next().unwrap_or("").trim().to_ascii_uppercase();
     const RESERVED: [&str; 22] = [
@@ -191,7 +190,7 @@ pub fn validate_safe_id(id: &str) -> Result<(), String> {
         "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
     if RESERVED.contains(&stem.as_str()) {
-        return Err("實例名稱為 Windows 保留名稱，請更換".into());
+        return Err("E_NAME_RESERVED".into());
     }
     Ok(())
 }
@@ -302,15 +301,6 @@ pub fn new_disk_config(id: &str, name: &str, version: &str, loader: &str, loader
 pub fn convert_disk_config_to_summary(folder: &Path, config: InstanceDiskConfig) -> InstanceSummaryDto {
     let mod_count = count_mods(&folder.join("minecraft").join("mods"));
 
-    let last_played_str = config
-        .last_played_at
-        .map(|ts| {
-            let dt = chrono::DateTime::from_timestamp_millis(ts);
-            dt.map(|d| d.format("%Y-%m-%d %H:%M").to_string())
-                .unwrap_or_else(|| "尚未遊玩".into())
-        })
-        .unwrap_or_else(|| "尚未遊玩".into());
-
     let folder_name = folder
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
@@ -347,7 +337,6 @@ pub fn convert_disk_config_to_summary(folder: &Path, config: InstanceDiskConfig)
         background_path,
         mod_count,
         needs_setup: false,
-        last_played: last_played_str,
         is_favorite: config.is_favorite,
         show_log_on_launch: config.show_log_on_launch,
         window_width: config.window_width,
@@ -372,17 +361,17 @@ pub const INSTANCE_CONFIG_FILE: &str = "focusite-instance.json";
 pub fn read_instance_config(instance_dir: &Path) -> Result<InstanceDiskConfig, String> {
     let cfg_path = instance_dir.join(INSTANCE_CONFIG_FILE);
     if !cfg_path.is_file() {
-        return Err("此實例尚未完成初步設定".into());
+        return Err("E_INSTANCE_NOT_SETUP".into());
     }
-    let content = fs::read_to_string(&cfg_path).map_err(|e| format!("無法讀取實例設定檔：{}", e))?;
-    serde_json::from_str(&content).map_err(|_| format!("實例設定檔格式損毀，請檢查 {}", INSTANCE_CONFIG_FILE))
+    let content = fs::read_to_string(&cfg_path).map_err(|e| format!("E_INSTANCE_CONFIG_UNREADABLE: {}", e))?;
+    serde_json::from_str(&content).map_err(|e| format!("E_INSTANCE_CONFIG_CORRUPT: {}: {}", INSTANCE_CONFIG_FILE, e))
 }
 
 pub fn write_instance_config(instance_dir: &Path, config: &InstanceDiskConfig) -> Result<(), String> {
     let cfg_path = instance_dir.join(INSTANCE_CONFIG_FILE);
-    let json = serde_json::to_string_pretty(config).map_err(|e| format!("序列化 {} 失敗: {}", INSTANCE_CONFIG_FILE, e))?;
+    let json = serde_json::to_string_pretty(config).map_err(|e| format!("E_INSTANCE_CONFIG_WRITE_FAILED: {}: {}", INSTANCE_CONFIG_FILE, e))?;
     super::atomic_write(&cfg_path, json.as_bytes())
-        .map_err(|e| format!("寫入 {} 失敗: {}", INSTANCE_CONFIG_FILE, e))
+        .map_err(|e| format!("E_INSTANCE_CONFIG_WRITE_FAILED: {}: {}", INSTANCE_CONFIG_FILE, e))
 }
 
 #[tauri::command]
@@ -410,12 +399,12 @@ pub fn list_instances_blocking() -> Result<Vec<InstanceSummaryDto>, String> {
     let base_dir = get_instances_dir();
     if !base_dir.exists() {
         fs::create_dir_all(&base_dir)
-            .map_err(|e| format!("無法建立實例資料夾：{}", e))?;
+            .map_err(|e| format!("E_INSTANCE_CREATE_FAILED: {}", e))?;
         return Ok(Vec::new());
     }
 
     let entries = fs::read_dir(&base_dir)
-        .map_err(|e| format!("無法讀取實例資料夾：{}", e))?;
+        .map_err(|e| format!("E_INSTANCE_FOLDER_UNREADABLE: {}", e))?;
 
     let folders: Vec<PathBuf> = entries
         .filter_map(|res| res.ok())
@@ -473,7 +462,7 @@ pub fn validate_custom_jar_name(name: &str) -> Result<String, String> {
         || bare.contains(':')
         || !bare.to_ascii_lowercase().ends_with(".jar")
     {
-        return Err("自訂 Jar 檔名無效（需為不含路徑的 .jar）".into());
+        return Err("E_JAR_NAME_INVALID".into());
     }
     Ok(bare.to_string())
 }
@@ -481,20 +470,20 @@ pub fn validate_custom_jar_name(name: &str) -> Result<String, String> {
 /// Reads the Minecraft version a client jar was built for from its embedded `version.json`
 /// (present in client jars since 1.14).
 pub fn read_jar_mc_version(jar: &Path) -> Result<String, String> {
-    let file = fs::File::open(jar).map_err(|e| format!("無法開啟自訂 Jar：{}", e))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("自訂 Jar 不是有效的壓縮檔：{}", e))?;
+    let file = fs::File::open(jar).map_err(|e| format!("E_JAR_OPEN_FAILED: {}", e))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("E_JAR_NOT_ARCHIVE: {}", e))?;
     let mut entry = archive
         .by_name("version.json")
-        .map_err(|_| "自訂 Jar 內沒有 version.json，無法判斷它對應的 Minecraft 版本".to_string())?;
+        .map_err(|_| "E_JAR_NO_VERSION_JSON".to_string())?;
     let mut text = String::new();
-    std::io::Read::read_to_string(&mut entry, &mut text).map_err(|e| format!("無法讀取 version.json：{}", e))?;
+    std::io::Read::read_to_string(&mut entry, &mut text).map_err(|e| format!("E_JAR_VERSION_JSON_UNREADABLE: {}", e))?;
     let json: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("version.json 格式錯誤：{}", e))?;
+        serde_json::from_str(&text).map_err(|e| format!("E_JAR_VERSION_JSON_INVALID: {}", e))?;
     let id = json
         .get("id")
         .or_else(|| json.get("name"))
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "version.json 缺少 id 欄位".to_string())?;
+        .ok_or_else(|| "E_JAR_VERSION_JSON_NO_ID".to_string())?;
     super::download::validate_version_id(id)?;
     Ok(id.to_string())
 }
@@ -504,7 +493,7 @@ pub fn resolve_custom_jar(inst_dir: &Path, cfg: &InstanceDiskConfig) -> Result<(
     let name = validate_custom_jar_name(cfg.loader_version.as_deref().unwrap_or(""))?;
     let jar = inst_dir.join(CUSTOM_JAR_DIR).join(&name);
     if !jar.is_file() {
-        return Err(format!("找不到自訂 Jar：{}\\{}", CUSTOM_JAR_DIR, name));
+        return Err(format!("E_JAR_NOT_FOUND: {}: {}", CUSTOM_JAR_DIR, name));
     }
     let version = read_jar_mc_version(&jar)?;
     Ok((jar, version))
@@ -538,15 +527,15 @@ fn save_custom_jar_blocking(instance_id: String, name: String, bytes: Vec<u8>) -
     validate_safe_id(&instance_id)?;
     let name = validate_custom_jar_name(&name)?;
     if bytes.is_empty() {
-        return Err("Jar 檔案是空的".into());
+        return Err("E_JAR_EMPTY".into());
     }
     let inst_dir = get_instances_dir().join(&instance_id);
     if !inst_dir.is_dir() {
-        return Err("找不到實例資料夾".into());
+        return Err("E_INSTANCE_NOT_FOUND".into());
     }
     let dir = inst_dir.join(CUSTOM_JAR_DIR);
-    fs::create_dir_all(&dir).map_err(|e| format!("無法建立 {} 資料夾：{}", CUSTOM_JAR_DIR, e))?;
-    fs::write(dir.join(&name), &bytes).map_err(|e| format!("無法儲存自訂 Jar：{}", e))?;
+    fs::create_dir_all(&dir).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}: {}", CUSTOM_JAR_DIR, e))?;
+    fs::write(dir.join(&name), &bytes).map_err(|e| format!("E_JAR_SAVE_FAILED: {}", e))?;
     Ok(name)
 }
 
@@ -564,7 +553,7 @@ pub async fn create_instance(
 ) -> Result<InstanceSummaryDto, String> {
     // These end up in file paths, and a shared world (another player) can supply them.
     for field in [Some(version.as_str()), Some(loader.as_str()), loader_version.as_deref()].into_iter().flatten() {
-        validate_safe_id(field).map_err(|_| "版本或載入器含有不安全的字元".to_string())?;
+        validate_safe_id(field).map_err(|_| "E_VERSION_UNSAFE_CHAR".to_string())?;
     }
     // A custom loader jar is checked before anything is written, so a bad jar leaves no folder behind.
     let custom_jar = if loader == "Custom" {
@@ -573,7 +562,7 @@ pub async fn create_instance(
                 let bare = Path::new(&n).file_name().and_then(|f| f.to_str()).unwrap_or("");
                 Some((validate_custom_jar_name(bare)?, b))
             }
-            _ => return Err("自訂載入器需要提供 .jar 檔案".into()),
+            _ => return Err("E_JAR_REQUIRED".into()),
         }
     } else {
         None
@@ -585,7 +574,7 @@ pub async fn create_instance(
         let inst_dir = base_dir.join(&folder_name);
         let game_dir = inst_dir.join("minecraft");
         for sub in ["mods", "coremods", "saves", "logs", "resourcepacks", "texturepacks", "shaderpacks", "screenshots"] {
-            fs::create_dir_all(game_dir.join(sub)).map_err(|e| format!("無法建立 {} 資料夾：{}", sub, e))?;
+            fs::create_dir_all(game_dir.join(sub)).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}: {}", sub, e))?;
         }
 
         let mut config = new_disk_config(&folder_name, &name, &version, &loader, loader_version);
@@ -608,8 +597,8 @@ pub async fn create_instance(
         // A custom loader jar lives in `custom_jar/`; its name is remembered as the "loader version".
         if let Some((jar_name, bytes)) = custom_jar {
             let jar_dir = inst_dir.join(CUSTOM_JAR_DIR);
-            fs::create_dir_all(&jar_dir).map_err(|e| format!("無法建立 {} 資料夾：{}", CUSTOM_JAR_DIR, e))?;
-            fs::write(jar_dir.join(&jar_name), &bytes).map_err(|e| format!("無法儲存自訂 Jar：{}", e))?;
+            fs::create_dir_all(&jar_dir).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}: {}", CUSTOM_JAR_DIR, e))?;
+            fs::write(jar_dir.join(&jar_name), &bytes).map_err(|e| format!("E_JAR_SAVE_FAILED: {}", e))?;
             config.loader_version = Some(jar_name);
         }
 
@@ -631,21 +620,21 @@ pub fn setup_instance(
     validate_safe_id(&instance_id)?;
     let inst_dir = get_instances_dir().join(&instance_id);
     if !inst_dir.is_dir() {
-        return Err(format!("找不到實例資料夾: {}", instance_id));
+        return Err("E_INSTANCE_NOT_FOUND".into());
     }
     let _cfg_lock = lock_configs();
     // A config that cannot be read counts as missing, so a damaged one can be replaced here.
     if read_instance_config(&inst_dir).is_ok() {
-        return Err("此實例已完成設定".into());
+        return Err("E_INSTANCE_ALREADY_SETUP".into());
     }
     if version.trim().is_empty() {
-        return Err("請選擇 Minecraft 版本".into());
+        return Err("E_VERSION_REQUIRED".into());
     }
     let name = if name.trim().is_empty() { instance_id.clone() } else { name.trim().to_string() };
 
     let game_dir = inst_dir.join("minecraft");
     for sub in ["mods", "saves", "logs", "resourcepacks", "shaderpacks", "screenshots"] {
-        fs::create_dir_all(game_dir.join(sub)).map_err(|e| format!("無法建立 {} 資料夾：{}", sub, e))?;
+        fs::create_dir_all(game_dir.join(sub)).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}: {}", sub, e))?;
     }
     let config = new_disk_config(&instance_id, &name, version.trim(), &loader, loader_version);
     write_instance_config(&inst_dir, &config)?;
@@ -660,16 +649,16 @@ pub fn rename_instance(
 ) -> Result<InstanceSummaryDto, String> {
     validate_safe_id(&current_id)?;
     if is_instance_busy(&current_id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法重新命名", current_id));
+        return Err("E_INSTANCE_BUSY".into());
     }
     if new_name.trim().is_empty() {
-        return Err("新實例名稱不能為空".into());
+        return Err("E_NAME_EMPTY".into());
     }
 
     let base_dir = get_instances_dir();
     let current_dir = base_dir.join(&current_id);
     if !current_dir.is_dir() {
-        return Err(format!("找不到實例資料夾: {}", current_id));
+        return Err("E_INSTANCE_NOT_FOUND".into());
     }
 
     let _cfg_lock = lock_configs();
@@ -688,7 +677,7 @@ pub fn rename_instance(
             }
 
             let new_dir = base_dir.join(&target_folder);
-            fs::rename(&current_dir, &new_dir).map_err(|e| format!("重新命名實例資料夾失敗: {}", e))?;
+            fs::rename(&current_dir, &new_dir).map_err(|e| format!("E_INSTANCE_RENAME_FAILED: {}", e))?;
             config.id = target_folder;
             config.name = new_name;
             write_instance_config(&new_dir, &config)?;
@@ -725,11 +714,11 @@ pub fn update_instance_settings(
 ) -> Result<InstanceSummaryDto, String> {
     validate_safe_id(&instance_id)?;
     if is_instance_busy(&instance_id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法修改設定", instance_id));
+        return Err("E_INSTANCE_BUSY".into());
     }
     let inst_dir = get_instances_dir().join(&instance_id);
     if !inst_dir.is_dir() {
-        return Err(format!("找不到實例資料夾: {}", instance_id));
+        return Err("E_INSTANCE_NOT_FOUND".into());
     }
 
     let _cfg_lock = lock_configs();
@@ -790,7 +779,7 @@ pub async fn duplicate_instance(
 ) -> Result<InstanceSummaryDto, String> {
     validate_safe_id(&source_id)?;
     if is_instance_busy(&source_id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法複製", source_id));
+        return Err("E_INSTANCE_BUSY".into());
     }
     super::blocking(move || duplicate_instance_blocking(&source_id, new_name)).await
 }
@@ -799,19 +788,19 @@ fn duplicate_instance_blocking(source_id: &str, new_name: Option<String>) -> Res
     let base_dir = get_instances_dir();
     let src_dir = base_dir.join(source_id);
     if !src_dir.is_dir() {
-        return Err(format!("找不到來源實例資料夾: {}", source_id));
+        return Err("E_INSTANCE_NOT_FOUND".into());
     }
 
     let mut config = read_instance_config(&src_dir)?;
     let clone_name = new_name
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| format!("{} (複製)", config.name));
+        .unwrap_or_else(|| tr!("{} (複製)", "{} (copy)", config.name));
 
     let target_folder = unique_folder_name(&base_dir, &clone_name)?;
     let dst_dir = base_dir.join(&target_folder);
     // `create_dir` (not `_all`) claims the name; it fails if another copy took it a moment ago.
-    fs::create_dir(&dst_dir).map_err(|e| format!("建立新實例資料夾失敗: {}", e))?;
+    fs::create_dir(&dst_dir).map_err(|e| format!("E_INSTANCE_CREATE_FAILED: {}", e))?;
 
     let copied = copy_dir_recursive_with_hardlink(&src_dir, &dst_dir).and_then(|_| {
         config.id = target_folder.clone();
@@ -831,15 +820,15 @@ fn duplicate_instance_blocking(source_id: &str, new_name: Option<String>) -> Res
 
 /// Copies a directory tree; mod jars are hard-linked when possible (they never change in place).
 fn copy_dir_recursive_with_hardlink(src: &Path, dst: &Path) -> Result<(), String> {
-    fs::create_dir_all(dst).map_err(|e| format!("無法建立目錄 {}：{}", dst.display(), e))?;
-    let entries = fs::read_dir(src).map_err(|e| format!("無法讀取目錄 {}：{}", src.display(), e))?;
+    fs::create_dir_all(dst).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}: {}", dst.display(), e))?;
+    let entries = fs::read_dir(src).map_err(|e| format!("E_FOLDER_READ_FAILED: {}: {}", src.display(), e))?;
     for entry in entries {
-        let entry = entry.map_err(|e| format!("無法讀取目錄 {}：{}", src.display(), e))?;
+        let entry = entry.map_err(|e| format!("E_FOLDER_READ_FAILED: {}: {}", src.display(), e))?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
-        let kind = entry.file_type().map_err(|e| format!("無法讀取 {}：{}", src_path.display(), e))?;
+        let kind = entry.file_type().map_err(|e| format!("E_FILE_READ_FAILED: {}: {}", src_path.display(), e))?;
         if kind.is_symlink() {
-            tracing::warn!("略過符號連結 {}", src_path.display());
+            tracing::warn!("Skipping symlink {}", src_path.display());
         } else if kind.is_dir() {
             copy_dir_recursive_with_hardlink(&src_path, &dst_path)?;
         } else {
@@ -849,7 +838,7 @@ fn copy_dir_recursive_with_hardlink(src: &Path, dst: &Path) -> Result<(), String
             } else {
                 fs::copy(&src_path, &dst_path).map(|_| ())
             };
-            res.map_err(|e| format!("無法複製 {}：{}", src_path.display(), e))?;
+            res.map_err(|e| format!("E_FILE_COPY_FAILED: {}: {}", src_path.display(), e))?;
         }
     }
     Ok(())
@@ -859,7 +848,7 @@ fn copy_dir_recursive_with_hardlink(src: &Path, dst: &Path) -> Result<(), String
 pub async fn delete_instance(app_handle: AppHandle, id: String) -> Result<(), String> {
     validate_safe_id(&id)?;
     if is_instance_busy(&id) {
-        return Err(format!("實例 '{}' 正在運行或安裝中，無法刪除", id));
+        return Err("E_INSTANCE_BUSY".into());
     }
 
     super::launch::clear_instance_log(&id);
@@ -881,7 +870,7 @@ pub async fn delete_instance(app_handle: AppHandle, id: String) -> Result<(), St
     let inst_dir = get_instances_dir().join(&id);
     super::blocking(move || {
         if inst_dir.exists() {
-            fs::remove_dir_all(inst_dir).map_err(|e| format!("刪除實例失敗：{}", e))?;
+            fs::remove_dir_all(inst_dir).map_err(|e| format!("E_INSTANCE_DELETE_FAILED: {}", e))?;
         }
         Ok(())
     })
@@ -903,24 +892,24 @@ fn set_instance_icon_from_file_blocking(
     validate_safe_id(&instance_id)?;
     let inst_dir = get_instances_dir().join(&instance_id);
     if !inst_dir.is_dir() {
-        return Err(format!("找不到實例資料夾: {}", instance_id));
+        return Err("E_INSTANCE_NOT_FOUND".into());
     }
 
     let src = Path::new(&source_image_path);
     if !src.is_file() {
-        return Err("選取的圖片檔案不存在".into());
+        return Err("E_IMAGE_NOT_FOUND".into());
     }
 
     let img = image::ImageReader::open(src)
-        .map_err(|e| format!("無法開啟圖片檔案: {}", e))?
+        .map_err(|e| format!("E_IMAGE_OPEN_FAILED: {}", e))?
         .decode()
-        .map_err(|e| format!("無法解碼圖片: {}", e))?;
+        .map_err(|e| format!("E_IMAGE_DECODE_FAILED: {}", e))?;
 
     let resized = img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3);
     let target_icon = inst_dir.join("icon.png");
     resized
         .save(&target_icon)
-        .map_err(|e| format!("無法儲存實例圖示: {}", e))?;
+        .map_err(|e| format!("E_ICON_SAVE_FAILED: {}", e))?;
 
     let config = update_instance_config(&inst_dir, |c| {
         c.icon_source = Some("custom".into());
@@ -941,19 +930,19 @@ pub fn set_instance_preset_icon(
     validate_safe_id(&instance_id)?;
     let inst_dir = get_instances_dir().join(&instance_id);
     if !inst_dir.is_dir() {
-        return Err(format!("找不到實例資料夾: {}", instance_id));
+        return Err("E_INSTANCE_NOT_FOUND".into());
     }
 
     let target_icon = inst_dir.join("icon.png");
     if let Some(bytes) = png_bytes {
         if bytes.len() > 2 * 1024 * 1024 {
-            return Err("圖示檔案過大".into());
+            return Err("E_ICON_TOO_LARGE".into());
         }
         let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
-            .map_err(|e| format!("無法解碼圖示: {}", e))?;
+            .map_err(|e| format!("E_IMAGE_DECODE_FAILED: {}", e))?;
         img.resize_exact(256, 256, image::imageops::FilterType::Nearest)
             .save(&target_icon)
-            .map_err(|e| format!("無法寫入預設圖示: {}", e))?;
+            .map_err(|e| format!("E_ICON_SAVE_FAILED: {}", e))?;
         let config = update_instance_config(&inst_dir, |c| {
             c.icon_source = Some(format!("preset:{}", preset_key));
             c.icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
@@ -1000,7 +989,7 @@ pub fn set_instance_preset_icon(
     }
     imgbuf
         .save(&target_icon)
-        .map_err(|e| format!("無法寫入預設圖示: {}", e))?;
+        .map_err(|e| format!("E_ICON_SAVE_FAILED: {}", e))?;
 
     let config = update_instance_config(&inst_dir, |c| {
         c.icon_source = Some(format!("preset:{}", preset_key));
@@ -1016,7 +1005,7 @@ pub fn reset_instance_icon(instance_id: String) -> Result<InstanceSummaryDto, St
     validate_safe_id(&instance_id)?;
     let inst_dir = get_instances_dir().join(&instance_id);
     if !inst_dir.is_dir() {
-        return Err(format!("找不到實例資料夾: {}", instance_id));
+        return Err("E_INSTANCE_NOT_FOUND".into());
     }
 
     let target_icon = inst_dir.join("icon.png");
@@ -1081,7 +1070,7 @@ fn toggle_folder_mod_state(mods_dir: &Path, filename: &str, enabled: bool) -> Re
     validate_safe_filename(filename)?;
     let current_path = mods_dir.join(filename);
     if !current_path.is_file() {
-        return Err(format!("模組檔案 {} 不存在", filename));
+        return Err(format!("E_MOD_NOT_FOUND: {}", filename));
     }
 
     let target_name = if enabled {
@@ -1093,7 +1082,7 @@ fn toggle_folder_mod_state(mods_dir: &Path, filename: &str, enabled: bool) -> Re
     };
 
     let target_path = mods_dir.join(&target_name);
-    fs::rename(current_path, target_path).map_err(|e| format!("無法切換模組狀態: {}", e))?;
+    fs::rename(current_path, target_path).map_err(|e| format!("E_MOD_TOGGLE_FAILED: {}", e))?;
     Ok(())
 }
 
@@ -1102,7 +1091,7 @@ fn scan_folder_mods(mods_dir: &Path) -> Result<Vec<ModFileDto>, String> {
         return Ok(Vec::new());
     }
 
-    let entries = fs::read_dir(mods_dir).map_err(|e| format!("讀取模組目錄失敗: {}", e))?;
+    let entries = fs::read_dir(mods_dir).map_err(|e| format!("E_MODS_READ_FAILED: {}", e))?;
     let mut mods = Vec::new();
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
@@ -1171,7 +1160,7 @@ fn scan_pack_folder(folder_path: &Path) -> Result<Vec<PackFileDto>, String> {
         return Ok(Vec::new());
     }
 
-    let entries = fs::read_dir(folder_path).map_err(|e| format!("無法讀取資源目錄: {}", e))?;
+    let entries = fs::read_dir(folder_path).map_err(|e| format!("E_RESOURCES_READ_FAILED: {}", e))?;
     let mut packs = Vec::new();
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
@@ -1245,7 +1234,7 @@ pub fn list_instance_screenshots(instance_id: String) -> Result<Vec<ScreenshotFi
     }
 
     let entries = fs::read_dir(&screenshots_dir)
-        .map_err(|e| format!("讀取截圖資料夾失敗：{}", e))?;
+        .map_err(|e| format!("E_SCREENSHOTS_READ_FAILED: {}", e))?;
 
     let mut screenshots = Vec::new();
     for entry in entries.filter_map(|e| e.ok()) {

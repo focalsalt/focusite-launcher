@@ -278,7 +278,7 @@ export const WorkshopWindow: React.FC = () => {
                     project={p}
                     active={p.id === activeId}
                     checked={selected.has(p.id)}
-                    onClick={() => setActiveProject(p)}
+                    onSelect={setActiveProject}
                   />
                 ))}
                 {hasMore && (

@@ -175,6 +175,8 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
                         key={idx}
                         type="button"
                         onClick={() => setCurrentScreenshotIdx(idx)}
+                        aria-label={t.shots.goTo(idx + 1)}
+                        aria-current={idx === currentScreenshotIdx}
                         className={`transition-all duration-300 ${idx === currentScreenshotIdx
                           ? "h-1.5 w-6 rounded-full bg-brand-light"
                           : "h-1.5 w-1.5 rounded-full bg-white/20 hover:bg-white/40"

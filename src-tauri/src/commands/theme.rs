@@ -54,17 +54,17 @@ fn is_valid_token_value(value: &str) -> bool {
 
 fn validate_pack(pack: &ThemePack) -> Result<(), String> {
     if pack.name.trim().is_empty() || pack.name.len() > 64 {
-        return Err("主題名稱不可為空，且不可超過 64 個字元".into());
+        return Err("E_THEME_NAME_INVALID".into());
     }
     if pack.tokens.is_empty() || pack.tokens.len() > MAX_TOKENS {
-        return Err(format!("主題至少需要 1 個、最多 {} 個 token", MAX_TOKENS));
+        return Err(format!("E_THEME_TOKEN_COUNT: {}", MAX_TOKENS));
     }
     for (k, v) in &pack.tokens {
         if !is_valid_token_name(k) {
-            return Err(format!("無效的 token 名稱：{}（需為 --fc-xxx）", k));
+            return Err(format!("E_THEME_TOKEN_NAME: {}", k));
         }
         if !is_valid_token_value(v) {
-            return Err(format!("token {} 的值無效", k));
+            return Err(format!("E_THEME_TOKEN_VALUE: {}", k));
         }
     }
     Ok(())
@@ -72,9 +72,9 @@ fn validate_pack(pack: &ThemePack) -> Result<(), String> {
 
 fn parse_pack(json: &str) -> Result<ThemePack, String> {
     if json.len() > MAX_PACK_BYTES {
-        return Err("主題包過大".into());
+        return Err("E_THEME_TOO_LARGE".into());
     }
-    let pack: ThemePack = serde_json::from_str(json).map_err(|e| format!("主題包格式錯誤：{e}"))?;
+    let pack: ThemePack = serde_json::from_str(json).map_err(|e| format!("E_THEME_INVALID: {e}"))?;
     validate_pack(&pack)?;
     Ok(pack)
 }
@@ -114,7 +114,7 @@ fn read_packs(dir: &Path) -> Vec<ThemePack> {
                     Some(pack)
                 }
                 Err(e) => {
-                    tracing::warn!("跳過無效的主題包 {}：{}", file_name, e);
+                    tracing::warn!("Skipping invalid theme pack {}: {}", file_name, e);
                     None
                 }
             }
@@ -145,7 +145,7 @@ fn slugify(name: &str) -> String {
 #[tauri::command]
 pub fn list_themes() -> Result<Vec<ThemePack>, String> {
     let dir = themes_dir();
-    ensure_default_packs(&dir).map_err(|e| format!("無法建立主題資料夾：{e}"))?;
+    ensure_default_packs(&dir).map_err(|e| format!("E_THEME_FOLDER_FAILED: {e}"))?;
     Ok(read_packs(&dir))
 }
 
@@ -154,7 +154,7 @@ pub fn list_themes() -> Result<Vec<ThemePack>, String> {
 pub fn import_theme_pack(json_content: String) -> Result<ThemePack, String> {
     let mut pack = parse_pack(&json_content)?;
     let dir = themes_dir();
-    ensure_default_packs(&dir).map_err(|e| format!("無法建立主題資料夾：{e}"))?;
+    ensure_default_packs(&dir).map_err(|e| format!("E_THEME_FOLDER_FAILED: {e}"))?;
 
     let base = slugify(&pack.name);
     let mut id = base.clone();
@@ -165,14 +165,14 @@ pub fn import_theme_pack(json_content: String) -> Result<ThemePack, String> {
     }
     pack.id = id.clone();
     let body = serde_json::to_string_pretty(&pack).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join(format!("{id}{PACK_SUFFIX}")), body).map_err(|e| format!("無法儲存主題包：{e}"))?;
+    std::fs::write(dir.join(format!("{id}{PACK_SUFFIX}")), body).map_err(|e| format!("E_THEME_SAVE_FAILED: {e}"))?;
     Ok(pack)
 }
 
 #[tauri::command]
 pub fn open_themes_dir() -> Result<(), String> {
     let dir = themes_dir();
-    ensure_default_packs(&dir).map_err(|e| format!("無法建立主題資料夾：{e}"))?;
+    ensure_default_packs(&dir).map_err(|e| format!("E_THEME_FOLDER_FAILED: {e}"))?;
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
