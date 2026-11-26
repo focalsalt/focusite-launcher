@@ -16,6 +16,7 @@ import { PlayerAvatar } from "@/components/ui/PlayerAvatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { preloadSkinManagerView, preloadMicrosoftLoginModal } from "@/lib/startupOrchestrator";
 import { useI18n } from "@/i18n";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface AccountDropdownProps {
   accounts: UserAccount[];
@@ -40,6 +41,8 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ left: number; top: number; width: number } | null>(null);
+
+  useFocusTrap(dropdownRef, isOpen && coords !== null, () => setIsOpen(false));
 
   const updatePosition = useCallback(() => {
     if (containerRef.current) {
@@ -94,6 +97,8 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
       <button
         type="button"
         onClick={handleToggle}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
         className="flex h-14 w-full select-none items-center justify-between px-4 transition-colors hover:bg-white/5 active:bg-white/10"
       >
         <div className="flex min-w-0 items-center gap-3">
@@ -148,6 +153,10 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
             {isOpen && coords && (
               <motion.div
                 ref={dropdownRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label={t.account.signedInList}
+                tabIndex={-1}
                 style={{
                   position: "fixed",
                   left: coords.left,

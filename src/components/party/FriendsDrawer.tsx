@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { Check, Eye, EyeOff, Send, UserMinus, UserPlus, Users, X } from "lucide-react";
@@ -73,6 +73,8 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
   const [name, setName] = useState("");
   const [removing, setRemoving] = useState<Friend | null>(null);
 
+  const toggleRef = useRef<HTMLButtonElement>(null);
+
   const statusText = (status: PresenceStatus): string => {
     switch (status) {
       case "OFFLINE":
@@ -145,6 +147,12 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
         className="fixed bottom-0 right-0 z-40 flex flex-col border-l border-white/10 bg-slate-950/85 backdrop-blur-md"
         aria-hidden={!open}
         inert={!open}
+        aria-label={t.party.friendsCount(friends.length)}
+        onKeyDown={(e: React.KeyboardEvent) => {
+          if (e.key !== "Escape" || removing) return;
+          onToggle();
+          toggleRef.current?.focus();
+        }}
       >
         <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
           <Users className="h-4 w-4 text-brand-light" />
@@ -198,7 +206,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
 
           {tab === "friends" && (
             <>
-              {!loading && !error && sorted.length === 0 && <p className="p-2 text-xs text-slate-500">{t.party.noFriends}</p>}
+              {!loading && !error && sorted.length === 0 && <p className="p-2 text-xs text-slate-400">{t.party.noFriends}</p>}
               {sorted.map((f) => (
                 <div key={f.profileId} className="group flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-white/5">
                   <div className="relative shrink-0">
@@ -217,7 +225,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-slate-100">{f.name}</p>
                     {sharePresence && (
-                      <p className={`text-2xs ${isOnline(f.status) ? "text-emerald-400" : "text-slate-500"}`}>
+                      <p className={`text-2xs ${isOnline(f.status) ? "text-emerald-400" : "text-slate-400"}`}>
                         {statusText(f.status)}
                       </p>
                     )}
@@ -254,7 +262,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
           {tab === "requests" && (
             <>
               {!loading && !error && pending === 0 && outgoing.length === 0 && (
-                <p className="p-2 text-xs text-slate-500">{t.party.noRequests}</p>
+                <p className="p-2 text-xs text-slate-400">{t.party.noRequests}</p>
               )}
               {incoming.length > 0 && (
                 <h4 className="px-2 pt-1 text-2xs font-semibold uppercase tracking-wide text-slate-400">
@@ -319,7 +327,9 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
 
       <Tip label={open ? t.party.hideFriends : t.party.showFriends}>
         <motion.button
+          ref={toggleRef}
           type="button"
+          aria-expanded={open}
           initial={false}
           animate={{ x: !visible ? 80 : open ? -DRAWER_WIDTH : 0, opacity: visible ? 1 : 0 }}
           inert={!visible}
@@ -348,7 +358,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
             <Button variant="outline" size="sm" onClick={() => setRemoving(null)} className="border-white/10 bg-white/5 text-xs">
               {t.party.keep}
             </Button>
-            <Button size="sm" onClick={() => void confirmRemove()} className="bg-rose-600 text-xs text-white hover:bg-rose-500">
+            <Button size="sm" onClick={() => void confirmRemove()} variant="destructive" className="text-xs">
               {t.party.removeFriend}
             </Button>
           </DialogFooter>

@@ -21,7 +21,7 @@ export const InstallListBar: React.FC<InstallListBarProps> = ({ entries, isResol
         <Badge variant="outline" className="shrink-0 border-brand-light/40 px-2.5 py-1 text-brand-light">
           {t.workshopWin.selectedCount(entries.length)}
         </Badge>
-        <span className="truncate text-2xs text-slate-500">
+        <span className="truncate text-2xs text-slate-400">
           {entries.map((e) => `${e.title} ${e.versionNumber}`).join(" · ")}
         </span>
         <AnimatePresence>

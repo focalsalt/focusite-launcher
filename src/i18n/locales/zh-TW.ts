@@ -1,5 +1,6 @@
 export const zhTW = {
   common: {
+    remove: "移除",
     closeNotice: "關閉通知",
     selectPlaceholder: "請選擇...",
     vanilla: "原版",
@@ -800,6 +801,7 @@ export const zhTW = {
     verifyingNote: "正在驗證你的帳號，請稍候；這個階段無法取消。",
   },
   workshopWin: {
+    byAuthor: (author: string) => `作者：${author}`,
     versionMismatch: (v: string) => `此版本未標示支援 MC ${v}，可能不相容。`,
     mcVersionLabel: "遊戲版本",
     filtersTitle: "篩選",
@@ -1015,7 +1017,15 @@ export const zhTW = {
     badData: "資料格式有誤，請重試",
   },
   /** Keyed by the codes the backend returns. */
+  errorBoundary: {
+    title: "發生未預期的錯誤",
+    retry: "重試",
+    reload: "重新載入",
+  },
   errorCodes: {
+    E_BROWSER_LOGIN_UNSUPPORTED: "此環境無法登入",
+    E_BROWSER_SKIN_UNSUPPORTED: "此環境無法儲存皮膚",
+    E_NO_UPDATE: "目前沒有可安裝的更新",
     E_CREDENTIAL_FILE_INVALID: "憑證檔案格式錯誤",
     E_CREDENTIAL_DECRYPT_FAILED: "解密後的憑證內容無效",
     E_DEPENDENCY_TOO_DEEP: "相依解析已達 4 層上限，未展開此專案的深層相依",

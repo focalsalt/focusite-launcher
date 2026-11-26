@@ -50,7 +50,7 @@ const QuickPlayIcon: React.FC<{ icon?: string | null; fallback: React.ReactNode 
 
 /** One-click join for the most recently played worlds and saved servers across all instances. */
 export const RecentQuickPlay: React.FC<RecentQuickPlayProps> = ({ instances, refreshKey, isBusy, onPlay }) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [worlds, setWorlds] = useState<Item[]>([]);
   const [servers, setServers] = useState<Item[]>([]);
 
@@ -71,7 +71,7 @@ export const RecentQuickPlay: React.FC<RecentQuickPlayProps> = ({ instances, ref
           ...base,
           key: `${inst.id}/${x.folder_name}`,
           name: x.name || x.folder_name,
-          badge: x.last_played > 0 ? new Date(x.last_played).toLocaleString() : t.worlds.unknownTime,
+          badge: x.last_played > 0 ? new Date(x.last_played).toLocaleString(language) : t.worlds.unknownTime,
           playedAt: x.last_played,
           target: x.folder_name,
           icon: x.icon_base64,
@@ -107,7 +107,7 @@ export const RecentQuickPlay: React.FC<RecentQuickPlayProps> = ({ instances, ref
         {title}
       </div>
       {items.length === 0 ? (
-        <p className="py-6 text-center text-xs text-slate-500">{empty}</p>
+        <p className="py-6 text-center text-xs text-slate-400">{empty}</p>
       ) : (
         <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1.5">
@@ -118,7 +118,7 @@ export const RecentQuickPlay: React.FC<RecentQuickPlayProps> = ({ instances, ref
               animate={{ opacity: 1, y: 0 }}
               transition={{ type: "spring", stiffness: 500, damping: 36 }}
               className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-2.5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-slate-900/70 text-slate-500">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-slate-900/70 text-slate-400">
                 <QuickPlayIcon icon={it.icon} fallback={fallbackIcon} />
               </div>
               <div className="min-w-0 flex-1">

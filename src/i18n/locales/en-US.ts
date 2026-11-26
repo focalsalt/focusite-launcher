@@ -2,6 +2,7 @@ import type { I18nDictionary } from "./zh-TW";
 
 export const enUS: I18nDictionary = {
   common: {
+    remove: "Remove",
     closeNotice: "Dismiss",
     selectPlaceholder: "Select...",
     vanilla: "Vanilla",
@@ -802,6 +803,7 @@ export const enUS: I18nDictionary = {
     verifyingNote: "Verifying your account, please wait. This stage can't be cancelled.",
   },
   workshopWin: {
+    byAuthor: (author: string) => `by ${author}`,
     versionMismatch: (v: string) => `This version isn't listed as supporting MC ${v}. It may not work.`,
     mcVersionLabel: "Game version",
     filtersTitle: "Filters",
@@ -1017,7 +1019,15 @@ export const enUS: I18nDictionary = {
     badData: "The data is in an unexpected format. Please try again.",
   },
   /** Keyed by the codes the backend returns. */
+  errorBoundary: {
+    title: "Unexpected error",
+    retry: "Retry",
+    reload: "Reload",
+  },
   errorCodes: {
+    E_BROWSER_LOGIN_UNSUPPORTED: "Sign-in isn't available here.",
+    E_BROWSER_SKIN_UNSUPPORTED: "Skins can't be saved here.",
+    E_NO_UPDATE: "There is no update to install.",
     E_CREDENTIAL_FILE_INVALID: "The saved credential file isn't a valid encrypted database.",
     E_CREDENTIAL_DECRYPT_FAILED: "Couldn't read the decrypted credentials",
     E_DEPENDENCY_TOO_DEEP: "Dependencies were resolved 4 levels deep. Deeper ones were skipped for",

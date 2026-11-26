@@ -121,7 +121,7 @@ export const MemberDialog: React.FC<MemberDialogProps> = ({ memberId, onClose })
               </Button>
               <Button
                 size="sm"
-                className="bg-rose-600 text-xs text-white hover:bg-rose-500"
+                variant="destructive" className="text-xs"
                 onClick={() => {
                   partyService.kick(memberId!);
                   onClose();

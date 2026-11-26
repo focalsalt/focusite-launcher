@@ -122,7 +122,7 @@ export const DatapacksPanel: React.FC<DatapacksPanelProps> = ({ instanceId, worl
             <Button variant="outline" size="sm" disabled={isDeleting} onClick={() => setDeleteTarget(null)} className="border-white/10 text-xs">
               {t.common.cancel}
             </Button>
-            <Button size="sm" disabled={isDeleting} onClick={confirmDelete} className="bg-rose-600 hover:bg-rose-500 text-white text-xs">
+            <Button size="sm" disabled={isDeleting} onClick={confirmDelete} variant="destructive" className="text-xs">
               {isDeleting ? t.worlds.deleting : t.worlds.deleteForever}
             </Button>
           </DialogFooter>

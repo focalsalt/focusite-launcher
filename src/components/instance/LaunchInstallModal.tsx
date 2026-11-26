@@ -97,7 +97,7 @@ export const LaunchInstallModal: React.FC<LaunchInstallModalProps> = ({
                     ? "bg-brand/20 border-brand-light text-white"
                     : isFinished
                       ? "bg-white/[0.04] border-white/10 text-emerald-400"
-                      : "bg-white/[0.01] border-white/5 text-slate-500"
+                      : "bg-white/[0.01] border-white/5 text-slate-400"
                 }`}
               >
                 {isFinished ? (
@@ -114,7 +114,7 @@ export const LaunchInstallModal: React.FC<LaunchInstallModalProps> = ({
         {/* 進度資訊 */}
         <div className="space-y-2 pt-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-300 font-medium truncate max-w-[280px]">
+            <span role="status" className="text-slate-300 font-medium truncate max-w-[280px]">
               {progress.message}
             </span>
             <span className="font-mono text-brand-light font-bold">

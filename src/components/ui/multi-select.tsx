@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Check, ChevronDown, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n";
 
 export interface MultiSelectOption {
   value: string;
@@ -17,10 +18,13 @@ interface MultiSelectProps {
   onChange: (next: Set<string>) => void;
   placeholder: string;
   className?: string;
+  /** Id of the visible label. */
+  labelledBy?: string;
 }
 
 /** Select-like dropdown with checkable options; chosen items show as removable badges in the field. */
-export const MultiSelect: React.FC<MultiSelectProps> = ({ options, value, onChange, placeholder, className }) => {
+export const MultiSelect: React.FC<MultiSelectProps> = ({ options, value, onChange, placeholder, className, labelledBy }) => {
+  const { t } = useI18n();
   const [open, setOpen] = React.useState<boolean>(false);
   const rootRef = React.useRef<HTMLDivElement>(null);
 
@@ -52,9 +56,15 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({ options, value, onChan
       <div
         role="combobox"
         aria-expanded={open}
+        aria-labelledby={labelledBy}
         tabIndex={0}
         onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setOpen((o) => !o))}
+        onKeyDown={(e) => {
+          // Keys pressed on a badge's remove button belong to that button.
+          if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+          e.preventDefault();
+          setOpen((o) => !o);
+        }}
         className={cn(
           "flex min-h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-xl border bg-white/5 px-3 py-1.5 text-xs text-slate-100 shadow-sm transition-colors",
           open ? "border-brand-light/60 ring-1 ring-brand-light" : "border-white/10 hover:bg-white/10",
@@ -62,7 +72,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({ options, value, onChan
       >
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           {chosen.length === 0 ? (
-            <span className="text-slate-500">{placeholder}</span>
+            <span className="text-slate-400">{placeholder}</span>
           ) : (
             <AnimatePresence initial={false}>
               {chosen.map((o) => (
@@ -78,7 +88,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({ options, value, onChan
                     <span className="max-w-[10rem] truncate">{o.label}</span>
                     <button
                       type="button"
-                      aria-label="Remove"
+                      aria-label={`${t.common.remove} ${o.label}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         toggle(o.value);

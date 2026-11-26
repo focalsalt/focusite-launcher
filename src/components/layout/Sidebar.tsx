@@ -249,7 +249,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         {instances.length === 0 ? (
           <div className="px-5 py-6 text-center space-y-1">
-            <p className="text-2xs text-slate-500">{t.shell.noInstances}</p>
+            <p className="text-2xs text-slate-400">{t.shell.noInstances}</p>
           </div>
         ) : (
           sortForSidebar(instances).map((inst) => {

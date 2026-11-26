@@ -267,7 +267,7 @@ export const ExportInstanceDialog: React.FC<ExportInstanceDialogProps> = ({ isOp
               </ScrollArea>
             )}
           </div>
-          <p className="text-2xs text-slate-500">{t.exportInst.always}</p>
+          <p className="text-2xs text-slate-400">{t.exportInst.always}</p>
           <p className="text-2xs text-slate-400">{t.exportInst.selected(selected.size, formatBytes(selectedSize))}</p>
           {selectedSize > IMPORT_CONFIRM_BYTES && (
             <p className="flex items-start gap-1.5 text-2xs text-amber-300">
@@ -278,9 +278,9 @@ export const ExportInstanceDialog: React.FC<ExportInstanceDialogProps> = ({ isOp
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-300">{t.exportInst.dest}</label>
+          <label htmlFor="export-destination" className="text-xs font-semibold text-slate-300">{t.exportInst.dest}</label>
           <div className="flex items-center gap-2">
-            <Input readOnly value={destPath} placeholder={t.exportInst.destPlaceholder} className="h-9 flex-1 bg-black/30 font-mono" />
+            <Input id="export-destination" readOnly value={destPath} placeholder={t.exportInst.destPlaceholder} className="h-9 flex-1 bg-black/30 font-mono" />
             <Button type="button" variant="outline" size="sm" onClick={pickDest} className="h-9 shrink-0">
               {t.exportInst.pickDest}
             </Button>

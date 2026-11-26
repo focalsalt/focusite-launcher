@@ -44,7 +44,7 @@ export const authService = {
     }
     return {
       status: "error",
-      error_message: "此環境無法登入",
+      error_message: "E_BROWSER_LOGIN_UNSUPPORTED",
     };
   },
 

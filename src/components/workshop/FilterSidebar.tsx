@@ -89,9 +89,9 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
       </div>
       <ScrollArea className="min-h-0 flex-1" viewportClassName="space-y-5 p-4">
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-300">{t.workshopWin.sortLabel}</label>
+          <label htmlFor="filter-sort" className="text-xs font-semibold text-slate-300">{t.workshopWin.sortLabel}</label>
           <Select value={sort} onValueChange={(v) => onSort(v as Sort)}>
-            <SelectTrigger className="h-8">
+            <SelectTrigger id="filter-sort" className="h-8">
               <SelectValue>{sortOptions.find(([v]) => v === sort)?.[1]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -105,9 +105,9 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-300">{t.workshopWin.mcVersionLabel}</label>
+          <label htmlFor="filter-version" className="text-xs font-semibold text-slate-300">{t.workshopWin.mcVersionLabel}</label>
           <Select value={gameVersion || ANY} onValueChange={(v) => onGameVersion(v === ANY ? "" : v)}>
-            <SelectTrigger className="h-8">
+            <SelectTrigger id="filter-version" className="h-8">
               <SelectValue>{gameVersion || t.workshopWin.envAny}</SelectValue>
             </SelectTrigger>
             <SelectContent className="max-h-64">
@@ -122,8 +122,8 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
         </div>
 
         {onEnv && (
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">{t.workshopWin.envLabel}</label>
+          <div role="group" aria-labelledby="filter-env" className="space-y-1.5">
+            <span id="filter-env" className="text-xs font-semibold text-slate-300">{t.workshopWin.envLabel}</span>
             <div className="grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-black/30 p-1">
               {envOptions.map(([v, label]) => (
                 <button
@@ -142,10 +142,10 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
         )}
 
         {grouped.map(([header, items]) => (
-          <div key={header} className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">
+          <div role="group" aria-labelledby={`filter-${header}`} key={header} className="space-y-1.5">
+            <span id={`filter-${header}`} className="text-xs font-semibold text-slate-300">
               {header === "categories" ? t.workshopWin.categoriesLabel : formatCategory(header)}
-            </label>
+            </span>
             <div className="space-y-1">
               {items.map((c) => (
                 <label

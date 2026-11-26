@@ -77,8 +77,8 @@ export const RenameInstanceDialog: React.FC<RenameInstanceDialogProps> = ({
         {!showFolderRenamePrompt ? (
           <form onSubmit={handleRenameNext} className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t.inst.displayName}</label>
-              <Input
+              <label htmlFor="rename-instance" className="text-xs text-slate-300">{t.inst.displayName}</label>
+              <Input id="rename-instance"
                 value={renameInput}
                 onChange={(e) => setRenameInput(e.target.value)}
                 placeholder={t.inst.newNamePlaceholder}

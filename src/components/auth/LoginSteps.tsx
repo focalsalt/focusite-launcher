@@ -25,7 +25,7 @@ export const LoginSteps: React.FC<{ step: string }> = ({ step }) => {
           const done = i < current;
           const active = i === current;
           return (
-            <li key={s} className={`flex items-center gap-2.5 ${done || active ? "text-slate-100" : "text-slate-500"}`}>
+            <li key={s} className={`flex items-center gap-2.5 ${done || active ? "text-slate-100" : "text-slate-400"}`}>
               <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                 {done ? (
                   <Check className="h-4 w-4 text-emerald-400" />

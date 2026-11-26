@@ -256,7 +256,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                     </div>
 
                     {/* 卡片底部：日期與外部連結 */}
-                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-3xs text-slate-500">
+                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-3xs text-slate-400">
                       <span className="flex items-center gap-1 font-mono">
                         <Calendar className="h-3 w-3" />
                         {item.date}
@@ -352,14 +352,14 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                           {patch.snippet}
                         </p>
                       ) : (
-                        <p className="text-2xs text-slate-500 italic">
+                        <p className="text-2xs text-slate-400 italic">
                           {t.news.patchHint}
                         </p>
                       )}
                     </div>
 
                     {/* 卡片底部：版本與連結 */}
-                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-3xs text-slate-500">
+                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-3xs text-slate-400">
                       <span className="font-mono text-slate-400">
                         MC {patch.version}
                       </span>

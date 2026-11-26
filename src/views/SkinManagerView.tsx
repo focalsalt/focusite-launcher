@@ -389,7 +389,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
 
               {/* 底部拖曳說明與保存/重設操作列 (固定高度，不造成卡片外擴) */}
               <div className="w-full shrink-0 mt-1">
-                <p className="text-3xs text-slate-500 text-center pb-1">
+                <p className="text-3xs text-slate-400 text-center pb-1">
                   {t.skin.dragHint}
                 </p>
 
@@ -428,10 +428,10 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
 
             {/* 3D 動作模式與視角運鏡控制面板 (緊湊佈局，shrink-0 確保永不遭擠壓) */}
             <div className="w-full space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-2.5 text-xs shrink-0">
-              <div className="space-y-1">
-                <label className="text-2xs font-bold text-slate-300">
+              <div role="group" aria-labelledby="skin-animation" className="space-y-1">
+                <span id="skin-animation" className="text-2xs font-bold text-slate-300">
                   {t.skin.animationMode}
-                </label>
+                </span>
                 <div className="relative flex items-center gap-1 rounded-xl bg-white/5 p-1 border border-white/10">
                   <SlidingIndicator box={animPill.box} className="top-1 bottom-1 rounded-lg bg-brand shadow-sm shadow-brand/30" />
                   {animButtons.map((btn) => {
@@ -565,7 +565,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                         <h2 className="text-xs font-bold text-slate-200">
                           {t.skin.localSkinsTitle}
                         </h2>
-                        <span className="text-3xs text-slate-500 font-mono">
+                        <span className="text-3xs text-slate-400 font-mono">
                           {t.skin.fileCount(localSkins.length)}
                         </span>
                       </div>
@@ -592,7 +592,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                           <span className="text-xs font-bold text-slate-200">
                             {isUploading ? t.skin.uploading : t.skin.uploadNew}
                           </span>
-                          <span className="text-3xs text-slate-500">
+                          <span className="text-3xs text-slate-400">
                             {t.skin.uploadHint}
                           </span>
                           
@@ -640,7 +640,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                     <p className="truncate text-3xs text-slate-400 font-mono mt-0.5">
                                       {t.skin.customSkin}
                                     </p>
-                                    <p className="text-3xs text-slate-500 mt-1">
+                                    <p className="text-3xs text-slate-400 mt-1">
                                       {Math.max(1, Math.round(skin.bytes.length / 1024))} KB
                                     </p>
                                   </div>
@@ -649,7 +649,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                     <button
                                       type="button"
                                       onClick={(e) => handleDeleteSkin(skin.filename, e)}
-                                      className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors self-start"
+                                      className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors self-start"
                                       aria-label={t.skin.deleteFromLocker}
                                     >
                                       <Trash2 className="h-3 w-3" />
@@ -685,7 +685,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                         <h2 className="text-xs font-bold text-slate-200">
                           {t.skin.defaultSkinsTitle}
                         </h2>
-                        <span className="text-3xs text-slate-500 font-mono">
+                        <span className="text-3xs text-slate-400 font-mono">
                           Minecraft Official Presets
                         </span>
                       </div>
@@ -765,7 +765,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                         <h2 className="text-xs font-bold text-slate-200">
                           {t.skin.ownedCapesTitle(accountCapes.length)}
                         </h2>
-                        <span className="text-3xs text-slate-500 font-mono">
+                        <span className="text-3xs text-slate-400 font-mono">
                           OWNED ASSETS
                         </span>
                       </div>
@@ -811,7 +811,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                             </div>
 
                             <div className="flex items-center justify-between text-3xs pt-2 border-t border-white/5">
-                              <span className="text-[9px] text-slate-500 font-mono">
+                              <span className="text-[9px] text-slate-400 font-mono">
                                 UNEQUIPPED
                               </span>
                               {!previewCapeUrl && (
@@ -904,7 +904,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                           {/* 當微軟帳號未持有任何官方披風時的直觀提示 */}
                           {accountCapes.length === 0 && (
                             <div className="col-span-full rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center space-y-3 mt-2">
-                              <Sparkles className="h-7 w-7 text-slate-500 mx-auto" />
+                              <Sparkles className="h-7 w-7 text-slate-400 mx-auto" />
                               {!hasValidToken ? (
                                 <>
                                   <p className="text-xs font-bold text-amber-400">
@@ -930,7 +930,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                   <p className="text-xs font-bold text-slate-300">
                                     {t.skin.noCapesTitle}
                                   </p>
-                                  <p className="text-2xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                                  <p className="text-2xs text-slate-400 max-w-md mx-auto leading-relaxed">
                                     {t.skin.noCapesDesc}
                                   </p>
                                 </>

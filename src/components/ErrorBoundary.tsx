@@ -1,4 +1,5 @@
 import React from "react";
+import { currentLanguage, dictionaries } from "@/i18n/language";
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -39,28 +40,31 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 }
 
-// Plain markup and inline text on purpose: it may render above the i18n provider or when styles failed to load.
-const DefaultFallback: React.FC<{ error: Error; reset: () => void }> = ({ error, reset }) => (
-  <div className="flex h-screen w-screen flex-col gap-3 overflow-auto bg-slate-950 p-4 text-slate-200">
-    <div className="flex items-center gap-2">
-      <span className="text-sm font-bold text-rose-300">發生未預期的錯誤 / Unexpected error</span>
-      <button
-        type="button"
-        onClick={reset}
-        className="rounded-md border border-white/15 px-2.5 py-1 text-xs hover:bg-white/10"
-      >
-        重試 / Retry
-      </button>
-      <button
-        type="button"
-        onClick={() => window.location.reload()}
-        className="rounded-md border border-white/15 px-2.5 py-1 text-xs hover:bg-white/10"
-      >
-        重新載入 / Reload
-      </button>
+// Plain markup, and the dictionary read directly: it may render above the i18n provider or without styles.
+const DefaultFallback: React.FC<{ error: Error; reset: () => void }> = ({ error, reset }) => {
+  const text = dictionaries[currentLanguage()].errorBoundary;
+  return (
+    <div className="flex h-screen w-screen flex-col gap-3 overflow-auto bg-slate-950 p-4 text-slate-200">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-bold text-rose-300">{text.title}</span>
+        <button
+          type="button"
+          onClick={reset}
+          className="rounded-md border border-white/15 px-2.5 py-1 text-xs hover:bg-white/10"
+        >
+          {text.retry}
+        </button>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-md border border-white/15 px-2.5 py-1 text-xs hover:bg-white/10"
+        >
+          {text.reload}
+        </button>
+      </div>
+      <pre className="whitespace-pre-wrap break-words font-mono text-xs text-rose-300">
+        {`${error.name}: ${error.message}\n\n${error.stack ?? ""}`}
+      </pre>
     </div>
-    <pre className="whitespace-pre-wrap break-words font-mono text-xs text-rose-300">
-      {`${error.name}: ${error.message}\n\n${error.stack ?? ""}`}
-    </pre>
-  </div>
-);
+  );
+};

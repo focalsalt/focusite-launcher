@@ -75,10 +75,10 @@ export const SkinThumbnail: React.FC<SkinThumbnailProps> = ({
     return (
       <Tip label={t.skin.textureLoadFailed} className="h-full w-full">
         <div
-          className={`flex flex-col items-center justify-center w-full h-full rounded-lg bg-black/60 text-slate-500 border border-white/5 p-1 ${className}`}
+          className={`flex flex-col items-center justify-center w-full h-full rounded-lg bg-black/60 text-slate-400 border border-white/5 p-1 ${className}`}
         >
           <ImageOff className="h-4 w-4 text-slate-600 mb-0.5" />
-          <span className="text-[8px] text-slate-600 font-mono">NO TEXTURE</span>
+          <span className="text-[8px] text-slate-400 font-mono">NO TEXTURE</span>
         </div>
       </Tip>
     );

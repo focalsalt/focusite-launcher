@@ -62,8 +62,8 @@ export const InstanceSetupPanel: React.FC<InstanceSetupPanelProps> = ({ instance
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-slate-300">{t.inst.setupName}</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9 bg-black/30" />
+        <label htmlFor="setup-name" className="text-xs font-semibold text-slate-300">{t.inst.setupName}</label>
+        <Input id="setup-name" value={name} onChange={(e) => setName(e.target.value)} className="h-9 bg-black/30" />
       </div>
 
       <VersionLoaderFields

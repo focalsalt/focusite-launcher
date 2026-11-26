@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { DURATION, SPRING_DIALOG } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface DialogProps {
   open: boolean;
@@ -13,21 +14,31 @@ interface DialogProps {
   children: React.ReactNode;
 }
 
+/** Id that `DialogTitle` takes, so the dialog is named after it. */
+const DialogTitleId = React.createContext<string | undefined>(undefined);
+
 export const Dialog: React.FC<DialogProps> = ({
   open,
   onOpenChange,
   preventBackdropClose = false,
   children,
 }) => {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
+  useFocusTrap(ref, open, preventBackdropClose ? undefined : () => onOpenChange(false));
+
   // Portal to <body> so an ancestor transform (page transitions) or scroll container can't
   // become the containing block of the `fixed` overlay.
   return createPortal(
     <AnimatePresence>
       {open && (
         <div
+          ref={ref}
           role="dialog"
           aria-modal="true"
-          className="fixed inset-x-0 bottom-0 top-9 z-50 flex items-center justify-center p-4"
+          aria-labelledby={titleId}
+          tabIndex={-1}
+          className="fixed inset-x-0 bottom-0 top-9 z-50 flex items-center justify-center p-4 outline-none"
         >
           {/* Backdrop with Motion Fade (strictly below top-9 WindowBar) */}
           <motion.div
@@ -44,7 +55,7 @@ export const Dialog: React.FC<DialogProps> = ({
           />
 
           {/* Modal Content with Motion Zoom & Spring */}
-          {children}
+          <DialogTitleId.Provider value={titleId}>{children}</DialogTitleId.Provider>
         </div>
       )}
     </AnimatePresence>,
@@ -107,6 +118,7 @@ export const DialogTitle: React.FC<React.HTMLAttributes<HTMLHeadingElement>> = (
   ...props
 }) => (
   <h3
+    id={React.useContext(DialogTitleId)}
     className={cn("text-lg font-bold tracking-tight text-slate-100", className)}
     {...props}
   />

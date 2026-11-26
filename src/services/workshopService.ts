@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "@/lib/toast";
 import { toUserMessage } from "@/lib/errorMessage";
+import { currentLanguage, dictionaries } from "@/i18n/language";
 
 export interface WorkshopProjectSummary {
   id: string;
@@ -104,7 +105,7 @@ export const workshopService = {
       await invoke("open_instance_workshop_window", { instanceId, projectType });
     } catch (err) {
       console.error("open_instance_workshop_window failed:", err);
-      toast(toUserMessage(err, "無法開啟工作坊視窗"), "error");
+      toast(toUserMessage(err, dictionaries[currentLanguage()].errorCodes.E_WORKSHOP_WINDOW_FAILED), "error");
     }
   },
 

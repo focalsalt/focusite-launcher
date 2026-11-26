@@ -261,12 +261,12 @@ export const WorkshopWindow: React.FC = () => {
 
           <ScrollArea className="min-h-0 flex-1" viewportClassName="p-4">
             {isLoading ? (
-              <div className="flex h-64 flex-col items-center justify-center text-slate-500">
+              <div className="flex h-64 flex-col items-center justify-center text-slate-400">
                 <Loader2 className="mb-3 h-8 w-8 animate-spin text-brand-light" />
                 <p className="text-sm">{t.workshopWin.loading}</p>
               </div>
             ) : projects.length === 0 ? (
-              <div className="flex h-64 flex-col items-center justify-center text-slate-500">
+              <div className="flex h-64 flex-col items-center justify-center text-slate-400">
                 <FileBox className="mb-3 h-12 w-12 text-slate-600" />
                 <p className="text-sm">{t.workshopWin.noResults}</p>
               </div>

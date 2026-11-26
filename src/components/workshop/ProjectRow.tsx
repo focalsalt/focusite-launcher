@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { WorkshopProjectSummary } from "@/services/workshopService";
 import { formatCategory } from "@/lib/plainMarkdown";
+import { useI18n } from "@/i18n";
 
 interface ProjectRowProps {
   project: WorkshopProjectSummary;
@@ -15,11 +16,13 @@ interface ProjectRowProps {
   onSelect: (project: WorkshopProjectSummary) => void;
 }
 
-const compact = (n: number) =>
-  new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+const compact = (n: number, locale: string) =>
+  new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(n);
 
 /** One Modrinth search hit; shared by the workshop window and the modpack import dialog. */
-export const ProjectRow = React.memo(({ project, active, checked, onSelect }: ProjectRowProps) => (
+export const ProjectRow = React.memo(({ project, active, checked, onSelect }: ProjectRowProps) => {
+  const { t, language } = useI18n();
+  return (
   <motion.button
     type="button"
     onClick={() => onSelect(project)}
@@ -49,7 +52,7 @@ export const ProjectRow = React.memo(({ project, active, checked, onSelect }: Pr
     <div className="min-w-0 flex-1">
       <div className="flex items-baseline gap-2">
         <h4 className="truncate text-sm font-semibold text-slate-100">{project.title}</h4>
-        <span className="shrink-0 text-2xs text-slate-500">by {project.author}</span>
+        <span className="shrink-0 text-2xs text-slate-400">{t.workshopWin.byAuthor(project.author)}</span>
       </div>
       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-400">{project.description}</p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -60,16 +63,17 @@ export const ProjectRow = React.memo(({ project, active, checked, onSelect }: Pr
         ))}
       </div>
     </div>
-    <div className="flex shrink-0 flex-col items-end gap-1 text-2xs text-slate-500">
+    <div className="flex shrink-0 flex-col items-end gap-1 text-2xs text-slate-400">
       <span className="flex items-center gap-1">
         <Download className="h-3 w-3" />
-        {compact(project.downloads)}
+        {compact(project.downloads, language)}
       </span>
       <span className="flex items-center gap-1">
         <Heart className="h-3 w-3" />
-        {compact(project.follows)}
+        {compact(project.follows, language)}
       </span>
       {checked && <Check className="mt-1 h-4 w-4 text-brand-light" />}
     </div>
   </motion.button>
-));
+  );
+});

@@ -100,6 +100,7 @@ export const WindowBar: React.FC<WindowBarProps> = ({
         <Tip label={t.windowBar.minimize}>
           <button
             type="button"
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();
               minimizeWindow();
@@ -114,6 +115,7 @@ export const WindowBar: React.FC<WindowBarProps> = ({
         <Tip label={maximized ? t.windowBar.restore : t.windowBar.maximize}>
           <button
             type="button"
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();
               handleToggleMaximize();
@@ -132,6 +134,7 @@ export const WindowBar: React.FC<WindowBarProps> = ({
         <Tip label={t.windowBar.close}>
           <button
             type="button"
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();
               if (onClose) {

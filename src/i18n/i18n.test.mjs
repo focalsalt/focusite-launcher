@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import ts from "typescript";
 import { zhTW } from "./locales/zh-TW.ts";
 import { enUS } from "./locales/en-US.ts";
 
@@ -47,4 +49,26 @@ test("functions interpolate their arguments in both languages", () => {
   assert.match(enUS.exit.running(3), /3/);
   assert.match(zhTW.shell.runningAs("Steve"), /Steve/);
   assert.match(enUS.shell.runningAs("Steve"), /Steve/);
+});
+
+// Language names are written in their own language on purpose.
+const ALLOWED_CHINESE = new Set(["繁體中文 (台灣)"]);
+
+test("no Chinese text is hard-coded outside the dictionaries", () => {
+  const root = new URL("../", import.meta.url);
+  const found = [];
+  for (const name of readdirSync(root, { recursive: true })) {
+    const file = name.replaceAll("\\", "/");
+    if (!/\.tsx?$/.test(file) || file.startsWith("i18n/")) continue;
+    const source = ts.createSourceFile(file, readFileSync(new URL(file, root), "utf8"), ts.ScriptTarget.Latest, true);
+    const visit = (node) => {
+      // Regular expressions are skipped: they match text the backend or the system produces.
+      const isText =
+        ts.isStringLiteralLike(node) || ts.isJsxText(node) || ts.isTemplateHead(node) || ts.isTemplateMiddleOrTemplateTail(node);
+      if (isText && /[\u4e00-\u9fff]/.test(node.text) && !ALLOWED_CHINESE.has(node.text)) found.push(`${file}: ${node.text.trim()}`);
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  assert.deepEqual(found, []);
 });

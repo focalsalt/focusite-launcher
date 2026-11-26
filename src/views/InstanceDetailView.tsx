@@ -260,7 +260,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
         onInstanceUpdated?.(updated);
       }
     } catch (err) {
-      console.warn("選擇自訂背景失敗:", err);
+      console.warn("Failed to pick a custom background:", err);
       toast(toUserMessage(err), "error");
     }
   };
@@ -514,7 +514,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
               size="sm"
               variant="destructive"
               onClick={onKill}
-              className="gap-2 bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 h-8 rounded-lg shadow-lg shadow-rose-900/30"
+              className="gap-2 font-bold px-4 h-8 rounded-lg shadow-lg shadow-danger-900/30"
             >
               <Square className="h-3.5 w-3.5 fill-current" />
               <span>

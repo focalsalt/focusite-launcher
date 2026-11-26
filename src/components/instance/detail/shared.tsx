@@ -44,7 +44,7 @@ export function PackItem({
   /** Optional trailing control (e.g. a delete button). */
   action?: React.ReactNode;
 }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const effectiveBytes = pack.sizeBytes ?? pack.size ?? 0;
   const sizeMb = (effectiveBytes / (1024 * 1024)).toFixed(2);
   const sizeStr =
@@ -68,8 +68,8 @@ export function PackItem({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-2xs text-slate-500 font-mono">
-          {pack.modified ? new Date(pack.modified * 1000).toLocaleDateString("zh-TW") : t.shared.localPackage}
+        <span className="text-2xs text-slate-400 font-mono">
+          {pack.modified ? new Date(pack.modified * 1000).toLocaleDateString(language) : t.shared.localPackage}
         </span>
         {action}
       </div>

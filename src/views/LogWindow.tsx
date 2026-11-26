@@ -60,8 +60,9 @@ function rowKey(log: InstanceLogEvent) {
  * shortcut: all rows stay in the DOM, add a virtualizer if 10k lines still stutter.
  */
 const LogRow = React.memo(function LogRow({ log, withMeta }: { log: InstanceLogEvent; withMeta: boolean }) {
+  const { language } = useI18n();
   let streamColor = "text-slate-300";
-  let tagColor = "text-slate-500 border-slate-700 bg-slate-800/40";
+  let tagColor = "text-slate-400 border-slate-700 bg-slate-800/40";
 
   if (log.stream === "system") {
     streamColor = "text-success-400 font-semibold";
@@ -75,8 +76,8 @@ const LogRow = React.memo(function LogRow({ log, withMeta }: { log: InstanceLogE
     <div className="flex items-start gap-2 hover:bg-white/[0.03] px-1 py-0.5 rounded transition-colors group [content-visibility:auto] [contain-intrinsic-size:auto_18px]">
       {withMeta && (
         <>
-          <span className="text-slate-600 select-none shrink-0 w-16">
-            {new Date(log.timestamp).toLocaleTimeString()}
+          <span className="text-slate-400 select-none shrink-0 w-16">
+            {new Date(log.timestamp).toLocaleTimeString(language)}
           </span>
           <span className={`text-[9px] px-1 rounded border uppercase select-none shrink-0 ${tagColor}`}>
             {log.stream}
@@ -89,7 +90,7 @@ const LogRow = React.memo(function LogRow({ log, withMeta }: { log: InstanceLogE
 });
 
 export const LogWindow: React.FC = () => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [logs, setLogs] = useState<InstanceLogEvent[]>([]);
   const [status, setStatus] = useState<string>("ready");
   const [activePid, setActivePid] = useState<number | null>(null);
@@ -301,7 +302,7 @@ export const LogWindow: React.FC = () => {
     const text = viewingHistory
       ? shownLogs.map((l) => l.line).join("\n")
       : logs
-          .map((l) => `[${new Date(l.timestamp).toLocaleTimeString()}] [${l.stream.toUpperCase()}] ${l.line}`)
+          .map((l) => `[${new Date(l.timestamp).toLocaleTimeString(language)}] [${l.stream.toUpperCase()}] ${l.line}`)
           .join("\n");
     await navigator.clipboard.writeText(text);
     setCopied(true);
@@ -487,7 +488,7 @@ export const LogWindow: React.FC = () => {
               placeholder={t.logWin.searchPlaceholder}
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
-              className="h-8 pl-8 text-xs bg-white/5 border-white/10 text-slate-200 focus-visible:border-brand-light"
+              className="h-8 pl-8 text-xs bg-white/5 border-white/10 text-slate-200"
             />
           </div>
         </div>
@@ -563,7 +564,7 @@ export const LogWindow: React.FC = () => {
       {/* Main Terminal Viewport (Shadcn ScrollArea, 0px 排版位移) */}
       <ScrollArea className="flex-1 min-h-0 w-full" viewportClassName="p-4 space-y-1 font-mono text-2xs leading-relaxed">
         {filteredLogs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-slate-500 space-y-2">
+          <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-slate-400 space-y-2">
             <Terminal className="h-8 w-8 stroke-1" />
             <p>
               {historyLoading

@@ -58,7 +58,7 @@ export const TransferProgress: React.FC<TransferProgressProps> = ({ stages, prog
                 ) : (
                   <Circle className="h-4 w-4 shrink-0 text-slate-600" />
                 )}
-                <span className={done ? "text-slate-400" : active ? "font-semibold text-white" : "text-slate-500"}>
+                <span aria-live="polite" className={done ? "text-slate-400" : active ? "font-semibold text-white" : "text-slate-400"}>
                   {stage.label}
                 </span>
                 {active && known && (

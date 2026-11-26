@@ -74,11 +74,11 @@ const CustomJarPicker: React.FC<{
 
   return (
     <div className="space-y-1">
-      <label className="font-semibold text-xs text-slate-300">{t.changeVer.customJarLabel}</label>
+      <label htmlFor="change-jar" className="font-semibold text-xs text-slate-300">{t.changeVer.customJarLabel}</label>
       <div className="flex items-center gap-2">
         <div className="flex-1">
           <Select value={jars.includes(value) ? value : ""} onValueChange={onChange} disabled={jars.length === 0}>
-            <SelectTrigger className="h-8">
+            <SelectTrigger id="change-jar" className="h-8">
               <SelectValue placeholder={jars.length === 0 ? t.changeVer.customJarNone : t.changeVer.customJarPick} />
             </SelectTrigger>
             <SelectContent className="max-h-56">

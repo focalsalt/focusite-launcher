@@ -37,7 +37,7 @@ interface WorldsTabProps {
 }
 
 export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch, isLaunching, isRunning, refreshInstanceFiles, tabDirection, ref }: WorldsTabProps) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [renameWorldTarget, setRenameWorldTarget] = useState<WorldSummary | null>(null);
   const [newWorldName, setNewWorldName] = useState<string>("");
   const [deleteTarget, setDeleteTarget] = useState<WorldSummary | null>(null);
@@ -130,7 +130,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
 
                       const lastPlayedStr =
                         world.last_played > 0
-                          ? new Date(world.last_played).toLocaleDateString("zh-TW")
+                          ? new Date(world.last_played).toLocaleDateString(language)
                           : t.worlds.unknownTime;
 
                       return (
@@ -278,8 +278,8 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
               </DialogTitle>
             </DialogHeader>
             <div className="py-2">
-              <label className="text-xs text-white/60 mb-1.5 block">{t.worlds.nameLabel}</label>
-              <Input
+              <label htmlFor="world-name" className="text-xs text-white/60 mb-1.5 block">{t.worlds.nameLabel}</label>
+              <Input id="world-name"
                 value={newWorldName}
                 onChange={(e) => setNewWorldName(e.target.value)}
                 className="bg-white/5 border-white/10 text-xs"
@@ -321,7 +321,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
             <Button variant="outline" size="sm" disabled={isDeleting} onClick={() => setDeleteTarget(null)} className="border-white/10 text-xs">
               {t.common.cancel}
             </Button>
-            <Button size="sm" disabled={isDeleting} onClick={confirmDeleteWorld} className="bg-rose-600 hover:bg-rose-500 text-white text-xs">
+            <Button size="sm" disabled={isDeleting} onClick={confirmDeleteWorld} variant="destructive" className="text-xs">
               {isDeleting ? t.worlds.deleting : t.worlds.deleteForever}
             </Button>
           </DialogFooter>

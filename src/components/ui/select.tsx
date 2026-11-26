@@ -93,7 +93,7 @@ export const SelectTrigger = React.forwardRef<
       disabled={ctx.disabled}
       onClick={handleClick}
       className={cn(
-        "flex h-9 w-full items-center justify-between rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 shadow-sm transition-colors hover:border-white/20 focus-visible:outline-none focus-visible:border-brand-light/60 focus-visible:ring-1 focus-visible:ring-brand-light disabled:cursor-not-allowed disabled:opacity-50 select-none",
+        "flex h-9 w-full items-center justify-between rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-400 shadow-sm transition-colors hover:border-white/20 disabled:cursor-not-allowed disabled:opacity-50 select-none",
         className
       )}
       {...props}
@@ -121,7 +121,7 @@ export const SelectValue: React.FC<{
   if (!ctx) throw new Error("SelectValue must be used within Select");
 
   return (
-    <span className={cn(!ctx.value && "text-slate-500", className)}>
+    <span className={cn(!ctx.value && "text-slate-400", className)}>
       {ctx.value ? (children ?? ctx.value) : placeholder || t.common.selectPlaceholder}
     </span>
   );
@@ -183,6 +183,31 @@ export const SelectContent: React.FC<SelectContentProps> = ({
     };
   }, [ctx.open, place, children]);
 
+  // Focus the chosen option so the arrow keys work as soon as the list opens.
+  React.useEffect(() => {
+    if (!ctx.open) return;
+    const frame = requestAnimationFrame(() => {
+      const list = contentRef.current;
+      (list?.querySelector<HTMLElement>('[aria-selected="true"]') ?? list?.querySelector<HTMLElement>('[role="option"]'))?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [ctx.open]);
+
+  const handleListKeys = (e: React.KeyboardEvent) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      ctx.setOpen(false);
+      ctx.triggerElement?.focus();
+      return;
+    }
+    const options = Array.from(contentRef.current?.querySelectorAll<HTMLElement>('[role="option"]:not(:disabled)') ?? []);
+    const index = options.indexOf(document.activeElement as HTMLElement);
+    const next = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: options.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    options[Math.min(Math.max(next, 0), options.length - 1)]?.focus();
+  };
+
   // 監聽點擊外部與 Esc 鍵關閉
   React.useEffect(() => {
     if (!ctx.open) return;
@@ -202,6 +227,7 @@ export const SelectContent: React.FC<SelectContentProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         ctx.setOpen(false);
+        ctx.triggerElement?.focus();
       }
     };
 
@@ -220,6 +246,8 @@ export const SelectContent: React.FC<SelectContentProps> = ({
       {ctx.open && (
         <motion.div
           ref={contentRef}
+          role="listbox"
+          onKeyDown={handleListKeys}
           initial={{ opacity: 0, scale: 0.96, y: coords.flipped ? 4 : -4 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: coords.flipped ? 4 : -4 }}
@@ -272,6 +300,7 @@ export const SelectItem: React.FC<SelectItemProps> = ({
     if (disabled) return;
     ctx.onValueChange(value);
     ctx.setOpen(false);
+    ctx.triggerElement?.focus();
   };
 
   return (

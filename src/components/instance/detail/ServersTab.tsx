@@ -227,8 +227,8 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
             </DialogHeader>
             <div className="space-y-3 py-2 text-xs">
               <div>
-                <label className="text-white/60 mb-1 block">{t.servers.nameLabel}</label>
-                <Input
+                <label htmlFor="server-name" className="text-white/60 mb-1 block">{t.servers.nameLabel}</label>
+                <Input id="server-name"
                   value={newServerName}
                   onChange={(e) => setNewServerName(e.target.value)}
                   placeholder={t.servers.namePlaceholder}
@@ -236,8 +236,8 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                 />
               </div>
               <div>
-                <label className="text-white/60 mb-1 block">{t.servers.addressLabel}</label>
-                <Input
+                <label htmlFor="server-address" className="text-white/60 mb-1 block">{t.servers.addressLabel}</label>
+                <Input id="server-address"
                   value={newServerIp}
                   onChange={(e) => setNewServerIp(e.target.value)}
                   placeholder={t.servers.addressPlaceholder}

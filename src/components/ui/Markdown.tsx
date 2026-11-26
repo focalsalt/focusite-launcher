@@ -36,7 +36,7 @@ const components: Components = {
     <pre className="my-2 overflow-x-auto rounded-lg bg-black/40 p-3 font-mono text-2xs">{children}</pre>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="my-2 border-l-2 border-white/20 pl-3 text-slate-500">{children}</blockquote>
+    <blockquote className="my-2 border-l-2 border-white/20 pl-3 text-slate-400">{children}</blockquote>
   ),
   hr: () => <hr className="my-3 border-white/10" />,
   table: ({ children }) => (

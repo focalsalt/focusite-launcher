@@ -12,6 +12,13 @@
   border-color: var(--border);
 }
 
+/* The one keyboard focus ring. Inset, so it lies over the element without changing its look or being
+   clipped; unlayered, so `outline-none` utilities cannot hide it. */
+:where(a, button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fc-highlight) 40%, var(--fc-neutral-50));
+  outline-offset: -2px;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);

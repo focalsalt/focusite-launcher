@@ -177,7 +177,7 @@ export const newsService = {
 
         return {
           id: entry.id || `${entry.date}-${entry.title}`,
-          title: decodeHtmlEntities(entry.title || "Minecraft 新聞"),
+          title: decodeHtmlEntities(entry.title || "Minecraft News"),
           category: decodeHtmlEntities(entry.category || "Minecraft"),
           date: entry.date || new Date().toISOString().split("T")[0],
           text: decodeHtmlEntities(entry.text || ""),

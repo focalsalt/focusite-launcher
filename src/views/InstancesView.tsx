@@ -418,8 +418,8 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
 
           <form onSubmit={handleCreateGroup} className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t.instances.groupNameLabel}</label>
-              <Input
+              <label htmlFor="group-name" className="text-xs text-slate-300">{t.instances.groupNameLabel}</label>
+              <Input id="group-name"
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder={t.instances.groupNamePlaceholder}
@@ -427,9 +427,10 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t.instances.groupPickInstances}</label>
+            <div role="group" aria-labelledby="group-members" className="space-y-1.5">
+              <span id="group-members" className="text-xs text-slate-300">{t.instances.groupPickInstances}</span>
               <MultiSelect
+                labelledBy="group-members"
                 options={instances.map((inst) => ({ value: inst.id, label: inst.name, hint: inst.id }))}
                 value={groupMembers}
                 onChange={setGroupMembers}
@@ -472,8 +473,8 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
 
           <form onSubmit={handleDuplicate} className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t.inst.newInstanceName}</label>
-              <Input
+              <label htmlFor="duplicate-name" className="text-xs text-slate-300">{t.inst.newInstanceName}</label>
+              <Input id="duplicate-name"
                 value={duplicateName}
                 onChange={(e) => setDuplicateName(e.target.value)}
                 placeholder={t.inst.dupPlaceholder}

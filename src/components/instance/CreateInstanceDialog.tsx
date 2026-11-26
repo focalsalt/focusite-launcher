@@ -310,8 +310,8 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                 }
                 nameSlot={
                   <div className="space-y-1">
-                    <label className="font-semibold text-xs text-slate-300">{t.create.nameLabel}</label>
-                    <Input
+                    <label htmlFor="create-name" className="font-semibold text-xs text-slate-300">{t.create.nameLabel}</label>
+                    <Input id="create-name"
                       value={instanceName}
                       onChange={(e) => setInstanceName(e.target.value)}
                       placeholder={t.create.namePlaceholder}
@@ -321,13 +321,21 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                   </div>
                 }
                 customSlot={
-                  <div className="flex-1 flex flex-col space-y-1.5 justify-center min-h-[150px]">
-                    <label className="font-semibold text-xs text-slate-300">{t.create.customJarLabel}</label>
+                  <div role="group" aria-labelledby="create-jar-label" className="flex-1 flex flex-col space-y-1.5 justify-center min-h-[150px]">
+                    <span id="create-jar-label" className="font-semibold text-xs text-slate-300">{t.create.customJarLabel}</span>
                     <div
                       onDragOver={handleJarDragOver}
                       onDragLeave={handleJarDragLeave}
                       onDrop={handleJarDrop}
                       onClick={() => jarInputRef.current?.click()}
+                      role="button"
+                      tabIndex={0}
+                      aria-labelledby="create-jar-label"
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+                        e.preventDefault();
+                        jarInputRef.current?.click();
+                      }}
                       className={`flex-1 flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all ${isDraggingJar
                           ? "border-brand-light bg-brand/10"
                           : customJar
@@ -365,7 +373,7 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                           <p className="font-medium text-slate-300 text-xs">
                             {t.create.dropJar}
                           </p>
-                          <p className="text-3xs text-slate-500">
+                          <p className="text-3xs text-slate-400">
                             {t.create.customLoaderNote}
                           </p>
                         </div>
@@ -378,12 +386,12 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
 
             {/* === 右側欄位：實例描述（填滿高度） === */}
             <div className="flex flex-col h-full space-y-1 min-h-0">
-              <label className="font-semibold text-xs text-slate-300">{t.create.descLabel}</label>
-              <textarea
+              <label htmlFor="create-description" className="font-semibold text-xs text-slate-300">{t.create.descLabel}</label>
+              <textarea id="create-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t.create.descPlaceholder}
-                className="w-full flex-1 min-h-0 rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-slate-100 placeholder:text-slate-500 shadow-sm transition-colors focus-visible:outline-none focus-visible:border-brand-light/60 focus-visible:ring-1 focus-visible:ring-brand-light resize-none"
+                className="w-full flex-1 min-h-0 rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-slate-100 placeholder:text-slate-400 shadow-sm transition-colors resize-none"
               />
             </div>
           </div>

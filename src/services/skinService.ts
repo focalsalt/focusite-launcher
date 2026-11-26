@@ -59,7 +59,7 @@ export const skinService = {
       };
     }
 
-    throw new Error("此環境無法儲存皮膚");
+    throw new Error("E_BROWSER_SKIN_UNSUPPORTED");
   },
 
   /**

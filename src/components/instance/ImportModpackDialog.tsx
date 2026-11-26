@@ -425,9 +425,9 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                 className="flex min-h-0 flex-1 flex-col justify-center gap-5 px-6"
               >
                 <div className="mx-auto w-full max-w-xl space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">{t.importPack.pathLabel}</label>
+                  <label htmlFor="import-path" className="text-xs font-semibold text-slate-300">{t.importPack.pathLabel}</label>
                   <div className="flex items-center gap-2">
-                    <Input
+                    <Input id="import-path"
                       value={packFilePath}
                       onChange={(e) => setPackFilePath(e.target.value)}
                       placeholder={t.importPack.pathPlaceholder}
@@ -566,7 +566,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                         {t.importPack.onlineSearching}
                       </div>
                     ) : onlineResults.length === 0 ? (
-                      <div className="flex h-64 items-center justify-center text-xs text-slate-500">
+                      <div className="flex h-64 items-center justify-center text-xs text-slate-400">
                         {t.importPack.onlineNoResults}
                       </div>
                     ) : (

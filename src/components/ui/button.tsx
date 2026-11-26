@@ -5,14 +5,14 @@ import { SPRING_PRESS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-xl text-xs font-semibold select-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-light disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
+  "inline-flex items-center justify-center whitespace-nowrap rounded-xl text-xs font-semibold select-none transition-colors disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
   {
     variants: {
       variant: {
         default:
           "bg-brand text-white shadow-md shadow-brand/25 hover:bg-brand-hover",
         destructive:
-          "bg-rose-600 text-white shadow-sm hover:bg-rose-500",
+          "bg-danger-600 text-white shadow-sm hover:bg-danger-700",
         outline:
           "border border-white/10 bg-white/5 text-slate-200 shadow-sm hover:bg-white/10 hover:text-white",
         secondary:

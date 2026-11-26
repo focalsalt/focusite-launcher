@@ -223,6 +223,7 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
           ).map(([code, label]) => (
             <Button
               key={code}
+              lang={code}
               variant={language === code ? "default" : "outline"}
               size="sm"
               onClick={() => setLanguage(code)}
@@ -411,10 +412,10 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
       {/* External integrations */}
       <SettingsSection icon={<Key className="h-4 w-4 text-brand-light" />} title={t.settings.integrations}>
         <form onSubmit={handleSaveApiKey} className="space-y-2">
-          <label className="text-xs font-semibold text-slate-300">{t.settings.curseforgeKeyLabel}</label>
+          <label htmlFor="curseforge-key" className="text-xs font-semibold text-slate-300">{t.settings.curseforgeKeyLabel}</label>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <Input
+              <Input id="curseforge-key"
                 type={showApiKey ? "text" : "password"}
                 value={curseforgeApiKey}
                 onChange={(e) => setCurseforgeApiKey(e.target.value)}
@@ -456,7 +457,7 @@ const PrivacyDetail: React.FC<{ access: string; sent: string; risk: string }> = 
     <dl className="space-y-1.5 rounded-xl border border-white/5 bg-black/10 p-3 text-2xs leading-relaxed">
       {rows.map(([label, text, tone]) => (
         <div key={label} className="grid grid-cols-[4.5rem_1fr] gap-2">
-          <dt className="font-semibold text-slate-500">{label}</dt>
+          <dt className="font-semibold text-slate-400">{label}</dt>
           <dd className={tone}>{text}</dd>
         </div>
       ))}

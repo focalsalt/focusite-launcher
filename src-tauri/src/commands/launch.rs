@@ -3,7 +3,7 @@
 use super::ui_language::tr;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, LazyLock, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
@@ -283,17 +283,191 @@ pub async fn launch_instance(
     )
     .await;
     if result.is_err() {
-        let _ = app_handle.emit(
-            "instance-status",
-            InstanceStatusPayload {
-                instance_id,
-                status: "stopped".into(),
-                exit_code: None,
-                pid: None,
-            },
-        );
+        emit_status(&app_handle, &instance_id, "stopped", None, None);
     }
     result
+}
+
+fn emit_status(app_handle: &AppHandle, instance_id: &str, status: &str, exit_code: Option<i32>, pid: Option<u32>) {
+    let _ = app_handle.emit(
+        "instance-status",
+        InstanceStatusPayload {
+            instance_id: instance_id.to_string(),
+            status: status.into(),
+            exit_code,
+            pid,
+        },
+    );
+}
+
+/// Copies one output pipe of the game into the console buffer and to the log windows, line by line.
+fn forward_output(
+    app_handle: AppHandle,
+    instance_id: String,
+    stream: &'static str,
+    pipe: impl tokio::io::AsyncRead + Unpin + Send + 'static,
+) {
+    tokio::spawn(async move {
+        let mut reader = BufReader::new(pipe).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            let payload = InstanceLogPayload {
+                instance_id: instance_id.clone(),
+                stream: stream.into(),
+                line,
+                timestamp: chrono::Utc::now().timestamp_millis(),
+            };
+            append_instance_log(payload.clone());
+            let _ = app_handle.emit("instance-log", payload);
+        }
+    });
+}
+
+/// Jar files directly in `dir` whose lowercase name contains `needle`.
+fn find_jars(dir: &Path, needle: &str) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+            path.is_file() && name.contains(needle) && name.ends_with(".jar")
+        })
+        .collect()
+}
+
+fn jvm_args(config: &InstanceDiskConfig) -> Vec<String> {
+    if config.jvm_args.is_empty() {
+        super::instance::default_jvm_args()
+    } else {
+        config.jvm_args.clone()
+    }
+}
+
+/// Forge older than 1.6 starts through its own jar and the LWJGL jars in `bin`.
+fn is_legacy_forge(config: &InstanceDiskConfig) -> bool {
+    let caps = VersionCapabilities::from_mc_version(&config.version);
+    config.loader.eq_ignore_ascii_case("forge") && caps.mods_tab_mode == ModsTabMode::LegacyDualNav
+}
+
+fn legacy_forge_arguments(
+    config: &InstanceDiskConfig,
+    context: &LaunchContext,
+    client_jar: &Path,
+    game_dir: &Path,
+    versions_dir: &Path,
+) -> Vec<String> {
+    let _ = std::fs::create_dir_all(game_dir.join("coremods"));
+    let _ = std::fs::create_dir_all(game_dir.join("mods"));
+
+    let forge_jar = find_jars(versions_dir, "forge")
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| client_jar.to_path_buf());
+    let bin_dir = game_dir.join("bin");
+    let lwjgl_jars = find_jars(&bin_dir, "lwjgl");
+
+    let mut legacy_context = context.clone();
+    if bin_dir.join("natives").is_dir() {
+        legacy_context.natives_directory = bin_dir.join("natives").to_string_lossy().to_string();
+    }
+
+    build_legacy_pre16_forge_arguments(
+        &forge_jar,
+        client_jar,
+        &lwjgl_jars,
+        &legacy_context,
+        config.min_memory_mb,
+        config.max_memory_mb,
+        &jvm_args(config),
+        None,
+    )
+}
+
+/// Used when no version file exists for the instance.
+fn default_manifest(version: &str) -> VersionManifest {
+    VersionManifest {
+        id: version.to_string(),
+        version_type: "release".into(),
+        main_class: "net.minecraft.client.main.Main".into(),
+        java_version: None,
+        arguments: None,
+        legacy_arguments: Some(
+            "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type} --versionType ${version_type}".into(),
+        ),
+        libraries: Vec::new(),
+        downloads: None,
+        asset_index: None,
+        assets: None,
+        inherits_from: None,
+    }
+}
+
+/// A version file that exists but cannot be read is an error: launching with an empty library list would
+/// only end in a ClassNotFoundException the user cannot act on.
+fn read_manifest(path: &Path) -> Result<VersionManifest, String> {
+    let broken = |e: String| format!("E_VERSION_FILE_BROKEN: {}: {}", path.display(), e);
+    let content = std::fs::read_to_string(path).map_err(|e| broken(e.to_string()))?;
+    serde_json::from_str(&content).map_err(|e| broken(e.to_string()))
+}
+
+/// Arguments built from the version manifest of the instance (or of its loader profile).
+fn manifest_arguments(
+    config: &InstanceDiskConfig,
+    context: &LaunchContext,
+    client_jar: &Path,
+    app_data: &Path,
+    libraries_dir: &Path,
+    versions_dir: &Path,
+) -> Result<Vec<String>, String> {
+    let version_file = |id: &str| app_data.join("versions").join(id).join(format!("{}.json", id));
+    let manifest_path = super::provisioning::loader_profile_id(config)
+        .map(|id| version_file(&id))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| versions_dir.join(format!("{}.json", config.version)));
+
+    let mut manifest = if manifest_path.is_file() {
+        read_manifest(&manifest_path)?
+    } else {
+        default_manifest(&config.version)
+    };
+
+    // Resolve inheritsFrom (e.g. Forge / Fabric inheriting from Vanilla Minecraft manifest)
+    if let Some(parent_id) = manifest.inherits_from.clone() {
+        let parent_path = version_file(&parent_id);
+        if parent_path.is_file() {
+            manifest = manifest.merge_parent(&read_manifest(&parent_path)?);
+        }
+    }
+
+    let os_name = focusite_core::manifest::get_current_os();
+    let os_arch = focusite_core::manifest::get_current_arch();
+    let allowed_libs: Vec<PathBuf> = manifest
+        .libraries
+        .iter()
+        .filter(|lib| lib.is_allowed(os_name, os_arch))
+        .map(|lib| libraries_dir.join(lib.get_relative_path()))
+        .filter(|path| path.is_file())
+        .collect();
+
+    let mut context = context.clone();
+    if let Some(ref asset_index) = manifest.asset_index {
+        context.assets_index_name = asset_index.id.clone();
+    }
+    if !allowed_libs.is_empty() {
+        context.classpath = build_classpath(&allowed_libs, client_jar);
+    }
+
+    Ok(build_launch_arguments(
+        &manifest,
+        &context,
+        config.min_memory_mb,
+        config.max_memory_mb,
+        &jvm_args(config),
+        os_name,
+        os_arch,
+    ))
 }
 
 /// Provisions, spawns and watches the game for an instance that holds the launch guard.
@@ -367,15 +541,7 @@ async fn start_instance(
         let _ = ensure_or_create_log_window(&app_handle, &instance_id, &instance_config.name);
     }
 
-    let _ = app_handle.emit(
-        "instance-status",
-        InstanceStatusPayload {
-            instance_id: instance_id.clone(),
-            status: "launching".into(),
-            exit_code: None,
-            pid: None,
-        },
-    );
+    emit_status(&app_handle, &instance_id, "launching", None, None);
 
     let _ = app_handle.emit(
         "instance-log",
@@ -477,150 +643,10 @@ async fn start_instance(
         },
     };
 
-    let min_memory = instance_config.min_memory_mb;
-    let max_memory = instance_config.max_memory_mb;
-    let jvm_args_list: Vec<String> = if instance_config.jvm_args.is_empty() {
-        super::instance::default_jvm_args()
+    let args = if is_legacy_forge(&instance_config) {
+        legacy_forge_arguments(&instance_config, &context, &client_jar, &game_dir, &versions_dir)
     } else {
-        instance_config.jvm_args.clone()
-    };
-
-    let caps = VersionCapabilities::from_mc_version(&instance_config.version);
-    let is_legacy_forge = instance_config.loader.eq_ignore_ascii_case("forge")
-        && caps.mods_tab_mode == ModsTabMode::LegacyDualNav;
-
-    let os_name = focusite_core::manifest::get_current_os();
-    let os_arch = focusite_core::manifest::get_current_arch();
-
-    let args = if is_legacy_forge {
-        let coremods_dir = game_dir.join("coremods");
-        let mods_dir = game_dir.join("mods");
-        let _ = std::fs::create_dir_all(&coremods_dir);
-        let _ = std::fs::create_dir_all(&mods_dir);
-
-        let mut forge_jar = client_jar.clone();
-        if let Ok(entries) = std::fs::read_dir(&versions_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    let fname = path.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
-                    if fname.contains("forge") && fname.ends_with(".jar") {
-                        forge_jar = path;
-                        break;
-                    }
-                }
-            }
-        }
-
-        let mut lwjgl_jars = Vec::new();
-        let bin_dir = game_dir.join("bin");
-        if let Ok(entries) = std::fs::read_dir(&bin_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    let fname = path.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
-                    if fname.contains("lwjgl") && fname.ends_with(".jar") {
-                        lwjgl_jars.push(path);
-                    }
-                }
-            }
-        }
-
-        let mut legacy_context = context.clone();
-        if bin_dir.join("natives").is_dir() {
-            legacy_context.natives_directory = bin_dir.join("natives").to_string_lossy().to_string();
-        }
-
-        build_legacy_pre16_forge_arguments(
-            &forge_jar,
-            &client_jar,
-            &lwjgl_jars,
-            &legacy_context,
-            min_memory,
-            max_memory,
-            &jvm_args_list,
-            None,
-        )
-    } else {
-        let manifest_path = super::provisioning::loader_profile_id(&instance_config)
-            .map(|pid| {
-                app_data
-                    .join("versions")
-                    .join(&pid)
-                    .join(format!("{}.json", pid))
-            })
-            .filter(|p| p.is_file())
-            .unwrap_or_else(|| versions_dir.join(format!("{}.json", instance_config.version)));
-        let default_manifest = || VersionManifest {
-            id: instance_config.version.clone(),
-            version_type: "release".into(),
-            main_class: "net.minecraft.client.main.Main".into(),
-            java_version: None,
-            arguments: None,
-            legacy_arguments: Some(
-                "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type} --versionType ${version_type}".into(),
-            ),
-            libraries: Vec::new(),
-            downloads: None,
-            asset_index: None,
-            assets: None,
-            inherits_from: None,
-        };
-
-        // A version file that exists but cannot be read is an error: launching with an empty library
-        // list would only end in a ClassNotFoundException the user cannot act on.
-        let read_manifest = |path: &std::path::Path| -> Result<VersionManifest, String> {
-            let content = std::fs::read_to_string(path)
-                .map_err(|e| format!("E_VERSION_FILE_BROKEN: {}: {}", path.display(), e))?;
-            serde_json::from_str(&content).map_err(|e| {
-                format!("E_VERSION_FILE_BROKEN: {}: {}", path.display(), e)
-            })
-        };
-        let mut manifest = if manifest_path.is_file() {
-            read_manifest(&manifest_path)?
-        } else {
-            default_manifest()
-        };
-
-        // Resolve inheritsFrom (e.g. Forge / Fabric inheriting from Vanilla Minecraft manifest)
-        if let Some(ref parent_id) = manifest.inherits_from.clone() {
-            let parent_path = app_data
-                .join("versions")
-                .join(parent_id)
-                .join(format!("{}.json", parent_id));
-            if parent_path.is_file() {
-                manifest = manifest.merge_parent(&read_manifest(&parent_path)?);
-            }
-        }
-
-        let mut allowed_libs = Vec::new();
-        for lib in &manifest.libraries {
-            if lib.is_allowed(os_name, os_arch) {
-                let rel = lib.get_relative_path();
-                let full = libraries_dir.join(rel);
-                if full.is_file() {
-                    allowed_libs.push(full);
-                }
-            }
-        }
-
-    let mut mod_context = context.clone();
-    if let Some(ref asset_idx) = manifest.asset_index {
-        mod_context.assets_index_name = asset_idx.id.clone();
-    }
-    if !allowed_libs.is_empty() {
-        mod_context.classpath = build_classpath(&allowed_libs, &client_jar);
-    }
-
-        build_launch_arguments(
-            &manifest,
-            &mod_context,
-            min_memory,
-            max_memory,
-            &jvm_args_list,
-            os_name,
-            os_arch,
-        )
+        manifest_arguments(&instance_config, &context, &client_jar, &app_data, &libraries_dir, &versions_dir)?
     };
 
     // 6. Spawn child process
@@ -652,15 +678,7 @@ async fn start_instance(
         );
     }
 
-    let _ = app_handle.emit(
-        "instance-status",
-        InstanceStatusPayload {
-            instance_id: instance_id.clone(),
-            status: "running".into(),
-            exit_code: None,
-            pid: Some(pid),
-        },
-    );
+    emit_status(&app_handle, &instance_id, "running", None, Some(pid));
 
     let sys_log = InstanceLogPayload {
         instance_id: instance_id.clone(),
@@ -676,43 +694,11 @@ async fn start_instance(
     }
 
     // 7. Background log stream listener and process wait
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let inst_id_out = instance_id.clone();
-    let inst_id_err = instance_id.clone();
-    let app_handle_out = app_handle.clone();
-    let app_handle_err = app_handle.clone();
-
-    if let Some(out) = stdout {
-        tokio::spawn(async move {
-            let mut reader = BufReader::new(out).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
-                let payload = InstanceLogPayload {
-                    instance_id: inst_id_out.clone(),
-                    stream: "stdout".into(),
-                    line,
-                    timestamp: chrono::Utc::now().timestamp_millis(),
-                };
-                append_instance_log(payload.clone());
-                let _ = app_handle_out.emit("instance-log", payload);
-            }
-        });
+    if let Some(out) = child.stdout.take() {
+        forward_output(app_handle.clone(), instance_id.clone(), "stdout", out);
     }
-
-    if let Some(err) = stderr {
-        tokio::spawn(async move {
-            let mut reader = BufReader::new(err).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
-                let payload = InstanceLogPayload {
-                    instance_id: inst_id_err.clone(),
-                    stream: "stderr".into(),
-                    line,
-                    timestamp: chrono::Utc::now().timestamp_millis(),
-                };
-                append_instance_log(payload.clone());
-                let _ = app_handle_err.emit("instance-log", payload);
-            }
-        });
+    if let Some(err) = child.stderr.take() {
+        forward_output(app_handle.clone(), instance_id.clone(), "stderr", err);
     }
 
     let app_handle_wait = app_handle.clone();
@@ -761,15 +747,7 @@ async fn start_instance(
         append_instance_log(term_log.clone());
         let _ = app_handle_wait.emit("instance-log", term_log);
 
-        let _ = app_handle_wait.emit(
-            "instance-status",
-            InstanceStatusPayload {
-                instance_id: inst_id_wait,
-                status: if is_crash { "crashed".into() } else { "stopped".into() },
-                exit_code,
-                pid: None,
-            },
-        );
+        emit_status(&app_handle_wait, &inst_id_wait, if is_crash { "crashed" } else { "stopped" }, exit_code, None);
     });
 
     Ok(pid)
@@ -778,6 +756,18 @@ async fn start_instance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn find_jars_matches_name_and_extension() {
+        let dir = std::env::temp_dir().join(format!("focusite-find-jars-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("lwjgl-folder.jar")).unwrap();
+        for name in ["LWJGL-util.jar", "lwjgl.txt", "other.jar"] {
+            std::fs::write(dir.join(name), b"").unwrap();
+        }
+        assert_eq!(find_jars(&dir, "lwjgl"), vec![dir.join("LWJGL-util.jar")]);
+        assert!(find_jars(&dir.join("missing"), "lwjgl").is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn offline_uuid_is_stable_name_based_v3() {

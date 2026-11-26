@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useState, useId, useRef } from "react";
 import { motion } from "motion/react";
 import { FolderDown, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ThemeSwatches } from "@/components/settings/ThemeSwatches";
 import { themeService, ThemePack } from "@/services/themeService";
 import { useI18n } from "@/i18n";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 const STORAGE_KEY = "focusite_onboarding_done";
 
@@ -77,8 +78,8 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onCreateInstan
             <DialogDescription>{t.onboarding.welcomeDesc}</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">{t.settings.language}</label>
+          <div role="group" aria-labelledby="onboarding-language" className="space-y-1.5">
+            <span id="onboarding-language" className="text-xs font-semibold text-slate-300">{t.settings.language}</span>
             <div className="flex gap-2">
               {(
                 [
@@ -88,6 +89,7 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onCreateInstan
               ).map(([code, label]) => (
                 <Button
                   key={code}
+                  lang={code}
                   type="button"
                   size="sm"
                   variant={language === code ? "default" : "outline"}
@@ -101,9 +103,9 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onCreateInstan
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">{t.settings.theme}</label>
+            <label htmlFor="onboarding-theme" className="text-xs font-semibold text-slate-300">{t.settings.theme}</label>
             <Select value={themeId} onValueChange={pickTheme}>
-              <SelectTrigger>
+              <SelectTrigger id="onboarding-theme">
                 <SelectValue>{themes.find((p) => p.id === themeId)?.name ?? themeId}</SelectValue>
               </SelectTrigger>
               <SelectContent className="max-h-64">
@@ -179,6 +181,9 @@ const TourStep: React.FC<TourStepProps> = ({ index, onBack, onNext, onSkip }) =>
   const [rect, setRect] = useState<DOMRect | null>(null);
   const step = t.onboarding.tour[index];
   const total = TOUR_TARGETS.length;
+  const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  useFocusTrap(ref, true, onSkip);
 
   useLayoutEffect(() => {
     const measure = () => setRect(document.getElementById(TOUR_TARGETS[index])?.getBoundingClientRect() ?? null);
@@ -191,7 +196,7 @@ const TourStep: React.FC<TourStepProps> = ({ index, onBack, onNext, onSkip }) =>
   const left = rect ? rect.right + 20 : 280;
 
   return (
-    <div className="fixed inset-0 z-[60]">
+    <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="fixed inset-0 z-[60] outline-none">
       {rect && (
         <motion.div
           key={index}
@@ -219,7 +224,7 @@ const TourStep: React.FC<TourStepProps> = ({ index, onBack, onNext, onSkip }) =>
           <p className="text-2xs font-semibold text-brand-light">
             {index + 1} / {total}
           </p>
-          <h3 className="text-sm font-bold text-white">{step.title}</h3>
+          <h3 id={titleId} className="text-sm font-bold text-white">{step.title}</h3>
           <p className="text-xs leading-relaxed text-slate-300">{step.body}</p>
         </div>
         <div className="flex items-center justify-between">

@@ -95,6 +95,9 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
   nameSlot,
 }) => {
   const { t } = useI18n();
+  const loaderId = React.useId();
+  const versionLabelId = React.useId();
+  const loaderVersionId = React.useId();
   const [showSnapshots, setShowSnapshots] = useState<boolean>(false);
   const [showHistorical, setShowHistorical] = useState<boolean>(false);
   const [loaderOptions, setLoaderOptions] = useState<LoaderVersionOption[]>([]);
@@ -158,9 +161,9 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
 
   const loaderBlock = (
       <div className="space-y-1 shrink-0">
-        <label className="font-semibold text-xs text-slate-300">{t.create.loaderLabel}</label>
+        <label htmlFor={loaderId} className="font-semibold text-xs text-slate-300">{t.create.loaderLabel}</label>
         <Select value={loader} onValueChange={(v) => onLoaderChange(v as LoaderType)}>
-          <SelectTrigger>
+          <SelectTrigger id={loaderId}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -171,7 +174,7 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
             ))}
           </SelectContent>
         </Select>
-        {old && <p className="text-2xs text-slate-500">{t.create.vanillaOnlyOld}</p>}
+        {old && <p className="text-2xs text-slate-400">{t.create.vanillaOnlyOld}</p>}
       </div>
   );
 
@@ -194,8 +197,8 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
       ) : (
         <div className="space-y-3">
           <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="font-semibold text-xs text-slate-300">{t.create.versionLabel}</label>
+            <div role="group" aria-labelledby={versionLabelId} className="flex items-center justify-between">
+              <span id={versionLabelId} className="font-semibold text-xs text-slate-300">{t.create.versionLabel}</span>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-1.5 cursor-pointer text-2xs text-slate-400 hover:text-slate-200">
                   <Checkbox checked={showSnapshots} onCheckedChange={setShowSnapshots} />
@@ -250,11 +253,11 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
 
           {loader !== "Vanilla" ? (
             <div className="space-y-1">
-              <label className="font-semibold text-xs text-slate-300">
+              <label htmlFor={loaderVersionId} className="font-semibold text-xs text-slate-300">
                 {t.create.loaderVersionLabel(loader)}
               </label>
               {loaderOptions.length === 0 && !isLoadingLoaders ? (
-                <div className="flex h-8 w-full items-center rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-slate-500 italic select-none">
+                <div className="flex h-8 w-full items-center rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-slate-400 italic select-none">
                   {t.create.noCompatibleLoader(loader)}
                 </div>
               ) : (
@@ -263,7 +266,7 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
                   onValueChange={onLoaderVersionChange}
                   disabled={isLoadingLoaders}
                 >
-                  <SelectTrigger className="w-full h-8">
+                  <SelectTrigger id={loaderVersionId} className="w-full h-8">
                     {isLoadingLoaders ? (
                       <div className="flex items-center gap-1.5 text-slate-400">
                         <RefreshCw className="h-3 w-3 animate-spin text-brand-light" />

@@ -47,7 +47,7 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
   onClose,
   action,
 }) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const current = versions.find((v) => v.id === versionId);
   const typeLabel = (v: WorkshopVersionItem["version_type"]) =>
     v === "release" ? t.workshopWin.verRelease : v === "beta" ? t.workshopWin.verBeta : t.workshopWin.verAlpha;
@@ -106,20 +106,20 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
             )}
             <div className="min-w-0">
               <h3 className="text-base font-bold text-white">{project.title}</h3>
-              <p className="text-xs text-slate-500">by {project.author}</p>
+              <p className="text-xs text-slate-400">{t.workshopWin.byAuthor(project.author)}</p>
               <p className="mt-1 text-xs leading-relaxed text-slate-400">{project.description}</p>
             </div>
           </div>
 
-          <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-            <label className="text-xs font-semibold text-slate-300">{t.workshopWin.selectVersion}</label>
+          <div role="group" aria-labelledby="detail-version" className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <span id="detail-version" className="text-xs font-semibold text-slate-300">{t.workshopWin.selectVersion}</span>
             {isLoading && versions.length === 0 ? (
               <div className="flex h-8 items-center gap-2 text-xs text-slate-400">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-light" />
                 {t.workshopWin.detailLoading}
               </div>
             ) : versions.length === 0 ? (
-              <div className="flex h-8 items-center rounded-xl border border-white/10 bg-black/20 px-3 text-xs italic text-slate-500">
+              <div className="flex h-8 items-center rounded-xl border border-white/10 bg-black/20 px-3 text-xs italic text-slate-400">
                 {t.workshopWin.noCompatVersions}
               </div>
             ) : (
@@ -145,7 +145,7 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
               </Select>
             )}
             {current && (
-              <p className="truncate font-mono text-3xs text-slate-500">
+              <p className="truncate font-mono text-3xs text-slate-400">
                 {current.game_versions.slice(-4).join(", ")}
                 {current.loaders.length > 0 && ` · ${current.loaders.join(", ")}`}
               </p>
@@ -167,11 +167,11 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
             >
               <span className="flex items-center gap-1.5">
                 <Download className="h-3.5 w-3.5" />
-                {detail.downloads.toLocaleString()}
+                {detail.downloads.toLocaleString(language)}
               </span>
               <span className="flex items-center gap-1.5">
                 <Heart className="h-3.5 w-3.5" />
-                {detail.follows.toLocaleString()}
+                {detail.follows.toLocaleString(language)}
               </span>
               <span className="flex items-center gap-1.5">
                 <Scale className="h-3.5 w-3.5" />
@@ -179,7 +179,7 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
               </span>
               <span className="flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5" />
-                {new Date(detail.updated).toLocaleDateString()}
+                {new Date(detail.updated).toLocaleDateString(language)}
               </span>
               <div className="col-span-2 flex flex-wrap gap-1.5 pt-1">
                 {detail.categories.map((c) => (
@@ -194,7 +194,7 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
           <div className="space-y-1.5">
             <h4 className="text-xs font-semibold text-slate-300">{t.workshopWin.detailAbout}</h4>
             {!detail ? (
-              <div className="flex items-center gap-2 py-4 text-xs text-slate-500">
+              <div className="flex items-center gap-2 py-4 text-xs text-slate-400">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-light" />
                 {t.workshopWin.detailLoading}
               </div>
