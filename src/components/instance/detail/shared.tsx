@@ -5,9 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { CircleHelp, Monitor, MonitorSmartphone, Server } from "lucide-react";
-import type { ModSide, ModSideInfo } from "@/services/instanceService";
+import type { ModSideInfo } from "@/services/instanceService";
 import type { PackFileInfo } from "@/types/navigation";
 import { useI18n } from "@/i18n";
+import { formatMcRange } from "@/lib/mcVersionRange";
 
 export function FramelessEmptyState({
   icon: Icon,
@@ -86,23 +87,38 @@ export const ModItem = React.memo(function ModItem({
   name,
   enabled,
   onToggle,
-  side,
-  sideSource,
+  info,
 }: {
+  /** File name; identifies the mod and is shown while it has no declared name. */
   name: string;
   enabled: boolean;
   /** Pass a stable function, or the row re-renders with its list. */
   onToggle: (name: string, checked: boolean) => void;
-  /** Omitted while the side is not known yet, and for lists without side labels. */
-  side?: ModSide;
-  sideSource?: ModSideInfo["source"];
+  /** Omitted while it is still being read, and for lists that do not read it. Pass a stable object. */
+  info?: ModSideInfo;
 }) {
   const { t } = useI18n();
+  const side = info?.side;
   const SideIcon = side && SIDE_ICONS[side];
-  const sideHint = sideSource ? t.mods.sideSources[sideSource] : t.mods.sideUnknownHint;
+  const sideHint = info?.source ? t.mods.sideSources[info.source] : t.mods.sideUnknownHint;
+  const title = info?.name ?? name;
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 text-xs">
-      <span className="min-w-0 break-all font-semibold text-slate-200">{name}</span>
+      <div className="min-w-0 break-all">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-slate-200" title={name}>{title}</span>
+          {info?.version && (
+            <Badge variant="outline" className="text-3xs py-0 px-1.5 border-white/10 text-slate-300">
+              {t.mods.versionBadge(info.version)}
+            </Badge>
+          )}
+        </div>
+        {info?.mcVersion && (
+          <p className="mt-0.5 text-2xs text-slate-400">
+            Minecraft {formatMcRange(info.mcVersion, t.mods.mcRange)}
+          </p>
+        )}
+      </div>
       <div className="flex shrink-0 items-center gap-2.5">
         {side && SideIcon && (
           <Badge
@@ -122,7 +138,7 @@ export const ModItem = React.memo(function ModItem({
         <span className="text-2xs text-slate-400 font-medium">
           {enabled ? t.common.enabled : t.common.disabled}
         </span>
-        <Switch checked={enabled} onCheckedChange={(checked) => onToggle(name, checked)} />
+        <Switch aria-label={title} checked={enabled} onCheckedChange={(checked) => onToggle(name, checked)} />
       </div>
     </div>
   );

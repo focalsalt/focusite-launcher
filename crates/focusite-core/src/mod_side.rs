@@ -1,4 +1,4 @@
-//! Which side (client, server, both) a mod belongs to, from its jar metadata and Modrinth project data.
+//! What a mod file says about itself (name, versions, side), plus Modrinth's side data.
 
 use std::fs::File;
 use std::io::Read;
@@ -27,12 +27,25 @@ pub enum SideSource {
     Modrinth,
 }
 
-#[derive(Debug, Clone, Copy)]
+/// What a mod file declares. A field is `None` when the file says nothing usable about it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct JarInfo {
+    /// `Both` only when written out.
+    pub side: Option<ModSide>,
+    pub name: Option<String>,
+    pub version: Option<String>,
+    /// The declared Minecraft constraint, verbatim (`>=1.20 <1.21`, `[1.20.1,1.21)`).
+    pub mc_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Metadata {
     Fabric,
     Quilt,
     Forge,
     NeoForge,
+    /// `mcmod.info`, used before Forge 1.13.
+    LegacyForge,
 }
 
 impl Metadata {
@@ -42,9 +55,9 @@ impl Metadata {
         match loader.to_ascii_lowercase().as_str() {
             "fabric" => &[Fabric],
             "quilt" => &[Quilt, Fabric],
-            "forge" => &[Forge],
+            "forge" => &[Forge, LegacyForge],
             "neoforge" => &[NeoForge, Forge],
-            _ => &[Fabric, Quilt, Forge, NeoForge],
+            _ => &[Fabric, Quilt, Forge, NeoForge, LegacyForge],
         }
     }
 
@@ -54,16 +67,80 @@ impl Metadata {
             Metadata::Quilt => "quilt.mod.json",
             Metadata::Forge => "META-INF/mods.toml",
             Metadata::NeoForge => "META-INF/neoforge.mods.toml",
+            Metadata::LegacyForge => "mcmod.info",
         }
     }
 
-    fn declared_side(self, text: &str) -> Option<ModSide> {
+    fn parse(self, text: &str) -> Option<JarInfo> {
         match self {
-            Metadata::Fabric => environment_side(&parse_lenient_json(text)?["environment"], "server"),
-            Metadata::Quilt => environment_side(&parse_lenient_json(text)?["minecraft"]["environment"], "dedicated_server"),
-            Metadata::Forge | Metadata::NeoForge => is_client_side_only(text).then_some(ModSide::Client),
+            Metadata::Fabric => {
+                let json = parse_lenient_json(text)?;
+                Some(JarInfo {
+                    side: environment_side(&json["environment"], "server"),
+                    name: string(&json["name"]),
+                    version: string(&json["version"]),
+                    mc_version: constraint(&json["depends"]["minecraft"]),
+                })
+            }
+            Metadata::Quilt => {
+                let json = parse_lenient_json(text)?;
+                let loader = &json["quilt_loader"];
+                let minecraft = loader["depends"].as_array().and_then(|d| d.iter().find(|d| d["id"] == "minecraft"));
+                Some(JarInfo {
+                    side: environment_side(&json["minecraft"]["environment"], "dedicated_server"),
+                    name: string(&loader["metadata"]["name"]),
+                    version: string(&loader["version"]),
+                    mc_version: minecraft.and_then(|d| constraint(&d["versions"])),
+                })
+            }
+            Metadata::Forge | Metadata::NeoForge => parse_mods_toml(text),
+            Metadata::LegacyForge => {
+                let json = parse_lenient_json(text)?;
+                // Either a bare list or `{"modList": [...]}`.
+                let first = json.get(0).unwrap_or(&json["modList"][0]);
+                Some(JarInfo {
+                    side: None,
+                    name: string(&first["name"]),
+                    version: string(&first["version"]),
+                    mc_version: string(&first["mcversion"]),
+                })
+            }
         }
     }
+}
+
+/// A non-empty string that is not an unfilled build placeholder such as `${version}`.
+fn string(value: &Value) -> Option<String> {
+    let text = value.as_str()?.trim();
+    (!text.is_empty() && !text.contains("${")).then(|| text.to_string())
+}
+
+/// One version predicate, or a list of alternatives.
+fn constraint(value: &Value) -> Option<String> {
+    match value.as_array() {
+        Some(list) => {
+            let all: Vec<String> = list.iter().filter_map(string).collect();
+            (!all.is_empty()).then(|| all.join(" || "))
+        }
+        None => string(value),
+    }
+}
+
+/// The first `[[mods]]` entry and its `minecraft` dependency. `version` may still be a placeholder.
+fn parse_mods_toml(text: &str) -> Option<JarInfo> {
+    let toml: toml::Table = text.trim_start_matches('\u{feff}').parse().ok()?;
+    let json = serde_json::to_value(toml).ok()?;
+    let first = &json["mods"][0];
+    let minecraft = first["modId"]
+        .as_str()
+        .and_then(|id| json["dependencies"][id].as_array())
+        .and_then(|deps| deps.iter().find(|d| d["modId"] == "minecraft"));
+    Some(JarInfo {
+        side: (json["clientSideOnly"] == true).then_some(ModSide::Client),
+        name: string(&first["displayName"]),
+        version: first["version"].as_str().map(str::to_string),
+        mc_version: minecraft.and_then(|d| string(&d["versionRange"])),
+    })
 }
 
 /// Fabric Loader accepts raw line breaks inside strings, which serde_json rejects. Outside strings
@@ -81,27 +158,30 @@ fn environment_side(value: &Value, server_name: &str) -> Option<ModSide> {
     }
 }
 
-/// Top-level `clientSideOnly=true` in a `mods.toml`; keys below the first table header belong to that table.
-fn is_client_side_only(toml: &str) -> bool {
-    toml.trim_start_matches('\u{feff}')
-        .lines()
-        .map(|line| line.split('#').next().unwrap_or("").trim())
-        .take_while(|line| !line.starts_with('['))
-        .filter_map(|line| line.split_once('='))
-        .any(|(key, value)| key.trim() == "clientSideOnly" && value.trim() == "true")
+fn read_entry(archive: &mut ZipArchive<File>, name: &str) -> Option<String> {
+    let mut text = String::new();
+    archive.by_name(name).ok()?.take(MAX_METADATA_BYTES).read_to_string(&mut text).ok()?;
+    Some(text)
 }
 
-/// The side the jar itself declares for `loader`: `Both` only when written out, `None` when the jar says
-/// nothing usable (absent field, unreadable archive).
-pub fn read_jar_side(jar: &Path, loader: &str) -> Option<ModSide> {
-    let mut archive = ZipArchive::new(File::open(jar).ok()?).ok()?;
+/// What the file declares to `loader`; empty when the archive or its metadata cannot be read.
+pub fn read_jar_info(jar: &Path, loader: &str) -> JarInfo {
+    let Some(mut archive) = File::open(jar).ok().and_then(|f| ZipArchive::new(f).ok()) else {
+        return JarInfo::default();
+    };
     for kind in Metadata::for_loader(loader) {
-        let Ok(entry) = archive.by_name(kind.file_name()) else { continue };
-        let mut text = String::new();
-        entry.take(MAX_METADATA_BYTES).read_to_string(&mut text).ok()?;
-        return kind.declared_side(&text);
+        let Some(text) = read_entry(&mut archive, kind.file_name()) else { continue };
+        let mut info = kind.parse(&text).unwrap_or_default();
+        // Forge builds usually leave the version to the jar manifest.
+        if info.version.as_deref() == Some("${file.jarVersion}") {
+            info.version = read_entry(&mut archive, "META-INF/MANIFEST.MF").and_then(|manifest| {
+                manifest.lines().find_map(|l| l.strip_prefix("Implementation-Version:").map(|v| v.trim().to_string()))
+            });
+        }
+        info.version = info.version.filter(|v| !v.is_empty() && !v.contains("${"));
+        return info;
     }
-    None
+    JarInfo::default()
 }
 
 /// Modrinth's `client_side` / `server_side` pair. Any value outside the known three is not used.
@@ -135,6 +215,10 @@ mod tests {
     use std::io::Write;
 
     fn side_of(entries: &[(&str, &str)], loader: &str) -> Option<ModSide> {
+        info_of(entries, loader).side
+    }
+
+    fn info_of(entries: &[(&str, &str)], loader: &str) -> JarInfo {
         let path = std::env::temp_dir().join(format!("focusite_mod_side_{}.jar", uuid::Uuid::new_v4()));
         let mut zip = zip::ZipWriter::new(File::create(&path).unwrap());
         for (name, text) in entries {
@@ -142,9 +226,31 @@ mod tests {
             zip.write_all(text.as_bytes()).unwrap();
         }
         zip.finish().unwrap();
-        let side = read_jar_side(&path, loader);
+        let info = read_jar_info(&path, loader);
         std::fs::remove_file(path).unwrap();
-        side
+        info
+    }
+
+    fn info(name: &str, version: &str, mc: &str) -> JarInfo {
+        JarInfo { side: None, name: Some(name.into()), version: Some(version.into()), mc_version: Some(mc.into()) }
+    }
+
+    #[test]
+    fn name_and_versions_per_format() {
+        let fabric = r#"{"name":"A","version":"1.0","depends":{"minecraft":["1.20","1.20.1"]}}"#;
+        assert_eq!(info_of(&[("fabric.mod.json", fabric)], "Fabric"), info("A", "1.0", "1.20 || 1.20.1"));
+
+        let quilt = r#"{"quilt_loader":{"version":"2.0","metadata":{"name":"B"},"depends":["quilt_loader",{"id":"minecraft","versions":">=1.20"}]}}"#;
+        assert_eq!(info_of(&[("quilt.mod.json", quilt)], "Quilt"), info("B", "2.0", ">=1.20"));
+
+        let toml = "[[mods]]\nmodId=\"c\"\ndisplayName=\"C\"\nversion=\"${file.jarVersion}\"\n[[dependencies.c]]\nmodId=\"minecraft\"\nversionRange=\"[1.20.1,1.21)\"\n";
+        let manifest = ("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\r\nImplementation-Version: 3.0\r\n");
+        assert_eq!(info_of(&[("META-INF/mods.toml", toml), manifest], "Forge"), info("C", "3.0", "[1.20.1,1.21)"));
+        assert_eq!(info_of(&[("META-INF/mods.toml", toml)], "Forge").version, None);
+
+        let legacy = r#"[{"name":"D","version":"4.0","mcversion":"1.12.2"}]"#;
+        assert_eq!(info_of(&[("mcmod.info", legacy)], "Forge"), info("D", "4.0", "1.12.2"));
+        assert_eq!(info_of(&[("fabric.mod.json", r#"{"version":"${version}"}"#)], "Fabric"), JarInfo::default());
     }
 
     #[test]
@@ -180,7 +286,7 @@ mod tests {
 
     #[test]
     fn unreadable_jar_declares_nothing() {
-        assert_eq!(read_jar_side(Path::new("missing.jar"), "Fabric"), None);
+        assert_eq!(read_jar_info(Path::new("missing.jar"), "Fabric"), JarInfo::default());
     }
 
     #[test]

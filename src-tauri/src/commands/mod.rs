@@ -83,8 +83,6 @@ pub fn ctx<E: std::fmt::Display>(prefix: &'static str) -> impl Fn(E) -> String {
     move |e| format!("{}：{}", prefix, e)
 }
 
-/// Writes `bytes` to a sibling temp file and renames it over `path`, so a crash never leaves a
-/// truncated file behind.
 /// Version of the launcher's own file formats (instance config, settings, theme packs, export archives).
 /// Raise it only for a change an older launcher would misread. See docs/formats.md.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -117,6 +115,8 @@ pub fn to_versioned_json<T: serde::Serialize>(value: &T) -> serde_json::Result<S
     serde_json::to_string_pretty(&Versioned { schema_version: SCHEMA_VERSION, value })
 }
 
+/// Writes `bytes` to a sibling temp file and renames it over `path`, so a crash never leaves a
+/// truncated file behind.
 pub fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut tmp_name = path
         .file_name()

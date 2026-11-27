@@ -247,7 +247,7 @@ static MOD_COUNTS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMa
     std::sync::LazyLock::new(Default::default);
 
 /// A mod file as the mods tab lists it: `.jar` or `.zip`, optionally disabled with a `.disabled` suffix.
-fn is_mod_file(name: &str) -> bool {
+pub(super) fn is_mod_file(name: &str) -> bool {
     let name = name.strip_suffix(".disabled").unwrap_or(name);
     name.ends_with(".jar") || name.ends_with(".zip")
 }
@@ -600,7 +600,7 @@ pub async fn create_instance(
             let icon_file = inst_dir.join("icon.png");
             match image::load_from_memory(&bytes) {
                 Ok(img) => {
-                    let _ = img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3).save(&icon_file);
+                    let _ = img.resize_to_fill(256, 256, image::imageops::FilterType::Lanczos3).save(&icon_file);
                 }
                 Err(_) => {
                     let _ = fs::write(&icon_file, &bytes);
@@ -928,7 +928,7 @@ fn set_instance_icon_from_file_blocking(
         .decode()
         .map_err(|e| format!("E_IMAGE_DECODE_FAILED: {}", e))?;
 
-    let resized = img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3);
+    let resized = img.resize_to_fill(256, 256, image::imageops::FilterType::Lanczos3);
     let target_icon = inst_dir.join("icon.png");
     resized
         .save(&target_icon)

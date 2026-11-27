@@ -140,8 +140,7 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                               name={mod.filename}
                               enabled={mod.enabled}
                               onToggle={onToggleMod}
-                              side={sides.get(mod.filename)?.side}
-                              sideSource={sides.get(mod.filename)?.source}
+                              info={sides.get(mod.filename)}
                             />
                           ))}
                         </div>
@@ -211,8 +210,7 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                             name={mod.filename}
                             enabled={mod.enabled}
                             onToggle={onToggleMod}
-                            side={sides.get(mod.filename)?.side}
-                            sideSource={sides.get(mod.filename)?.source}
+                            info={sides.get(mod.filename)}
                           />
                         ))}
                       </div>

@@ -1,14 +1,15 @@
 // Built-in instance icons: 128x128 PNGs rendered from vanilla textures (see src/assets/instance_icons).
-import grass from "@/assets/instance_icons/grass.png";
-import craftingTable from "@/assets/instance_icons/crafting_table.png";
-import furnace from "@/assets/instance_icons/furnace.png";
-import diamond from "@/assets/instance_icons/diamond.png";
-import redstone from "@/assets/instance_icons/redstone.png";
-import creeper from "@/assets/instance_icons/creeper.png";
-import tnt from "@/assets/instance_icons/tnt.png";
-import bookshelf from "@/assets/instance_icons/bookshelf.png";
-import enderChest from "@/assets/instance_icons/ender_chest.png";
-import sword from "@/assets/instance_icons/sword.png";
+// `no-inline`: Vite would turn the small ones into data: URLs, which the app's CSP does not let fetch() read.
+import grass from "@/assets/instance_icons/grass.png?no-inline";
+import craftingTable from "@/assets/instance_icons/crafting_table.png?no-inline";
+import furnace from "@/assets/instance_icons/furnace.png?no-inline";
+import diamond from "@/assets/instance_icons/diamond.png?no-inline";
+import redstone from "@/assets/instance_icons/redstone.png?no-inline";
+import creeper from "@/assets/instance_icons/creeper.png?no-inline";
+import tnt from "@/assets/instance_icons/tnt.png?no-inline";
+import bookshelf from "@/assets/instance_icons/bookshelf.png?no-inline";
+import enderChest from "@/assets/instance_icons/ender_chest.png?no-inline";
+import sword from "@/assets/instance_icons/sword.png?no-inline";
 
 const ICONS = {
   grass,

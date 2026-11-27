@@ -15,6 +15,10 @@ export type ModSide = "client" | "server" | "both" | "unknown";
 
 export interface ModSideInfo {
   filename: string;
+  /** Declared by the mod file itself; null when it does not say. */
+  name: string | null;
+  version: string | null;
+  mcVersion: string | null;
   side: ModSide;
   /** Null when the side is unknown. */
   source: "jar" | "modrinth" | null;

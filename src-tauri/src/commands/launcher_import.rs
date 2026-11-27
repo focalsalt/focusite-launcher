@@ -434,7 +434,7 @@ fn copy_assets(found: &Detected, inst_dir: &Path, cfg: &mut InstanceDiskConfig) 
             .ok()
             .and_then(|r| r.with_guessed_format().ok())
             .and_then(|r| r.decode().ok())
-            .map(|img| img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3))
+            .map(|img| img.resize_to_fill(256, 256, image::imageops::FilterType::Lanczos3))
             .is_some_and(|img| img.save(inst_dir.join("icon.png")).is_ok());
         if saved {
             cfg.icon_source = Some("import".into());

@@ -1,4 +1,4 @@
-//! Labels each mod of an instance as client, server or both: jar metadata first, then Modrinth by file hash.
+//! Describes each mod of an instance: name and versions from the file; side from the file, then Modrinth by hash.
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -6,19 +6,23 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
 
-use focusite_core::mod_side::{modrinth_side, read_jar_side, resolve_side, ModSide, SideSource};
+use focusite_core::mod_side::{modrinth_side, read_jar_info, resolve_side, JarInfo, ModSide, SideSource};
 use focusite_modpacks::workshop::MODRINTH_API_BASE;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
-use super::instance::{get_instances_dir, read_instance_config, validate_safe_id};
+use super::instance::{get_instances_dir, is_mod_file, read_instance_config, validate_safe_id};
 
 /// Keeps the `ids` query of one project request well within URL limits.
 const BATCH: usize = 100;
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModSideEntry {
     pub filename: String,
+    pub name: Option<String>,
+    pub version: Option<String>,
+    pub mc_version: Option<String>,
     pub side: ModSide,
     pub source: Option<SideSource>,
 }
@@ -33,7 +37,7 @@ pub struct ModSidesDto {
 
 #[derive(Clone)]
 struct Scanned {
-    jar: Option<ModSide>,
+    info: JarInfo,
     /// Only computed when Modrinth still has a say.
     sha1: Option<String>,
 }
@@ -61,10 +65,16 @@ fn scan_jar(path: PathBuf, loader: &str) -> Scanned {
     if let Some(hit) = SCANS.lock().ok().and_then(|c| c.get(&key).cloned()) {
         return hit;
     }
-    let jar = read_jar_side(&path, loader);
-    // A single-sided declaration is final, so such a file is neither hashed nor sent anywhere.
-    let sha1 = if matches!(jar, Some(ModSide::Client | ModSide::Server)) { None } else { file_sha1(&path).ok() };
-    let scanned = Scanned { jar, sha1 };
+    let mut info = read_jar_info(&path, loader);
+    // `.zip` mods get no side label, and a single-sided declaration is final: neither is hashed or sent anywhere.
+    let name = path.to_string_lossy();
+    let is_jar = name.strip_suffix(".disabled").unwrap_or(&name).ends_with(".jar");
+    if !is_jar {
+        info.side = None;
+    }
+    let final_side = matches!(info.side, Some(ModSide::Client | ModSide::Server));
+    let sha1 = if is_jar && !final_side { file_sha1(&path).ok() } else { None };
+    let scanned = Scanned { info, sha1 };
     if let Ok(mut cache) = SCANS.lock() {
         cache.insert(key, scanned.clone());
     }
@@ -136,9 +146,7 @@ pub async fn get_mod_sides(instance_id: String) -> Result<ModSidesDto, String> {
             .filter(|e| e.path().is_file())
             .filter_map(|e| {
                 let filename = e.file_name().to_string_lossy().to_string();
-                // `.zip` mods carry no side metadata and stay unknown.
-                let is_jar = filename.strip_suffix(".disabled").unwrap_or(&filename).ends_with(".jar");
-                is_jar.then(|| (filename, scan_jar(e.path(), &loader)))
+                is_mod_file(&filename).then(|| (filename, scan_jar(e.path(), &loader)))
             })
             .collect::<Vec<_>>())
     })
@@ -169,8 +177,9 @@ pub async fn get_mod_sides(instance_id: String) -> Result<ModSidesDto, String> {
         .into_iter()
         .map(|(filename, s)| {
             let remote = s.sha1.as_ref().and_then(|h| cache.get(h).copied().flatten());
-            let (side, source) = resolve_side(s.jar, remote);
-            ModSideEntry { filename, side, source }
+            let JarInfo { side, name, version, mc_version } = s.info;
+            let (side, source) = resolve_side(side, remote);
+            ModSideEntry { filename, name, version, mc_version, side, source }
         })
         .collect();
     Ok(ModSidesDto { mods, modrinth_failed })
