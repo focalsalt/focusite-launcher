@@ -32,7 +32,7 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
           initial={false}
           animate={{ x: checked ? 16 : 0 }}
           transition={SPRING_TOGGLE}
-          className="pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm"
+          className="pointer-events-none block h-3.5 w-3.5 rounded-full bg-on-solid shadow-sm"
         />
       </button>
     );

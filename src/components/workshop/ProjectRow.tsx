@@ -45,7 +45,7 @@ export const ProjectRow = React.memo(({ project, active, checked, onSelect }: Pr
         className="h-14 w-14 shrink-0 rounded-xl border border-white/10 bg-white/5 object-cover"
       />
     ) : (
-      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/40">
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-400">
         <Package className="h-6 w-6" />
       </div>
     )}

@@ -3,7 +3,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "@/lib/tauri";
 
+/** Values a newly created instance starts with; unset fields keep the built-in defaults. */
+export interface InstanceDefaults {
+  minMemoryMb?: number;
+  maxMemoryMb?: number;
+  javaPath?: string;
+  customJvmArgs?: string[];
+}
+
 export interface LauncherSettingsDto {
+  instanceDefaults?: InstanceDefaults;
   enableBmclapiMirror: boolean;
   curseforgeApiKey?: string | null;
   soundEnabled: boolean;
@@ -53,6 +62,7 @@ export const settingsService = {
     /** Empty string resets to the default folder. */
     instancesDir?: string;
     locationEnabled?: boolean;
+    instanceDefaults?: InstanceDefaults;
   }): Promise<LauncherSettingsDto> {
     const notify = () => {
       if (params.locationEnabled !== undefined) window.dispatchEvent(new Event(LOCATION_SETTING_EVENT));
@@ -64,6 +74,7 @@ export const settingsService = {
         soundEnabled: params.soundEnabled ?? null,
         instancesDir: params.instancesDir ?? null,
         locationEnabled: params.locationEnabled ?? null,
+        instanceDefaults: params.instanceDefaults ?? null,
       });
       notify();
       return saved;
@@ -78,6 +89,7 @@ export const settingsService = {
       soundEnabled: params.soundEnabled ?? current.soundEnabled,
       instancesDir: params.instancesDir !== undefined ? params.instancesDir || null : current.instancesDir,
       locationEnabled: params.locationEnabled ?? current.locationEnabled,
+      instanceDefaults: params.instanceDefaults ?? current.instanceDefaults,
     };
     localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(updated));
     notify();

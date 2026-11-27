@@ -383,7 +383,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
         <form onSubmit={handleStartImport} className="flex h-[min(86vh,780px)] flex-col select-none">
           <DialogHeader className="flex h-16 shrink-0 flex-row items-center justify-between gap-4 border-b border-white/10 px-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-tr from-brand to-brand-dark text-white shadow-md shadow-brand/20">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-tr from-brand to-brand-dark text-on-solid shadow-md shadow-brand/20">
                 <FolderDown className="h-5 w-5" />
               </div>
               <div>
@@ -451,8 +451,8 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                         {t.importPack.inspecting}
                       </div>
                     ) : inspectError ? (
-                      <div className="flex items-start gap-2 text-red-300">
-                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                      <div className="flex items-start gap-2 text-danger-300">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger-400" />
                         <span className="leading-relaxed">{inspectError}</span>
                       </div>
                     ) : (
@@ -472,7 +472,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                             {inspection.folderName !== inspection.name && ` · ${t.importPack.willCreateAs(inspection.folderName)}`}
                           </p>
                           {inspection.large && (
-                            <p className="flex items-start gap-1.5 text-2xs text-amber-300">
+                            <p className="flex items-start gap-1.5 text-2xs text-warning-300">
                               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
                               {t.importPack.largeNote(formatBytes(inspection.sizeBytes))}
                             </p>
@@ -486,7 +486,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                             </p>
                           )}
                           {inspection.missingCurseforgeKey && (
-                            <p className="flex items-start gap-1.5 text-2xs text-amber-300">
+                            <p className="flex items-start gap-1.5 text-2xs text-warning-300">
                               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
                               {t.importPack.noCurseforgeKey}
                             </p>
@@ -632,7 +632,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
               placeholder={t.importPack.customNamePlaceholder}
               aria-label={t.importPack.customNameLabel}
               aria-invalid={nameInvalid}
-              className={`h-9 flex-1 bg-black/30 ${nameInvalid ? "border-red-500/60" : ""}`}
+              className={`h-9 flex-1 bg-black/30 ${nameInvalid ? "border-danger-500/60" : ""}`}
             />
             <Button type="button" variant="glass" size="sm" onClick={resetAll} className="shrink-0">
               {t.common.cancel}

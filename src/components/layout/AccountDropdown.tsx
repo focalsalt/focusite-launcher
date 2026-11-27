@@ -108,8 +108,8 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
             <span
               className={`absolute bottom-0 right-0 h-2.5 w-2.5 translate-x-px translate-y-px rounded-full border-2 border-slate-900 ${
                 isVerified
-                  ? "bg-emerald-400"
-                  : "bg-amber-400"
+                  ? "bg-success-400"
+                  : "bg-warning-400"
               }`}
             />
           </div>
@@ -122,15 +122,15 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
             <div className="flex items-center gap-1 text-3xs">
               {isVerified ? (
                 <>
-                  <ShieldCheck className="h-3 w-3 text-emerald-400 shrink-0" />
-                  <span className="text-emerald-400 font-medium truncate">
+                  <ShieldCheck className="h-3 w-3 text-success-400 shrink-0" />
+                  <span className="text-success-400 font-medium truncate">
                     {t.account.premiumReady}
                   </span>
                 </>
               ) : (
                 <>
-                  <ShieldAlert className="h-3 w-3 text-amber-400 shrink-0" />
-                  <span className="text-amber-400 font-medium truncate">
+                  <ShieldAlert className="h-3 w-3 text-warning-400 shrink-0" />
+                  <span className="text-warning-400 font-medium truncate">
                     {activeAccount.accountType === "microsoft" ? t.account.needsRelogin : t.account.offlineMode}
                   </span>
                 </>
@@ -243,7 +243,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
                         onAddAccount();
                         setIsOpen(false);
                       }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-amber-300 hover:bg-white/10 transition-colors"
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-warning-300 hover:bg-white/10 transition-colors"
                     >
                       <RefreshCw className="h-3.5 w-3.5 shrink-0" />
                       <span>{t.account.relogin}</span>
@@ -256,7 +256,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
                       onSignOut(activeAccount.id);
                       setIsOpen(false);
                     }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-rose-400 hover:bg-rose-500/10 transition-colors"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-danger-400 hover:bg-danger-500/10 transition-colors"
                   >
                     <LogOut className="h-3.5 w-3.5 shrink-0" />
                     <span>{t.account.signOut}</span>

@@ -198,7 +198,7 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
       <DialogContent className="max-w-2xl border-white/10 bg-slate-900/98 p-0 text-slate-100 shadow-2xl backdrop-blur-2xl overflow-hidden space-y-0">
         <DialogHeader className="h-16 shrink-0 justify-center border-b border-white/10 px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-tr from-brand to-brand-dark text-white shadow-md shadow-brand/20">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-tr from-brand to-brand-dark text-on-solid shadow-md shadow-brand/20">
               <RefreshCw className="h-5 w-5" />
             </div>
             <div className="min-w-0">
@@ -248,7 +248,7 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
           </div>
 
           {needsLoaderVersion && (
-            <p className="text-2xs text-amber-300">
+            <p className="text-2xs text-warning-300">
               {t.changeVer.needLoaderVersion(targetLoader)}
             </p>
           )}
@@ -260,19 +260,19 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
                 {/* 遷移摘要 */}
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/10 text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-white/60">
+                    <span className="font-mono text-slate-400">
                       {migrationPlan.current_version} ({migrationPlan.current_loader})
                     </span>
-                    <ArrowRight className="w-3.5 h-3.5 text-white/40" />
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                     <span className="font-mono text-brand-light font-semibold">
                       {migrationPlan.target_version} ({migrationPlan.target_loader})
                     </span>
                   </div>
                   <div className="flex gap-2 text-2xs">
-                    <Badge variant="outline" className="border-emerald-500/30 text-emerald-400">
+                    <Badge variant="outline" className="border-success-500/30 text-success-400">
                       {t.changeVer.upgradable(migrationPlan.upgradable.length)}
                     </Badge>
-                    <Badge variant="outline" className="border-red-500/30 text-red-400">
+                    <Badge variant="outline" className="border-danger-500/30 text-danger-400">
                       {t.changeVer.incompatibleCount(migrationPlan.incompatible.length)}
                     </Badge>
                   </div>
@@ -281,22 +281,22 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
                 {/* 可升級模組清單 */}
                 {migrationPlan.upgradable.length > 0 && (
                   <div className="space-y-1.5">
-                    <h4 className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                    <h4 className="text-xs font-semibold text-success-400 flex items-center gap-1.5">
                       <HardDriveDownload className="w-3.5 h-3.5" />
                       {t.changeVer.upgradeListTitle(migrationPlan.upgradable.length)}
                     </h4>
                     {migrationPlan.upgradable.map((item, i) => (
                       <div
                         key={i}
-                        className="p-2 rounded bg-emerald-500/[0.04] border border-emerald-500/20 text-xs flex items-center justify-between"
+                        className="p-2 rounded bg-success-500/[0.04] border border-success-500/20 text-xs flex items-center justify-between"
                       >
                         <span className="text-white/90 font-medium">
                           {item.mod_name}
                         </span>
-                        <div className="flex items-center gap-1.5 text-white/50 text-2xs">
+                        <div className="flex items-center gap-1.5 text-slate-400 text-2xs">
                           <span className="line-through">{item.original_filename}</span>
-                          <ArrowRight className="w-3 h-3 text-emerald-400" />
-                          <span className="text-emerald-300 font-mono">{item.new_filename}</span>
+                          <ArrowRight className="w-3 h-3 text-success-400" />
+                          <span className="text-success-300 font-mono">{item.new_filename}</span>
                         </div>
                       </div>
                     ))}
@@ -306,13 +306,13 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
                 {/* 不相容停用清單 */}
                 {migrationPlan.incompatible.length > 0 && (
                   <div className="space-y-1.5">
-                    <h4 className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+                    <h4 className="text-xs font-semibold text-warning-400 flex items-center gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5" />
                       {t.changeVer.incompatibleListTitle(migrationPlan.incompatible.length)}
                     </h4>
-                    <div className="p-2.5 rounded bg-amber-500/[0.04] border border-amber-500/20 text-xs space-y-1">
+                    <div className="p-2.5 rounded bg-warning-500/[0.04] border border-warning-500/20 text-xs space-y-1">
                       {migrationPlan.incompatible.map((filename, i) => (
-                        <p key={i} className="text-amber-200/80 font-mono text-2xs">
+                        <p key={i} className="text-warning-200/80 font-mono text-2xs">
                           • {filename}
                         </p>
                       ))}
@@ -338,7 +338,7 @@ export const ChangeVersionLoaderDialog: React.FC<ChangeVersionLoaderDialogProps>
             size="sm"
             onClick={handleApply}
             disabled={isPlanning || isMigrating || needsLoaderVersion}
-            className="bg-brand hover:bg-brand-light text-white"
+            className="bg-brand hover:bg-brand-hover text-on-solid"
           >
             {isMigrating || isPlanning ? (
               <>

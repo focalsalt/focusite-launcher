@@ -114,7 +114,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
               {t.installPlan.title}
             </DialogTitle>
           </div>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-slate-400">
             {t.installPlan.desc}
           </p>
         </DialogHeader>
@@ -138,7 +138,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
 
             {/* 主要安裝項目 */}
             <div className="space-y-2">
-              <h3 className="text-xs font-medium text-white/60 uppercase tracking-wider flex items-center gap-1.5">
+              <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-brand-light" />
                 {t.installPlan.primaryItems(plan.primary_items.length)}
               </h3>
@@ -152,7 +152,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
                       <span className="font-medium text-white truncate max-w-xs">
                         {item.name || item.filename}
                       </span>
-                      <span className="text-xs text-white/40 font-mono truncate max-w-[150px]">
+                      <span className="text-xs text-slate-400 font-mono truncate max-w-[150px]">
                         {item.filename}
                       </span>
                     </div>
@@ -162,7 +162,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
                           <CheckCircle2 className="w-3 h-3 mr-1" /> {t.installPlan.exists}
                         </Badge>
                       ) : (
-                        <span className="text-xs font-mono text-white/50">
+                        <span className="text-xs font-mono text-slate-400">
                           {formatBytes(item.size)}
                         </span>
                       )}
@@ -175,7 +175,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
             {/* 必要相依項目 */}
             {plan.required_dependencies.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-xs font-medium text-white/60 uppercase tracking-wider flex items-center gap-1.5">
+                <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Download className="w-3.5 h-3.5 text-brand-light" />
                   {t.installPlan.requiredDeps(plan.required_dependencies.length)}
                 </h3>
@@ -190,7 +190,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
                         <span className="text-white/90 truncate font-medium max-w-xs">
                           {dep.name || dep.filename}
                         </span>
-                        <span className="text-xs text-white/40 font-mono truncate max-w-[150px]">
+                        <span className="text-xs text-slate-400 font-mono truncate max-w-[150px]">
                           {dep.filename}
                         </span>
                       </div>
@@ -214,7 +214,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
             {/* 可選推薦相依項目 */}
             {plan.optional_dependencies.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-xs font-medium text-white/60 uppercase tracking-wider flex items-center gap-1.5">
+                <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <HardDrive className="w-3.5 h-3.5 text-purple-400" />
                   {t.installPlan.optionalDeps}
                 </h3>
@@ -264,7 +264,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
         </ScrollArea>
 
         <DialogFooter className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-white/60">
+          <div className="flex items-center gap-2 text-xs text-slate-400">
             <span>{t.installPlan.estimatedSize}</span>
             <span className="font-mono font-semibold text-brand-light">
               {formatBytes(totalSize)}
@@ -285,7 +285,7 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
               size="sm"
               onClick={handleConfirm}
               disabled={isInstalling}
-              className="bg-brand hover:bg-brand-light text-white font-medium"
+              className="bg-brand hover:bg-brand-hover text-on-solid font-medium"
             >
               {isInstalling ? t.workshop.installing : t.installPlan.confirmDownload}
             </Button>

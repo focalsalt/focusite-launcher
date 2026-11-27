@@ -91,7 +91,9 @@ export const InstanceIconDialog: React.FC<InstanceIconDialogProps> = ({
           {/* Upload from disk, with the current icon */}
           <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5">
             <div className="flex items-center gap-3">
-              <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-brand to-brand-dark text-white shadow-md border border-white/20 overflow-hidden">
+              <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-on-solid overflow-hidden ${
+                instance.hasIcon && instance.iconPath ? "" : "bg-gradient-to-tr from-brand to-brand-dark shadow-md border border-white/20"
+              }`}>
                 {instance.hasIcon && instance.iconPath ? (
                   <img
                     src={toAssetSrc(instance.iconPath, instance.iconUpdatedAt)}

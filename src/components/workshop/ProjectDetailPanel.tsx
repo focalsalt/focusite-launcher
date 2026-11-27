@@ -100,7 +100,7 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
                 className="h-16 w-16 shrink-0 rounded-xl border border-white/10 bg-white/5 object-cover"
               />
             ) : (
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/40">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-400">
                 <Package className="h-7 w-7" />
               </div>
             )}
@@ -151,7 +151,7 @@ export const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({
               </p>
             )}
             {current && warnGameVersion && !current.game_versions.includes(warnGameVersion) && (
-              <p className="flex items-start gap-1.5 text-2xs leading-relaxed text-amber-300">
+              <p className="flex items-start gap-1.5 text-2xs leading-relaxed text-warning-300">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 {t.workshopWin.versionMismatch(warnGameVersion)}
               </p>

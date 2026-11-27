@@ -73,7 +73,7 @@ export const McLoadingScreen: React.FC<McLoadingScreenProps> = ({ title, variant
 
   return (
     <div
-      className="pointer-events-auto absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-white transition-opacity"
+      className="fc-dark pointer-events-auto absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-white transition-opacity"
       style={{
         fontFamily: MC_FONT_FAMILY,
         textShadow: "2px 2px 0 #3f3f3f",

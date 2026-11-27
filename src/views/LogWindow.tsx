@@ -402,7 +402,7 @@ export const LogWindow: React.FC = () => {
               size="sm"
               variant="destructive"
               onClick={handleKill}
-              className="h-7 text-xs gap-1.5 bg-danger-600 hover:bg-danger-700 text-white font-medium px-2.5"
+              className="h-7 text-xs gap-1.5 bg-danger-600 hover:bg-danger-700 text-on-solid font-medium px-2.5"
             >
               <Square className="h-3 w-3 fill-current" />
               {t.logWin.forceStop}
@@ -420,7 +420,7 @@ export const LogWindow: React.FC = () => {
               onClick={() => setStreamFilter(s)}
               className={`relative px-3 py-1 rounded-lg font-medium transition-colors ${
                 streamFilter === s
-                  ? "text-white"
+                  ? "text-on-solid"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >

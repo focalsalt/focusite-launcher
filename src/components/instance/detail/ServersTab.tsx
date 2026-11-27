@@ -79,7 +79,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                         setNewServerIp("");
                         setIsAddServerOpen(true);
                       }}
-                      className="bg-brand hover:bg-brand-light text-white text-xs h-8 font-medium"
+                      className="bg-brand hover:bg-brand-hover text-on-solid text-xs h-8 font-medium"
                     >
                       <Plus className="h-3.5 w-3.5 mr-1" />
                       {t.servers.add}
@@ -140,11 +140,11 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                                 <h4 className="font-semibold text-white text-sm truncate">
                                   {server.name}
                                 </h4>
-                                <span className="font-mono text-xs text-white/50">{server.ip}</span>
+                                <span className="font-mono text-xs text-slate-400">{server.ip}</span>
                               </div>
-                              <p className="text-xs text-white/40 truncate mt-0.5">
+                              <p className="text-xs text-slate-400 truncate mt-0.5">
                                 {ping ? (
-                                  <span className="text-white/70">{localizeBackendText(ping.motd)}</span>
+                                  <span className="text-slate-300">{localizeBackendText(ping.motd)}</span>
                                 ) : (
                                   t.servers.notPinged
                                 )}
@@ -155,17 +155,17 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                           <div className="flex items-center gap-3 shrink-0">
                             {ping && (
                               <div className="flex items-center gap-2 text-right text-xs">
-                                <span className="text-white/40 font-mono">
+                                <span className="text-slate-400 font-mono">
                                   {ping.online_players}/{ping.max_players}
                                 </span>
                                 <Badge
                                   variant="outline"
                                   className={`text-2xs font-mono ${
                                     ping.latency_ms < 80
-                                      ? "border-emerald-500/40 text-emerald-400"
+                                      ? "border-success-500/40 text-success-400"
                                       : ping.latency_ms < 180
-                                      ? "border-amber-500/40 text-amber-400"
-                                      : "border-red-500/40 text-red-400"
+                                      ? "border-warning-500/40 text-warning-400"
+                                      : "border-danger-500/40 text-danger-400"
                                   }`}
                                 >
                                   {ping.latency_ms} ms
@@ -179,7 +179,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                                 variant="outline"
                                 onClick={handlePing}
                                 disabled={pinging}
-                                className="h-8 border-white/10 text-xs text-white/70 hover:text-white"
+                                className="h-8 border-white/10 text-xs text-slate-300 hover:text-white"
                               >
                                 <Activity className={`w-3.5 h-3.5 mr-1 ${pinging ? "animate-spin" : ""}`} />
                                 Ping
@@ -190,9 +190,9 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                               size="sm"
                               onClick={() => onLaunch(instance.id, "multiplayer", server.ip)}
                               disabled={isLaunching || isRunning}
-                              className="bg-brand hover:bg-brand-light text-white font-medium h-8 text-xs px-3 shadow-sm shadow-brand/30"
+                              className="bg-brand hover:bg-brand-hover text-on-solid font-medium h-8 text-xs px-3 shadow-sm shadow-brand/30"
                             >
-                              <Play className="w-3.5 h-3.5 mr-1 fill-white" />
+                              <Play className="w-3.5 h-3.5 mr-1 fill-current" />
                               {t.servers.quickPlay}
                             </Button>
 
@@ -205,7 +205,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                                 await instanceService.saveInstanceServers(instance.id, next);
                               }}
                               aria-label={t.servers.removeAttr}
-                              className="h-8 px-2 text-white/40 hover:text-red-400"
+                              className="h-8 px-2 text-slate-400 hover:text-danger-400"
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -227,7 +227,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
             </DialogHeader>
             <div className="space-y-3 py-2 text-xs">
               <div>
-                <label htmlFor="server-name" className="text-white/60 mb-1 block">{t.servers.nameLabel}</label>
+                <label htmlFor="server-name" className="text-slate-400 mb-1 block">{t.servers.nameLabel}</label>
                 <Input id="server-name"
                   value={newServerName}
                   onChange={(e) => setNewServerName(e.target.value)}
@@ -236,7 +236,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                 />
               </div>
               <div>
-                <label htmlFor="server-address" className="text-white/60 mb-1 block">{t.servers.addressLabel}</label>
+                <label htmlFor="server-address" className="text-slate-400 mb-1 block">{t.servers.addressLabel}</label>
                 <Input id="server-address"
                   value={newServerIp}
                   onChange={(e) => setNewServerIp(e.target.value)}
@@ -263,7 +263,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                   await instanceService.saveInstanceServers(instance.id, next);
                   setIsAddServerOpen(false);
                 }}
-                className="bg-brand hover:bg-brand-light text-white text-xs"
+                className="bg-brand hover:bg-brand-hover text-on-solid text-xs"
               >
                 {t.servers.addToList}
               </Button>

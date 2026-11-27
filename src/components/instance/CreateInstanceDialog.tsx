@@ -237,7 +237,7 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
           {/* 1. 彈窗頂部固定標題列 */}
           <DialogHeader className="h-16 px-6 border-b border-white/10 flex items-left justify-center shrink-0">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-brand to-brand-dark text-white shadow-md shadow-brand/20 border border-white/10">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-brand to-brand-dark text-on-solid shadow-md shadow-brand/20 border border-white/10">
                 <Box className="h-5 w-5" />
               </div>
               <div>
@@ -298,7 +298,7 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                             type="button"
                             onClick={handleClearIcon}
                             aria-label={t.create.removeIcon}
-                            className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500/90 text-white shadow hover:bg-red-600 transition-colors"
+                            className="flex h-4 w-4 items-center justify-center rounded-full bg-danger-500/90 text-on-solid shadow hover:bg-danger-600 transition-colors"
                           >
                             <X className="h-2.5 w-2.5" />
                           </button>
@@ -360,7 +360,7 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                             type="button"
                             onClick={handleClearJar}
                             aria-label={t.create.removeJar}
-                            className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
+                            className="p-1 rounded-lg text-slate-400 hover:text-danger-400 hover:bg-danger-500/10"
                           >
                             <X className="h-4 w-4" />
                           </button>
@@ -412,7 +412,7 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
               size="sm"
               type="submit"
               disabled={isSubmitting || (selectedLoader !== "Custom" && !selectedVersion)}
-              className="gap-1.5 bg-brand hover:bg-brand-hover text-white font-semibold text-xs px-4"
+              className="gap-1.5 bg-brand hover:bg-brand-hover text-on-solid font-semibold text-xs px-4"
             >
               {isSubmitting ? (
                 <>

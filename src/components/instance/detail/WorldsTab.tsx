@@ -146,7 +146,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                                 className="h-12 w-12 rounded-lg object-cover bg-black/40 border border-white/10 shrink-0"
                               />
                             ) : (
-                              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-brand-light shrink-0">
+                              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-success-500/10 border border-success-500/20 text-brand-light shrink-0">
                                 <HardDrive className="h-6 w-6" />
                               </div>
                             )}
@@ -160,18 +160,18 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                                   variant="outline"
                                   className={`text-3xs py-0 px-1.5 ${
                                     world.is_hardcore
-                                      ? "border-red-500/40 text-red-400"
-                                      : "border-emerald-500/30 text-emerald-400"
+                                      ? "border-danger-500/40 text-danger-400"
+                                      : "border-success-500/30 text-success-400"
                                   }`}
                                 >
                                   {gameModeText}
                                 </Badge>
                               </div>
-                              <p className="text-xs text-white/40 font-mono mt-0.5 truncate">
+                              <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">
                                 {world.folder_name} • {world.version_name}
                               </p>
-                              <p className="text-2xs text-white/50 mt-1">
-                                {t.worlds.seedLabel}<span className="font-mono text-white/70">{world.seed}</span> • {t.worlds.playedLabel}{lastPlayedStr}
+                              <p className="text-2xs text-slate-400 mt-1">
+                                {t.worlds.seedLabel}<span className="font-mono text-slate-300">{world.seed}</span> • {t.worlds.playedLabel}{lastPlayedStr}
                               </p>
                             </div>
                           </div>
@@ -186,7 +186,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                                     setRenameWorldTarget(world);
                                     setNewWorldName(world.name);
                                   }}
-                                  className="h-7 px-2 text-white/60 hover:text-white"
+                                  className="h-7 px-2 text-slate-400 hover:text-white"
                                 >
                                   <Pencil className="w-3.5 h-3.5 mr-1" />
                                   {t.worlds.rename}
@@ -215,7 +215,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                                       toast(t.errors.backupFailed(toUserMessage(err)), "error");
                                     }
                                   }}
-                                  className="h-7 px-2 text-white/60 hover:text-white"
+                                  className="h-7 px-2 text-slate-400 hover:text-white"
                                 >
                                   <Archive className="w-3.5 h-3.5 mr-1" />
                                   {t.worlds.backup}
@@ -228,7 +228,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => setDatapackWorld(world)}
-                                    className="h-7 px-2 text-white/60 hover:text-white"
+                                    className="h-7 px-2 text-slate-400 hover:text-white"
                                   >
                                     <Package className="w-3.5 h-3.5 mr-1" />
                                     {t.worlds.datapack}
@@ -241,7 +241,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => setDeleteTarget(world)}
-                                  className="h-7 px-2 text-white/60 hover:text-red-400"
+                                  className="h-7 px-2 text-slate-400 hover:text-danger-400"
                                   aria-label={t.worlds.deleteAttr}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -253,9 +253,9 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                               size="sm"
                               onClick={() => onLaunch(instance.id, "singleplayer", world.folder_name)}
                               disabled={isLaunching || isRunning}
-                              className="bg-brand hover:bg-brand-light text-white font-medium h-7 px-3 text-xs shadow-sm shadow-brand/30"
+                              className="bg-brand hover:bg-brand-hover text-on-solid font-medium h-7 px-3 text-xs shadow-sm shadow-brand/30"
                             >
-                              <Play className="w-3.5 h-3.5 mr-1 fill-white" />
+                              <Play className="w-3.5 h-3.5 mr-1 fill-current" />
                               {t.worlds.quickPlay}
                             </Button>
                           </div>
@@ -278,7 +278,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
               </DialogTitle>
             </DialogHeader>
             <div className="py-2">
-              <label htmlFor="world-name" className="text-xs text-white/60 mb-1.5 block">{t.worlds.nameLabel}</label>
+              <label htmlFor="world-name" className="text-xs text-slate-400 mb-1.5 block">{t.worlds.nameLabel}</label>
               <Input id="world-name"
                 value={newWorldName}
                 onChange={(e) => setNewWorldName(e.target.value)}
@@ -298,7 +298,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                   setRenameWorldTarget(null);
                   refreshInstanceFiles();
                 }}
-                className="bg-brand hover:bg-brand-light text-white text-xs"
+                className="bg-brand hover:bg-brand-hover text-on-solid text-xs"
               >
                 {t.worlds.confirmRename}
               </Button>
@@ -310,7 +310,7 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
         <DialogContent className="max-w-md bg-slate-900 border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold flex items-center gap-2">
-              <Trash2 className="w-4 h-4 text-rose-400" />
+              <Trash2 className="w-4 h-4 text-danger-400" />
               {t.worlds.deleteDialogTitle}
             </DialogTitle>
           </DialogHeader>

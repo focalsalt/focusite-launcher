@@ -10,11 +10,26 @@
   --fc-primary: #3c8527;
   --fc-highlight: #52a43a;
   /* Derived from the primary color unless a pack sets them */
-  --fc-primary-hover: color-mix(in srgb, var(--fc-primary) 82%, white);
+  --fc-primary-hover: color-mix(in srgb, var(--fc-primary) 85%, black);
   --fc-primary-dark: color-mix(in srgb, var(--fc-primary) 70%, black);
 
   /* Window background */
   --fc-bg-canvas: #0a0f1d;
+
+  /* Shape and type: --fc-radius is the size of `rounded-xl`; the other steps scale from it */
+  --fc-radius: 0.75rem;
+  --fc-font-sans: Inter, "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+
+/*
+ * Palette. `.fc-dark` marks a surface that stays dark under a light theme (3D scenes, artwork banners).
+ */
+:root,
+:root[data-scheme="light"] .fc-dark {
+  --fc-color-scheme: dark;
+  /* Ink backs every `white` utility (text, hairlines, tints); well backs `black` (recessed fields) */
+  --fc-ink: #ffffff;
+  --fc-well: #000000;
 
   /* Neutral scale: backs every slate-* utility (surfaces, borders, text) */
   --fc-neutral-50: oklch(98.4% 0.003 247.858);
@@ -49,14 +64,33 @@
   --fc-danger-700: oklch(51.4% 0.222 16.935);
   --fc-danger-900: oklch(41% 0.159 10.272);
   --fc-danger-950: oklch(27.1% 0.105 12.094);
+}
 
-  /* Shape and type: --fc-radius is the size of `rounded-xl`; the other steps scale from it */
-  --fc-radius: 0.75rem;
-  --fc-font-sans: Inter, "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+:root[data-scheme="light"] .fc-dark {
+  --fc-highlight: color-mix(in srgb, var(--fc-primary) 60%, #ffffff);
+  color: var(--fc-neutral-100);
+}
+
+/* Tailwind hues without a token of their own, darkened so they stay readable on light surfaces */
+:root[data-scheme="light"] {
+  --color-sky-400: oklch(50% 0.134 242.749);
+  --color-purple-300: oklch(43.8% 0.218 303.724);
+  --color-purple-400: oklch(49.6% 0.265 301.924);
+}
+
+/* The ambient glow behind the workspace is for dark surfaces; on light ones it turns grey. */
+:root[data-scheme="light"] .fc-glow {
+  opacity: 0.35;
 }
 
 /* Tailwind utilities backed by the tokens: bg-brand, text-brand-light, bg-slate-900, rounded-xl ... */
 @theme inline {
+  --color-white: var(--fc-ink);
+  --color-black: var(--fc-well);
+  /* Fixed in every theme: text on solid colours, and backdrops over content or images */
+  --color-on-solid: #ffffff;
+  --color-scrim: #000000;
+
   --color-brand: var(--fc-primary);
   --color-brand-hover: var(--fc-primary-hover);
   --color-brand-light: var(--fc-highlight);

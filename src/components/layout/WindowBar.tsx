@@ -144,7 +144,7 @@ export const WindowBar: React.FC<WindowBarProps> = ({
               }
             }}
             aria-label={t.windowBar.close}
-            className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-rose-600 hover:text-white transition-colors"
+            className="flex h-9 w-11 items-center justify-center text-slate-400 hover:bg-danger-600 hover:text-on-solid transition-colors"
           >
             <X className="h-3.5 w-3.5" />
           </button>

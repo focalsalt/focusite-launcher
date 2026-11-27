@@ -41,7 +41,7 @@ export const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
           className="absolute inset-0 h-full w-full opacity-0 cursor-pointer"
         />
         <div
-          className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 rounded-full border-2 border-white bg-brand-light shadow-md shadow-brand/50 transition-all duration-75"
+          className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 rounded-full border-2 border-on-solid bg-brand-light shadow-md shadow-brand/50 transition-all duration-75"
           style={{ left: `${percentage}%` }}
         />
       </div>

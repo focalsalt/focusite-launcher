@@ -104,7 +104,7 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
                       <button
                         type="button"
                         onClick={() => setCurrentScreenshotIdx((cur) => (cur > 0 ? cur - 1 : screenshots.length - 1))}
-                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white shadow-2xl backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
+                        className="fc-dark flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-scrim/60 text-on-solid shadow-2xl backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
                         aria-label={t.shots.prev}
                       >
                         <ChevronLeft className="h-5 w-5" />
@@ -114,7 +114,7 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
                       <button
                         type="button"
                         onClick={() => setCurrentScreenshotIdx((cur) => (cur < screenshots.length - 1 ? cur + 1 : 0))}
-                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white shadow-2xl backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
+                        className="fc-dark flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-scrim/60 text-on-solid shadow-2xl backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
                         aria-label={t.shots.next}
                       >
                         <ChevronRight className="h-5 w-5" />
@@ -156,8 +156,8 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
                             <ShotImage src={toAssetSrc(sc.path)} alt={sc.name} />
 
                             {isCurrent && (
-                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent p-4">
-                                <p className="truncate text-sm font-bold text-white drop-shadow">{sc.name}</p>
+                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-scrim/95 via-scrim/60 to-transparent p-4">
+                                <p className="truncate text-sm font-bold text-on-solid drop-shadow">{sc.name}</p>
                               </div>
                             )}
                           </motion.div>

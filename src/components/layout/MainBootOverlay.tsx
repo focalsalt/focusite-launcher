@@ -22,7 +22,7 @@ export const MainBootOverlay: React.FC = () => {
       className="absolute inset-0 top-9 z-50 flex flex-col items-center justify-center bg-canvas select-none overflow-hidden"
       style={{
         background:
-          "radial-gradient(circle at 50% 45%, rgba(60, 133, 39, 0.18) 0%, rgba(10, 15, 29, 0.98) 72%)",
+          "radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--fc-primary) 18%, var(--fc-bg-canvas)) 0%, var(--fc-bg-canvas) 72%)",
       }}
       data-tauri-drag-region
     >
@@ -43,7 +43,7 @@ export const MainBootOverlay: React.FC = () => {
           >
             <polygon points="256,72 416,164 256,256 96,164" fill="var(--fc-highlight)" />
             <polygon points="96,164 256,256 256,440 96,348" fill="var(--fc-primary)" />
-            <polygon points="256,256 416,164 416,348 256,440" fill="#2E6B1D" />
+            <polygon points="256,256 416,164 416,348 256,440" fill="var(--fc-primary-dark)" />
             <g
               stroke="#FFFFFF"
               strokeWidth="16"

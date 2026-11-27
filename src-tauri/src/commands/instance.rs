@@ -78,6 +78,9 @@ pub struct InstanceSummaryDto {
     pub custom_jvm_args: Option<Vec<String>>,
     #[serde(rename = "environmentVars", default, skip_serializing_if = "Option::is_none")]
     pub environment_vars: Option<std::collections::HashMap<String, String>>,
+    /// Extra arguments for the game itself, appended after the launcher's own.
+    #[serde(rename = "customGameArgs", default, skip_serializing_if = "Option::is_none")]
+    pub custom_game_args: Option<Vec<String>>,
     /// Unix epoch milliseconds of the last launch, if the instance was ever launched.
     #[serde(rename = "lastPlayedAt", default, skip_serializing_if = "Option::is_none")]
     pub last_played_at: Option<i64>,
@@ -128,6 +131,9 @@ pub struct InstanceDiskConfig {
     pub custom_jvm_args: Option<Vec<String>>,
     #[serde(rename = "environmentVars", default, skip_serializing_if = "Option::is_none")]
     pub environment_vars: Option<std::collections::HashMap<String, String>>,
+    /// Extra arguments for the game itself, appended after the launcher's own.
+    #[serde(rename = "customGameArgs", default, skip_serializing_if = "Option::is_none")]
+    pub custom_game_args: Option<Vec<String>>,
     /// Accumulated time the game process has run, in milliseconds.
     #[serde(rename = "totalPlayTimeMs", default)]
     pub total_play_time_ms: u64,
@@ -294,8 +300,16 @@ pub fn new_disk_config(id: &str, name: &str, version: &str, loader: &str, loader
         group: None,
         custom_jvm_args: None,
         environment_vars: None,
+        custom_game_args: None,
         total_play_time_ms: 0,
     }
+}
+
+/// `new_disk_config` plus the user's global defaults; for every instance the launcher creates.
+pub fn new_instance_config(id: &str, name: &str, version: &str, loader: &str, loader_version: Option<String>) -> InstanceDiskConfig {
+    let mut config = new_disk_config(id, name, version, loader, loader_version);
+    super::settings::instance_defaults().apply_to(&mut config);
+    config
 }
 
 pub fn convert_disk_config_to_summary(folder: &Path, config: InstanceDiskConfig) -> InstanceSummaryDto {
@@ -348,6 +362,7 @@ pub fn convert_disk_config_to_summary(folder: &Path, config: InstanceDiskConfig)
         group: config.group,
         custom_jvm_args: config.custom_jvm_args,
         environment_vars: config.environment_vars,
+        custom_game_args: config.custom_game_args,
         last_played_at: config.last_played_at,
         total_play_time_ms: config.total_play_time_ms,
         capabilities,
@@ -364,12 +379,13 @@ pub fn read_instance_config(instance_dir: &Path) -> Result<InstanceDiskConfig, S
         return Err("E_INSTANCE_NOT_SETUP".into());
     }
     let content = fs::read_to_string(&cfg_path).map_err(|e| format!("E_INSTANCE_CONFIG_UNREADABLE: {}", e))?;
+    super::check_schema(&content, INSTANCE_CONFIG_FILE)?;
     serde_json::from_str(&content).map_err(|e| format!("E_INSTANCE_CONFIG_CORRUPT: {}: {}", INSTANCE_CONFIG_FILE, e))
 }
 
 pub fn write_instance_config(instance_dir: &Path, config: &InstanceDiskConfig) -> Result<(), String> {
     let cfg_path = instance_dir.join(INSTANCE_CONFIG_FILE);
-    let json = serde_json::to_string_pretty(config).map_err(|e| format!("E_INSTANCE_CONFIG_WRITE_FAILED: {}: {}", INSTANCE_CONFIG_FILE, e))?;
+    let json = super::to_versioned_json(config).map_err(|e| format!("E_INSTANCE_CONFIG_WRITE_FAILED: {}: {}", INSTANCE_CONFIG_FILE, e))?;
     super::atomic_write(&cfg_path, json.as_bytes())
         .map_err(|e| format!("E_INSTANCE_CONFIG_WRITE_FAILED: {}: {}", INSTANCE_CONFIG_FILE, e))
 }
@@ -577,7 +593,7 @@ pub async fn create_instance(
             fs::create_dir_all(game_dir.join(sub)).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}: {}", sub, e))?;
         }
 
-        let mut config = new_disk_config(&folder_name, &name, &version, &loader, loader_version);
+        let mut config = new_instance_config(&folder_name, &name, &version, &loader, loader_version);
         config.description = description;
 
         if let Some(bytes) = icon_bytes.filter(|b| !b.is_empty()) {
@@ -624,8 +640,11 @@ pub fn setup_instance(
     }
     let _cfg_lock = lock_configs();
     // A config that cannot be read counts as missing, so a damaged one can be replaced here.
-    if read_instance_config(&inst_dir).is_ok() {
-        return Err("E_INSTANCE_ALREADY_SETUP".into());
+    match read_instance_config(&inst_dir) {
+        Ok(_) => return Err("E_INSTANCE_ALREADY_SETUP".into()),
+        // Not damaged, only newer: setting it up again would destroy it.
+        Err(e) if e.starts_with("E_SCHEMA_TOO_NEW") => return Err(e),
+        Err(_) => {}
     }
     if version.trim().is_empty() {
         return Err("E_VERSION_REQUIRED".into());
@@ -636,7 +655,7 @@ pub fn setup_instance(
     for sub in ["mods", "saves", "logs", "resourcepacks", "shaderpacks", "screenshots"] {
         fs::create_dir_all(game_dir.join(sub)).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}: {}", sub, e))?;
     }
-    let config = new_disk_config(&instance_id, &name, version.trim(), &loader, loader_version);
+    let config = new_instance_config(&instance_id, &name, version.trim(), &loader, loader_version);
     write_instance_config(&inst_dir, &config)?;
     Ok(convert_disk_config_to_summary(&inst_dir, config))
 }
@@ -711,6 +730,7 @@ pub fn update_instance_settings(
     group: Option<String>,
     custom_jvm_args: Option<Vec<String>>,
     environment_vars: Option<std::collections::HashMap<String, String>>,
+    custom_game_args: Option<Vec<String>>,
 ) -> Result<InstanceSummaryDto, String> {
     validate_safe_id(&instance_id)?;
     if is_instance_busy(&instance_id) {
@@ -766,6 +786,9 @@ pub fn update_instance_settings(
     }
     if let Some(envs) = environment_vars {
         config.environment_vars = Some(envs);
+    }
+    if let Some(game_args) = custom_game_args {
+        config.custom_game_args = Some(game_args);
     }
 
     write_instance_config(&inst_dir, &config)?;
@@ -1403,6 +1426,7 @@ mod tests {
             group: None,
             custom_jvm_args: None,
             environment_vars: None,
+            custom_game_args: None,
             total_play_time_ms: 0,
         };
         fs::write(inst_dir.join(INSTANCE_CONFIG_FILE), serde_json::to_string(&cfg).unwrap()).unwrap();
@@ -1414,6 +1438,20 @@ mod tests {
 
         // Cleanup
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn newer_instance_config_is_refused_not_overwritten() {
+        let dir = std::env::temp_dir().join(format!("focusite_test_schema_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        write_instance_config(&dir, &new_disk_config("x", "X", "1.20.1", "Vanilla", None)).unwrap();
+        let written = fs::read_to_string(dir.join(INSTANCE_CONFIG_FILE)).unwrap();
+        assert!(written.contains("\"schemaVersion\": 1"));
+        assert!(read_instance_config(&dir).is_ok());
+
+        fs::write(dir.join(INSTANCE_CONFIG_FILE), written.replace("\"schemaVersion\": 1", "\"schemaVersion\": 2")).unwrap();
+        assert!(read_instance_config(&dir).unwrap_err().starts_with("E_SCHEMA_TOO_NEW"));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1450,6 +1488,7 @@ mod tests {
             group: None,
             custom_jvm_args: None,
             environment_vars: None,
+            custom_game_args: None,
             total_play_time_ms: 0,
         };
         write_instance_config(&inst_dir, &cfg).unwrap();

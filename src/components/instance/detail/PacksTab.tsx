@@ -92,7 +92,7 @@ export const PacksTab: React.FC<PacksTabProps> = ({ instance, caps, resourcepack
                           ref={pill.register("packs")}
                           onClick={() => handleResourceShaderChange("packs")}
                           className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${resourceShaderTab === "packs"
-                            ? "text-white"
+                            ? "text-on-solid"
                             : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
@@ -107,7 +107,7 @@ export const PacksTab: React.FC<PacksTabProps> = ({ instance, caps, resourcepack
                           ref={pill.register("shaders")}
                           onClick={() => handleResourceShaderChange("shaders")}
                           className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${resourceShaderTab === "shaders"
-                            ? "text-white"
+                            ? "text-on-solid"
                             : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
@@ -124,7 +124,7 @@ export const PacksTab: React.FC<PacksTabProps> = ({ instance, caps, resourcepack
                             <Button
                               size="sm"
                               onClick={() => workshopService.openWorkshopWindow(instance.id, "resourcepack")}
-                              className="text-xs h-8 bg-brand hover:bg-brand-light text-white font-medium"
+                              className="text-xs h-8 bg-brand hover:bg-brand-hover text-on-solid font-medium"
                             >
                               <ShoppingBag className="h-3.5 w-3.5 mr-1.5" />
                               {t.packs.openResourceWorkshop}
@@ -149,7 +149,7 @@ export const PacksTab: React.FC<PacksTabProps> = ({ instance, caps, resourcepack
                             <Button
                               size="sm"
                               onClick={() => workshopService.openWorkshopWindow(instance.id, "shader")}
-                              className="text-xs h-8 bg-brand hover:bg-brand-light text-white font-medium"
+                              className="text-xs h-8 bg-brand hover:bg-brand-hover text-on-solid font-medium"
                             >
                               <ShoppingBag className="h-3.5 w-3.5 mr-1.5" />
                               {t.packs.openShaderWorkshop}

@@ -5,6 +5,7 @@ pub mod instance;
 pub mod installer;
 pub mod java;
 pub mod manifest;
+pub mod mod_side;
 pub mod process;
 pub mod server;
 pub mod slp;

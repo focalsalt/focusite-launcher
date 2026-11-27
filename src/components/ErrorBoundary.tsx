@@ -46,7 +46,7 @@ const DefaultFallback: React.FC<{ error: Error; reset: () => void }> = ({ error,
   return (
     <div className="flex h-screen w-screen flex-col gap-3 overflow-auto bg-slate-950 p-4 text-slate-200">
       <div className="flex items-center gap-2">
-        <span className="text-sm font-bold text-rose-300">{text.title}</span>
+        <span className="text-sm font-bold text-danger-300">{text.title}</span>
         <button
           type="button"
           onClick={reset}
@@ -62,7 +62,7 @@ const DefaultFallback: React.FC<{ error: Error; reset: () => void }> = ({ error,
           {text.reload}
         </button>
       </div>
-      <pre className="whitespace-pre-wrap break-words font-mono text-xs text-rose-300">
+      <pre className="whitespace-pre-wrap break-words font-mono text-xs text-danger-300">
         {`${error.name}: ${error.message}\n\n${error.stack ?? ""}`}
       </pre>
     </div>

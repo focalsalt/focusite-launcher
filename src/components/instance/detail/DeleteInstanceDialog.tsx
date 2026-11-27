@@ -73,7 +73,7 @@ export const DeleteInstanceDialog: React.FC<DeleteInstanceDialogProps> = ({
             size="sm"
             disabled={isDeleting}
             onClick={handleDeleteInstance}
-            className="gap-2 bg-danger-600 hover:bg-danger-700 text-white font-bold text-xs"
+            className="gap-2 bg-danger-600 hover:bg-danger-700 text-on-solid font-bold text-xs"
           >
             {isDeleting ? t.inst.deleting : t.inst.confirmDelete}
           </Button>

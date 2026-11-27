@@ -13,10 +13,11 @@ const MAX_TOKENS: usize = 64;
 const MAX_PACK_BYTES: usize = 64 * 1024;
 
 /// Packs written to the themes folder on first run. Existing files are never overwritten.
-const DEFAULT_PACKS: [(&str, &str); 3] = [
+const DEFAULT_PACKS: [(&str, &str); 4] = [
     ("minecraft", include_str!("../../themes/minecraft.focusite-theme.json")),
     ("focusite", include_str!("../../themes/focusite.focusite-theme.json")),
     ("amethyst", include_str!("../../themes/amethyst.focusite-theme.json")),
+    ("light", include_str!("../../themes/light.focusite-theme.json")),
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +75,7 @@ fn parse_pack(json: &str) -> Result<ThemePack, String> {
     if json.len() > MAX_PACK_BYTES {
         return Err("E_THEME_TOO_LARGE".into());
     }
+    super::check_schema(json, "theme pack")?;
     let pack: ThemePack = serde_json::from_str(json).map_err(|e| format!("E_THEME_INVALID: {e}"))?;
     validate_pack(&pack)?;
     Ok(pack)
@@ -164,9 +166,21 @@ pub fn import_theme_pack(json_content: String) -> Result<ThemePack, String> {
         n += 1;
     }
     pack.id = id.clone();
-    let body = serde_json::to_string_pretty(&pack).map_err(|e| e.to_string())?;
+    let body = super::to_versioned_json(&pack).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(format!("{id}{PACK_SUFFIX}")), body).map_err(|e| format!("E_THEME_SAVE_FAILED: {e}"))?;
     Ok(pack)
+}
+
+/// Validates a pack and writes it to a file the user picked, so it can be shared.
+#[tauri::command]
+pub fn export_theme_pack(dest_path: String, json_content: String) -> Result<(), String> {
+    let pack = parse_pack(&json_content)?;
+    let dest = PathBuf::from(dest_path);
+    if !dest.extension().is_some_and(|e| e.eq_ignore_ascii_case("json")) {
+        return Err("E_THEME_NOT_JSON".into());
+    }
+    let body = super::to_versioned_json(&pack).map_err(|e| e.to_string())?;
+    super::atomic_write(&dest, body.as_bytes()).map_err(|e| format!("E_THEME_SAVE_FAILED: {e}"))
 }
 
 #[tauri::command]
@@ -230,7 +244,7 @@ mod tests {
         ensure_default_packs(&dir).unwrap();
         let packs = read_packs(&dir);
 
-        assert_eq!(packs.len(), 3, "3 defaults (one user-edited); the broken file is skipped");
+        assert_eq!(packs.len(), DEFAULT_PACKS.len(), "defaults only (one user-edited); the broken file is skipped");
         let mine = packs.iter().find(|p| p.id == "minecraft").unwrap();
         assert_eq!(mine.name, "Mine");
         let _ = std::fs::remove_dir_all(&dir);
@@ -242,7 +256,7 @@ mod tests {
         ensure_default_packs(&dir).unwrap();
         std::fs::remove_file(dir.join(format!("amethyst{PACK_SUFFIX}"))).unwrap();
         ensure_default_packs(&dir).unwrap();
-        assert_eq!(read_packs(&dir).len(), 3);
+        assert_eq!(read_packs(&dir).len(), DEFAULT_PACKS.len());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

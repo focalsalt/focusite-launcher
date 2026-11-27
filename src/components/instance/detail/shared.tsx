@@ -3,6 +3,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
+import { CircleHelp, Monitor, MonitorSmartphone, Server } from "lucide-react";
+import type { ModSide, ModSideInfo } from "@/services/instanceService";
 import type { PackFileInfo } from "@/types/navigation";
 import { useI18n } from "@/i18n";
 
@@ -77,33 +80,45 @@ export function PackItem({
   );
 }
 
+const SIDE_ICONS = { client: Monitor, server: Server, both: MonitorSmartphone, unknown: CircleHelp };
+
 export const ModItem = React.memo(function ModItem({
   name,
-  version,
-  desc,
   enabled,
   onToggle,
+  side,
+  sideSource,
 }: {
   name: string;
-  version: string;
-  desc: string;
   enabled: boolean;
   /** Pass a stable function, or the row re-renders with its list. */
   onToggle: (name: string, checked: boolean) => void;
+  /** Omitted while the side is not known yet, and for lists without side labels. */
+  side?: ModSide;
+  sideSource?: ModSideInfo["source"];
 }) {
   const { t } = useI18n();
+  const SideIcon = side && SIDE_ICONS[side];
+  const sideHint = sideSource ? t.mods.sideSources[sideSource] : t.mods.sideUnknownHint;
   return (
-    <div className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.03] p-3 text-xs">
-      <div>
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-slate-200">{name}</span>
-          <Badge variant="outline" className="text-3xs py-0 px-1.5 border-white/10 text-slate-300">
-            {version}
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 text-xs">
+      <span className="min-w-0 break-all font-semibold text-slate-200">{name}</span>
+      <div className="flex shrink-0 items-center gap-2.5">
+        {side && SideIcon && (
+          <Badge
+            variant="outline"
+            title={sideHint}
+            className={cn(
+              "gap-1 text-3xs py-0 px-1.5 border-white/10 text-slate-300",
+              side === "unknown" && "border-dashed text-slate-400",
+            )}
+          >
+            <SideIcon className="h-3 w-3" aria-hidden="true" />
+            <span className="sr-only">{t.mods.sideLabel}</span>
+            {t.mods.sideNames[side]}
+            <span className="sr-only"> ({sideHint})</span>
           </Badge>
-        </div>
-        <p className="text-2xs text-slate-400 mt-0.5">{desc}</p>
-      </div>
-      <div className="flex items-center gap-2.5">
+        )}
         <span className="text-2xs text-slate-400 font-medium">
           {enabled ? t.common.enabled : t.common.disabled}
         </span>
@@ -131,3 +146,18 @@ export function TabSkeleton({ ref }: { ref?: React.Ref<HTMLDivElement> }) {
     </div>
   );
 }
+
+/** Heading row of a settings-tab section. */
+export const SectionHeading: React.FC<{ icon: React.ReactNode; title: string; description?: string }> = ({
+  icon,
+  title,
+  description,
+}) => (
+  <div className="space-y-1">
+    <div className="flex items-center gap-2">
+      {icon}
+      <h3 className="text-sm font-bold text-white">{title}</h3>
+    </div>
+    {description && <p className="text-xs text-slate-400">{description}</p>}
+  </div>
+);

@@ -124,7 +124,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
     >
       {label}
       {count ? (
-        <span className="rounded-full bg-brand px-1.5 text-3xs font-bold leading-4 text-white">{count}</span>
+        <span className="rounded-full bg-brand px-1.5 text-3xs font-bold leading-4 text-on-solid">{count}</span>
       ) : null}
     </button>
   );
@@ -144,7 +144,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
         animate={{ x: open ? 0 : DRAWER_WIDTH }}
         transition={SPRING}
         style={{ width: DRAWER_WIDTH, top: WINDOW_BAR_HEIGHT }}
-        className="fixed bottom-0 right-0 z-40 flex flex-col border-l border-white/10 bg-slate-950/85 backdrop-blur-md"
+        className="fixed bottom-0 right-0 z-40 flex flex-col border-l border-white/10 bg-slate-950/95 backdrop-blur-md"
         aria-hidden={!open}
         inert={!open}
         aria-label={t.party.friendsCount(friends.length)}
@@ -191,7 +191,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                 size="sm"
                 disabled={busy || !name.trim()}
                 aria-label={t.party.addFriend}
-                className="h-8 w-8 bg-brand p-0 text-white hover:bg-brand-light"
+                className="h-8 w-8 bg-brand p-0 text-on-solid hover:bg-brand-hover"
               >
                 <UserPlus className="h-4 w-4" />
               </Button>
@@ -202,7 +202,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-1 p-2">
           {loading && friends.length === 0 && <p className="p-2 text-xs text-slate-400">{t.party.loading}</p>}
-          {error && <p className="p-2 text-xs text-rose-300">{t.party.loadFailed(error)}</p>}
+          {error && <p className="p-2 text-xs text-danger-300">{t.party.loadFailed(error)}</p>}
 
           {tab === "friends" && (
             <>
@@ -218,14 +218,14 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                     )}
                     {sharePresence && isOnline(f.status) && (
                       <Tip label={statusText(f.status)} className="absolute -bottom-0.5 -right-0.5">
-                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-950" />
+                        <span className="h-2.5 w-2.5 rounded-full bg-success-400 ring-2 ring-slate-950" />
                       </Tip>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-slate-100">{f.name}</p>
                     {sharePresence && (
-                      <p className={`text-2xs ${isOnline(f.status) ? "text-emerald-400" : "text-slate-400"}`}>
+                      <p className={`text-2xs ${isOnline(f.status) ? "text-success-400" : "text-slate-400"}`}>
                         {statusText(f.status)}
                       </p>
                     )}
@@ -279,7 +279,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                         disabled={busy}
                         onClick={() => void onAct({ kind: "add", profileId: r.profileId })}
                         aria-label={t.party.accept}
-                        className={`${ICON_BUTTON} text-emerald-400`}
+                        className={`${ICON_BUTTON} text-success-400`}
                       >
                         <Check className="h-4 w-4" />
                       </button>
@@ -290,7 +290,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                         disabled={busy}
                         onClick={() => void onAct({ kind: "remove", profileId: r.profileId })}
                         aria-label={t.party.decline}
-                        className={`${ICON_BUTTON} text-rose-300`}
+                        className={`${ICON_BUTTON} text-danger-300`}
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -337,11 +337,11 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
           onClick={onToggle}
           aria-label={open ? t.party.hideFriends : t.party.showFriends}
           style={{ bottom: 24, pointerEvents: visible ? undefined : "none" }}
-          className="fixed right-0 z-50 flex h-11 w-10 items-center justify-center rounded-l-xl border border-r-0 border-brand-light/40 bg-brand text-white shadow-lg shadow-black/40 transition-colors hover:bg-brand-hover"
+          className="fixed right-0 z-50 flex h-11 w-10 items-center justify-center rounded-l-xl border border-r-0 border-brand-light/40 bg-brand text-on-solid shadow-lg shadow-scrim/40 transition-colors hover:bg-brand-hover"
         >
           {open ? <X className="h-5 w-5" /> : <Users className="h-5 w-5" />}
           {!open && pending > 0 && (
-            <span className="absolute -left-2 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-center text-3xs font-bold leading-4 text-white">
+            <span className="absolute -left-2 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-center text-3xs font-bold leading-4 text-on-solid">
               {badge}
             </span>
           )}

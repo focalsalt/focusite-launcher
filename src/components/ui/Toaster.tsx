@@ -47,7 +47,7 @@ export const Toaster: React.FC = () => {
               type="button"
               onClick={() => navigator.clipboard?.writeText(item.message).catch(() => {})}
               aria-label="Copy"
-              className="text-white/40 hover:text-white"
+              className="text-slate-400 hover:text-white"
             >
               <Copy className="h-3.5 w-3.5" />
             </button>
@@ -56,7 +56,7 @@ export const Toaster: React.FC = () => {
             type="button"
             onClick={() => dismissToast(item.id)}
             aria-label={t.common.closeNotice}
-            className="text-white/40 hover:text-white"
+            className="text-slate-400 hover:text-white"
           >
             <X className="h-3.5 w-3.5" />
           </button>

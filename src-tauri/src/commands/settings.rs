@@ -6,6 +6,60 @@ use std::path::PathBuf;
 
 pub const CURSEFORGE_KEY_ACCOUNT: &str = "__curseforge_api_key__";
 
+/// Values a newly created instance starts with; unset ones keep the built-in defaults.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceDefaults {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_memory_mb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_memory_mb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub java_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_jvm_args: Option<Vec<String>>,
+}
+
+impl InstanceDefaults {
+    /// Drops empty values so "cleared in the UI" and "never set" are the same.
+    fn normalized(mut self) -> Self {
+        self.min_memory_mb = self.min_memory_mb.filter(|m| *m > 0).map(|m| m.clamp(256, 1_048_576));
+        self.max_memory_mb = self.max_memory_mb.filter(|m| *m > 0).map(|m| m.clamp(512, 1_048_576));
+        self.java_path = self.java_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+        self.custom_jvm_args = self.custom_jvm_args.filter(|a| !a.is_empty());
+        self
+    }
+
+    pub fn apply_to(&self, config: &mut super::instance::InstanceDiskConfig) {
+        if let Some(max) = self.max_memory_mb {
+            config.max_memory_mb = max;
+        }
+        if let Some(min) = self.min_memory_mb {
+            config.min_memory_mb = min;
+        }
+        // Java refuses to start when the initial heap exceeds the maximum.
+        config.min_memory_mb = config.min_memory_mb.min(config.max_memory_mb);
+        if self.java_path.is_some() {
+            config.java_path = self.java_path.clone();
+        }
+        if self.custom_jvm_args.is_some() {
+            config.custom_jvm_args = self.custom_jvm_args.clone();
+        }
+    }
+}
+
+/// The saved global defaults; tests never read the developer's own settings.
+pub fn instance_defaults() -> InstanceDefaults {
+    if cfg!(test) {
+        return InstanceDefaults::default();
+    }
+    std::fs::read_to_string(get_settings_path())
+        .ok()
+        .and_then(|c| serde_json::from_str::<DiskSettings>(&c).ok())
+        .map(|d| d.instance_defaults)
+        .unwrap_or_default()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LauncherSettings {
     #[serde(rename = "enableBmclapiMirror", default)]
@@ -24,6 +78,9 @@ pub struct LauncherSettings {
     /// Camp location for real sunrise/sunset and weather; `None` means the user was not asked yet.
     #[serde(rename = "locationEnabled", default, skip_serializing_if = "Option::is_none")]
     pub location_enabled: Option<bool>,
+
+    #[serde(rename = "instanceDefaults", default)]
+    pub instance_defaults: InstanceDefaults,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +96,9 @@ struct DiskSettings {
 
     #[serde(rename = "locationEnabled", default, skip_serializing_if = "Option::is_none")]
     pub location_enabled: Option<bool>,
+
+    #[serde(rename = "instanceDefaults", default)]
+    pub instance_defaults: InstanceDefaults,
 }
 
 fn default_true() -> bool {
@@ -53,6 +113,7 @@ impl Default for LauncherSettings {
             sound_enabled: true,
             instances_dir: None,
             location_enabled: None,
+            instance_defaults: InstanceDefaults::default(),
         }
     }
 }
@@ -140,6 +201,7 @@ pub fn load_settings_from_disk() -> LauncherSettings {
         sound_enabled: true,
         instances_dir: None,
         location_enabled: None,
+        instance_defaults: InstanceDefaults::default(),
     };
 
     if path.is_file() {
@@ -179,11 +241,16 @@ pub fn load_settings_from_disk() -> LauncherSettings {
         sound_enabled: disk_settings.sound_enabled,
         instances_dir: disk_settings.instances_dir,
         location_enabled: disk_settings.location_enabled,
+        instance_defaults: disk_settings.instance_defaults,
     }
 }
 
 fn save_disk_settings_internal(path: &std::path::Path, disk_settings: &DiskSettings) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(disk_settings)
+    // Never overwrite settings a newer launcher wrote: the fields unknown here would be lost.
+    if let Ok(existing) = std::fs::read_to_string(path) {
+        super::check_schema(&existing, "settings.json")?;
+    }
+    let json = super::to_versioned_json(disk_settings)
         .map_err(|e| format!("E_SETTINGS_SAVE_FAILED: {}", e))?;
 
     super::atomic_write(path, json.as_bytes())
@@ -197,6 +264,7 @@ pub fn save_settings_to_disk(settings: &LauncherSettings) -> Result<(), String> 
         sound_enabled: settings.sound_enabled,
         instances_dir: settings.instances_dir.clone(),
         location_enabled: settings.location_enabled,
+        instance_defaults: settings.instance_defaults.clone(),
     };
     save_disk_settings_internal(&path, &disk_settings)
 }
@@ -215,10 +283,11 @@ pub async fn update_launcher_settings(
     sound_enabled: Option<bool>,
     instances_dir: Option<String>,
     location_enabled: Option<bool>,
+    instance_defaults: Option<InstanceDefaults>,
 ) -> Result<LauncherSettings, String> {
     let changes_dir = instances_dir.is_some();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        update_settings_blocking(enable_bmclapi_mirror, curseforge_api_key, sound_enabled, instances_dir, location_enabled)
+        update_settings_blocking(enable_bmclapi_mirror, curseforge_api_key, sound_enabled, instances_dir, location_enabled, instance_defaults)
     })
     .await
     .map_err(|e| format!("E_SETTINGS_UPDATE_FAILED: {e}"))?;
@@ -246,8 +315,12 @@ fn update_settings_blocking(
     sound_enabled: Option<bool>,
     instances_dir: Option<String>,
     location_enabled: Option<bool>,
+    instance_defaults: Option<InstanceDefaults>,
 ) -> Result<LauncherSettings, String> {
     let mut current = load_settings_from_disk();
+    if let Some(defaults) = instance_defaults {
+        current.instance_defaults = defaults.normalized();
+    }
     if location_enabled.is_some() {
         current.location_enabled = location_enabled;
     }
@@ -428,6 +501,7 @@ mod tests {
             sound_enabled: false,
             instances_dir: None,
             location_enabled: Some(true),
+            instance_defaults: InstanceDefaults::default(),
         };
         let serialized = serde_json::to_string(&settings).unwrap();
         assert!(serialized.contains("enableBmclapiMirror"));
@@ -455,9 +529,33 @@ mod tests {
             sound_enabled: false,
             instances_dir: None,
             location_enabled: None,
+            instance_defaults: InstanceDefaults::default(),
         };
         let serialized = serde_json::to_string(&disk).unwrap();
         assert!(!serialized.contains("curseforgeApiKey"));
         assert!(!serialized.contains("curseforge_api_key"));
+    }
+}
+
+#[cfg(test)]
+mod defaults_tests {
+    use super::*;
+
+    #[test]
+    fn instance_defaults_apply_only_what_is_set() {
+        let mut config = super::super::instance::new_disk_config("i", "n", "1.21", "Vanilla", None);
+        InstanceDefaults::default().apply_to(&mut config);
+        assert_eq!((config.min_memory_mb, config.max_memory_mb, &config.java_path), (1024, 4096, &None));
+
+        let defaults = InstanceDefaults {
+            min_memory_mb: Some(8192),
+            max_memory_mb: Some(2048),
+            java_path: Some("  ".into()),
+            custom_jvm_args: Some(Vec::new()),
+        }
+        .normalized();
+        assert_eq!((&defaults.java_path, &defaults.custom_jvm_args), (&None, &None));
+        defaults.apply_to(&mut config);
+        assert_eq!((config.min_memory_mb, config.max_memory_mb), (2048, 2048));
     }
 }

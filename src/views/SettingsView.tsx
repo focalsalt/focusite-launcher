@@ -22,6 +22,7 @@ import {
   Users,
   UserRound,
   Network,
+  SlidersHorizontal,
 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +33,8 @@ import { settingsService } from "@/services/settingsService";
 import { useI18n } from "@/i18n";
 import { themeService, ThemePack, DEFAULT_THEME_ID } from "@/services/themeService";
 import { ThemeSwatches } from "@/components/settings/ThemeSwatches";
+import { ThemeCustomizer } from "@/components/settings/ThemeCustomizer";
+import { InstanceDefaultsForm } from "@/components/settings/InstanceDefaultsForm";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { updaterService, UpdateCheckResult } from "@/services/updaterService";
 import { REPLAY_ONBOARDING_EVENT } from "@/components/onboarding/OnboardingGuide";
@@ -228,7 +231,7 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
               size="sm"
               onClick={() => setLanguage(code)}
               className={`h-8 text-xs ${
-                language === code ? "bg-brand hover:bg-brand-light text-white" : "border-white/10 text-slate-300"
+                language === code ? "bg-brand hover:bg-brand-hover text-on-solid" : "border-white/10 text-slate-300"
               }`}
             >
               {label}
@@ -276,6 +279,11 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
           </Select>
         </div>
 
+        <ThemeCustomizer
+          themeId={activeThemeId}
+          themeName={themes.find((p) => p.id === activeThemeId)?.name ?? activeThemeId}
+        />
+
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportThemeFile} className="hidden" />
@@ -289,7 +297,7 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
               <RefreshCw className="h-3.5 w-3.5" /> {t.settings.reloadThemes}
             </Button>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleResetTheme} className="h-8 text-xs gap-1 text-slate-400 hover:text-rose-400">
+          <Button variant="ghost" size="sm" onClick={handleResetTheme} className="h-8 text-xs gap-1 text-slate-400 hover:text-danger-400">
             <RotateCcw className="h-3.5 w-3.5" /> {t.settings.restoreDefaultTheme}
           </Button>
         </div>
@@ -312,9 +320,19 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
 
       <Divider />
 
+      <SettingsSection
+        icon={<SlidersHorizontal className="h-4 w-4 text-brand-light" />}
+        title={t.settings.defaultsTitle}
+        description={t.settings.defaultsDesc}
+      >
+        <InstanceDefaultsForm />
+      </SettingsSection>
+
+      <Divider />
+
       {/* 6. About and updates */}
       <SettingsSection
-        icon={<ShieldCheck className="h-4 w-4 text-emerald-400" />}
+        icon={<ShieldCheck className="h-4 w-4 text-success-400" />}
         title={t.settings.licenseUpdates}
       >
         <div className="flex items-center justify-between rounded-xl border border-white/5 bg-black/20 p-3 text-xs">
@@ -332,13 +350,13 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
         </div>
 
         {updateResult?.available && (
-          <div className="space-y-3 rounded-xl border border-emerald-500/30 bg-emerald-950/40 p-4 text-xs">
+          <div className="space-y-3 rounded-xl border border-success-500/30 bg-success-950/40 p-4 text-xs">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 font-semibold text-emerald-300">
+              <div className="flex items-center gap-2 font-semibold text-success-300">
                 <Sparkles className="h-4 w-4 text-brand-light" />
                 <span>{t.settings.newVersion(updateResult.version ?? "")}</span>
               </div>
-              <Button size="sm" onClick={handleInstallUpdate} disabled={isInstallingUpdate} className="h-8 bg-brand text-xs text-white hover:bg-brand-light">
+              <Button size="sm" onClick={handleInstallUpdate} disabled={isInstallingUpdate} className="h-8 bg-brand text-xs text-on-solid hover:bg-brand-hover">
                 {isInstallingUpdate ? t.settings.updating(updateProgress) : t.settings.downloadAndUpdate}
               </Button>
             </div>
@@ -396,7 +414,7 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
             </div>
             <p className="max-w-3xl text-2xs leading-relaxed text-slate-400">{t.settings.mirrorDesc}</p>
             {enableBmclapi && (
-              <div className="flex items-center gap-1.5 pt-1 text-2xs text-amber-400/90">
+              <div className="flex items-center gap-1.5 pt-1 text-2xs text-warning-400/90">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 <span>{t.settings.mirrorWarning}</span>
               </div>
@@ -430,7 +448,7 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
                 {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            <Button type="submit" size="sm" className="h-9 bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-light">
+            <Button type="submit" size="sm" className="h-9 bg-brand px-4 text-xs font-semibold text-on-solid hover:bg-brand-hover">
               {t.settings.saveKey}
             </Button>
           </div>
@@ -451,7 +469,7 @@ const PrivacyDetail: React.FC<{ access: string; sent: string; risk: string }> = 
   const rows: [string, string, string][] = [
     [t.privacy.accessLabel, access, "text-slate-300"],
     [t.privacy.sentLabel, sent, "text-slate-300"],
-    [t.privacy.riskLabel, risk, "text-amber-300/90"],
+    [t.privacy.riskLabel, risk, "text-warning-300/90"],
   ];
   return (
     <dl className="space-y-1.5 rounded-xl border border-white/5 bg-black/10 p-3 text-2xs leading-relaxed">

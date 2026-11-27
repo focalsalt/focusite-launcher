@@ -233,7 +233,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                     <div className="absolute top-2.5 left-2.5">
                       <Badge
                         variant="outline"
-                        className="border-black/50 bg-black/75 backdrop-blur-md text-3xs text-white px-2 py-0.5"
+                        className="border-black/50 bg-scrim/75 backdrop-blur-md text-3xs text-on-solid px-2 py-0.5"
                       >
                         {item.category}
                       </Badge>
@@ -328,8 +328,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ subNav, direction: direction
                         variant="outline"
                         className={
                           patch.type === "release"
-                            ? "border-brand-light/50 bg-brand/85 backdrop-blur-md text-3xs text-white px-2 py-0.5"
-                            : "border-white/20 bg-black/75 backdrop-blur-md text-3xs text-slate-300 px-2 py-0.5"
+                            ? "border-brand-light/50 bg-brand/85 backdrop-blur-md text-3xs text-on-solid px-2 py-0.5"
+                            : "border-white/20 bg-scrim/75 backdrop-blur-md text-3xs text-on-solid px-2 py-0.5"
                         }
                       >
                         {patch.type === "release" ? t.common.release : t.common.snapshot}

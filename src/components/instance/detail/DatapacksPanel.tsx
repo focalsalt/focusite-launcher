@@ -58,7 +58,7 @@ export const DatapacksPanel: React.FC<DatapacksPanelProps> = ({ instanceId, worl
       <div className="flex items-center justify-between pb-2 border-b border-white/5">
         <div className="flex items-center gap-3">
           <Tip label={t.worlds.datapackBack}>
-            <Button variant="ghost" size="sm" onClick={onBack} aria-label={t.worlds.datapackBack} className="h-8 w-8 p-0 text-white/70 hover:text-white">
+            <Button variant="ghost" size="sm" onClick={onBack} aria-label={t.worlds.datapackBack} className="h-8 w-8 p-0 text-slate-300 hover:text-white">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Tip>
@@ -96,7 +96,7 @@ export const DatapacksPanel: React.FC<DatapacksPanelProps> = ({ instanceId, worl
                     variant="ghost"
                     onClick={() => setDeleteTarget(p)}
                     aria-label={t.worlds.datapackDelete}
-                    className="h-7 w-7 p-0 text-white/60 hover:text-red-400"
+                    className="h-7 w-7 p-0 text-slate-400 hover:text-danger-400"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
@@ -111,7 +111,7 @@ export const DatapacksPanel: React.FC<DatapacksPanelProps> = ({ instanceId, worl
         <DialogContent className="max-w-md bg-slate-900 border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold flex items-center gap-2">
-              <Trash2 className="w-4 h-4 text-rose-400" />
+              <Trash2 className="w-4 h-4 text-danger-400" />
               {t.worlds.datapackDelete}
             </DialogTitle>
           </DialogHeader>

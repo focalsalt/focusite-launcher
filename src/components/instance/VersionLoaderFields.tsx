@@ -276,7 +276,7 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
                       <div className="flex items-center gap-1.5 truncate">
                         <SelectValue placeholder={t.create.selectLoaderPlaceholder(loader)} />
                         {loaderOptions.find((o) => o.version === loaderVersion)?.isRecommended && (
-                          <Star className="h-3 w-3 fill-amber-400 text-amber-400 shrink-0" />
+                          <Star className="h-3 w-3 fill-warning-400 text-warning-400 shrink-0" />
                         )}
                       </div>
                     )}
@@ -288,8 +288,8 @@ export const VersionLoaderFields: React.FC<VersionLoaderFieldsProps> = ({
                         value={opt.version}
                         extraRight={
                           opt.isRecommended ? (
-                            <div className="flex items-center gap-1 text-3xs text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20 font-medium">
-                              <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                            <div className="flex items-center gap-1 text-3xs text-warning-400 bg-warning-400/10 px-1.5 py-0.5 rounded border border-warning-400/20 font-medium">
+                              <Star className="h-3 w-3 fill-warning-400 text-warning-400" />
                               <span>{t.create.recommended}</span>
                             </div>
                           ) : undefined

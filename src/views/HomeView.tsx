@@ -93,7 +93,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   <Button
                     size="lg"
                     onClick={onCreateInstance}
-                    className="gap-2 bg-gradient-to-r from-brand to-brand-dark hover:from-brand-hover hover:to-brand-dark font-semibold text-white shadow-lg shadow-brand/30"
+                    className="gap-2 bg-gradient-to-r from-brand to-brand-dark hover:from-brand-hover hover:to-brand-dark font-semibold text-on-solid shadow-lg shadow-brand/30"
                   >
                     <Plus className="h-5 w-5" />
                     {t.home.createFirst}

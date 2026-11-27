@@ -98,7 +98,7 @@ export const RenameInstanceDialog: React.FC<RenameInstanceDialogProps> = ({
               <Button
                 type="submit"
                 size="sm"
-                className="bg-brand hover:bg-brand-light text-white text-xs font-semibold"
+                className="bg-brand hover:bg-brand-hover text-on-solid text-xs font-semibold"
               >
                 {t.inst.saveChanges}
               </Button>
@@ -121,7 +121,7 @@ export const RenameInstanceDialog: React.FC<RenameInstanceDialogProps> = ({
                 size="sm"
                 disabled={isRenaming}
                 onClick={() => executeRename(true)}
-                className="bg-brand hover:bg-brand-light text-white text-xs font-semibold"
+                className="bg-brand hover:bg-brand-hover text-on-solid text-xs font-semibold"
               >
                 {isRenaming ? t.inst.renaming : t.inst.syncFolderRename}
               </Button>

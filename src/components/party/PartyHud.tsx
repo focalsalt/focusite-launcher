@@ -13,7 +13,7 @@ import { getAutoShare, setAutoShare } from "@/services/worldShare";
 /** Vanilla HUD text: Minecraft font, white, with the #3f3f3f drop shadow one font pixel down-right. */
 const HUD_FONT = { fontFamily: MC_FONT_FAMILY, textShadow: "2px 2px 0 #3f3f3f" } as const;
 
-const CARD = "pointer-events-auto rounded-xl border border-white/10 bg-slate-950/80 text-slate-100 shadow-lg backdrop-blur-md";
+const CARD = "pointer-events-auto rounded-xl border border-white/10 bg-slate-950/90 text-slate-100 shadow-lg backdrop-blur-md";
 const ICON_BUTTON = "flex h-6 w-6 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40";
 
 /** The team ID with a copy button; shown only while connected. */
@@ -162,19 +162,19 @@ export const PartyChat: React.FC = () => {
     <div className="pointer-events-auto w-[28rem] max-w-full text-white" style={HUD_FONT}>
       <div className="mb-1 max-h-48 space-y-px overflow-y-auto">
         {party.lines.map((line) => (
-          <div key={line.id} className="bg-black/50 px-1 text-lg leading-snug">
+          <div key={line.id} className="bg-scrim/60 px-1 text-lg leading-snug">
             {line.kind === "chat" && (
               <>
-                <span className="text-white/70">&lt;{line.name}&gt;</span> {line.text}
+                <span className="text-slate-300">&lt;{line.name}&gt;</span> {line.text}
               </>
             )}
-            {line.kind === "system" && <span className="text-yellow-200">{systemText(line)}</span>}
+            {line.kind === "system" && <span className="text-warning-200">{systemText(line)}</span>}
             {line.kind === "invite" && (
-              <span className="text-yellow-200">
+              <span className="text-warning-200">
                 {t.party.chatInviteLine(line.invite.fromName)}{" "}
                 <button
                   type="button"
-                  className="text-green-300 hover:underline"
+                  className="text-success-300 hover:underline"
                   onClick={() => {
                     partyService.dismissInvite(line.id);
                     void partyService.join(line.invite.party);
@@ -182,7 +182,7 @@ export const PartyChat: React.FC = () => {
                 >
                   [{t.party.acceptInvite}]
                 </button>{" "}
-                <button type="button" className="text-red-300 hover:underline" onClick={() => partyService.dismissInvite(line.id)}>
+                <button type="button" className="text-danger-300 hover:underline" onClick={() => partyService.dismissInvite(line.id)}>
                   [{t.party.ignoreInvite}]
                 </button>
               </span>
@@ -197,7 +197,7 @@ export const PartyChat: React.FC = () => {
           onChange={(e) => setText(e.target.value.slice(0, 256))}
           placeholder={connected ? t.party.chatPlaceholder : t.party.chatOffline}
           disabled={!connected}
-          className="w-full bg-black/60 px-1 py-0.5 text-lg text-white outline-none placeholder:text-white/40"
+          className="w-full bg-scrim/60 px-1 py-0.5 text-lg text-on-solid outline-none placeholder:text-on-solid/70"
         />
       </form>
     </div>

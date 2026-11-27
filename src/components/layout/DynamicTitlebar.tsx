@@ -111,7 +111,7 @@ export const DynamicTitlebar: React.FC<DynamicTitlebarProps> = ({
             <Button
               size="sm"
               onClick={onCreateInstance}
-              className="gap-1.5 text-xs h-8 rounded-lg bg-brand hover:bg-brand-hover text-white shadow-sm shadow-brand/25"
+              className="gap-1.5 text-xs h-8 rounded-lg bg-brand hover:bg-brand-hover text-on-solid shadow-sm shadow-brand/25"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>{t.shell.createInstance}</span>
@@ -161,7 +161,7 @@ function SubNav<T extends string>({
           type="button"
           onClick={() => onChange(item.id)}
           className={`relative rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-            active === item.id ? "text-white" : "text-slate-400 hover:text-slate-200"
+            active === item.id ? "text-on-solid" : "text-slate-400 hover:text-slate-200"
           }`}
         >
           {item.label}

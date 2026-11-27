@@ -78,6 +78,7 @@ export interface MinecraftInstance {
   group?: string;
   customJvmArgs?: string[];
   environmentVars?: Record<string, string>;
+  customGameArgs?: string[];
   capabilities?: VersionCapabilities;
 }
 

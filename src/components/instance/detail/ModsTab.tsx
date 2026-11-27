@@ -9,6 +9,7 @@ import type { ModFileInfo } from "@/services/instanceService";
 import { FramelessEmptyState, tabContentVariants, ModItem } from "./shared";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
+import { useModSides } from "@/lib/useModSides";
 
 interface ModsTabProps {
   instance: MinecraftInstance;
@@ -25,6 +26,21 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
   const { t } = useI18n();
   const [legacyModTab, setLegacyModTab] = useState<"mods" | "coremods">("mods");
   const pill = useSlidingIndicator(legacyModTab);
+  const sides = useModSides(instance.id, mods);
+  // Always mounted, so screen readers hear the status change inside it.
+  const sideStatus = (
+    <p role="status" className="text-2xs text-slate-400 empty:hidden">
+      {mods.length === 0
+        ? null
+        : sides.isChecking
+          ? t.mods.sideChecking
+          : sides.failed
+            ? t.mods.sideFailed
+            : sides.modrinthFailed
+              ? t.mods.sideModrinthFailed
+              : null}
+    </p>
+  );
   // Stable callbacks for the memoised rows that still call the parent's latest handlers.
   const handlers = useRef({ toggleMod, toggleCoremod });
   handlers.current = { toggleMod, toggleCoremod };
@@ -52,7 +68,7 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                           ref={pill.register("mods")}
                           onClick={() => setLegacyModTab("mods")}
                           className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${legacyModTab === "mods"
-                            ? "text-white"
+                            ? "text-on-solid"
                             : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
@@ -67,7 +83,7 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                           ref={pill.register("coremods")}
                           onClick={() => setLegacyModTab("coremods")}
                           className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${legacyModTab === "coremods"
-                            ? "text-white"
+                            ? "text-on-solid"
                             : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
@@ -107,6 +123,8 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                       {t.mods.legacyNote}
                     </div>
 
+                    {legacyModTab === "mods" && sideStatus}
+
                     {legacyModTab === "mods" ? (
                       mods.length === 0 ? (
                         <FramelessEmptyState
@@ -120,10 +138,10 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                             <ModItem
                               key={mod.filename}
                               name={mod.filename}
-                              version={`${(((mod.sizeBytes ?? mod.size_bytes ?? 0)) / 1024).toFixed(1)} KB`}
-                              desc={mod.enabled ? t.common.enabled : t.mods.disabledSuffix}
                               enabled={mod.enabled}
                               onToggle={onToggleMod}
+                              side={sides.get(mod.filename)?.side}
+                              sideSource={sides.get(mod.filename)?.source}
                             />
                           ))}
                         </div>
@@ -140,8 +158,6 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                           <ModItem
                             key={mod.filename}
                             name={mod.filename}
-                            version={`${(((mod.sizeBytes ?? mod.size_bytes ?? 0)) / 1024).toFixed(1)} KB`}
-                            desc={mod.enabled ? t.mods.enabledCore : t.mods.disabledSuffix}
                             enabled={mod.enabled}
                             onToggle={onToggleCoremod}
                           />
@@ -162,7 +178,7 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                         <Button
                           size="sm"
                           onClick={() => workshopService.openWorkshopWindow(instance.id, "mod")}
-                          className="text-xs h-8 bg-brand hover:bg-brand-light text-white font-medium"
+                          className="text-xs h-8 bg-brand hover:bg-brand-hover text-on-solid font-medium"
                         >
                           <ShoppingBag className="h-3.5 w-3.5 mr-1.5" />
                           {t.mods.openWorkshop}
@@ -179,6 +195,8 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                       </div>
                     </div>
 
+                    {sideStatus}
+
                     {mods.length === 0 ? (
                       <FramelessEmptyState
                         icon={Package}
@@ -191,10 +209,10 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                           <ModItem
                             key={mod.filename}
                             name={mod.filename}
-                            version={`${(((mod.sizeBytes ?? mod.size_bytes ?? 0)) / 1024).toFixed(1)} KB`}
-                            desc={mod.enabled ? t.common.enabled : t.mods.disabledSuffix}
                             enabled={mod.enabled}
                             onToggle={onToggleMod}
+                            side={sides.get(mod.filename)?.side}
+                            sideSource={sides.get(mod.filename)?.source}
                           />
                         ))}
                       </div>

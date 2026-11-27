@@ -3,7 +3,7 @@
   "author": "Focusite Team",
   "description": "Warm orange theme with stone neutrals.",
   "tokens": {
-    "--fc-primary": "#EA580C",
+    "--fc-primary": "#C2410C",
     "--fc-highlight": "#FB923C",
     "--fc-bg-canvas": "#110c09",
     "--fc-neutral-50": "#fafaf9",

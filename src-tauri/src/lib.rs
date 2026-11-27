@@ -284,6 +284,7 @@ pub fn run() {
             commands::instance::toggle_mod_state,
             commands::instance::list_instance_mods,
             commands::instance::list_instance_coremods,
+            commands::mod_side::get_mod_sides,
             commands::instance::toggle_coremod_state,
             commands::instance::list_instance_resourcepacks,
             commands::instance::list_instance_shaderpacks,
@@ -377,6 +378,7 @@ pub fn run() {
             commands::news::news_fetch_archive_page,
             commands::theme::list_themes,
             commands::theme::import_theme_pack,
+            commands::theme::export_theme_pack,
             commands::theme::open_themes_dir,
         ])
         .run(tauri::generate_context!())

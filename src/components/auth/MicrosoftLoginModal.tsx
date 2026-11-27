@@ -67,8 +67,8 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
 
         {errorMessage ? (
           <div className="space-y-4 py-2">
-            <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-950/30 p-3.5 text-xs text-red-200">
-              <AlertCircle className="h-5 w-5 shrink-0 text-red-400" />
+            <div className="flex items-start gap-3 rounded-xl border border-danger-500/30 bg-danger-950/30 p-3.5 text-xs text-danger-200">
+              <AlertCircle className="h-5 w-5 shrink-0 text-danger-400" />
               <div className="space-y-1">
                 <p className="font-semibold">
                   {errorCategory === "missing_config"
@@ -77,7 +77,7 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
                     ? t.auth.codeTimeout
                     : t.auth.connFailed}
                 </p>
-                <p className="leading-relaxed text-red-300/90">{errorMessage}</p>
+                <p className="leading-relaxed text-danger-300/90">{errorMessage}</p>
               </div>
             </div>
 
@@ -89,7 +89,7 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
                 size="sm"
                 onClick={startLoginFlow}
                 disabled={isStarting}
-                className="gap-1.5 bg-brand hover:bg-brand-hover text-white"
+                className="gap-1.5 bg-brand hover:bg-brand-hover text-on-solid"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isStarting ? "animate-spin" : ""}`} />
                 {errorCategory === "expired"
@@ -116,7 +116,7 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
                 <div className="space-y-2 text-center">
                   <span className="text-xs text-slate-400">{t.auth.copyCode}</span>
                   <div className="flex items-center justify-center gap-3">
-                    <span className="font-mono text-2xl font-black tracking-widest text-brand-light bg-black/50 px-4 py-2 rounded-xl border border-brand-light/30">
+                    <span className="font-mono text-2xl font-black tracking-widest text-brand-light bg-scrim/50 px-4 py-2 rounded-xl border border-brand-light/30">
                       {deviceInfo.user_code}
                     </span>
                     <Button
@@ -126,7 +126,7 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
                       className="h-10 w-10 border-white/10 bg-white/5 hover:bg-white/10"
                     >
                       {isCopied ? (
-                        <Check className="h-4 w-4 text-emerald-400" />
+                        <Check className="h-4 w-4 text-success-400" />
                       ) : (
                         <Copy className="h-4 w-4 text-slate-300" />
                       )}

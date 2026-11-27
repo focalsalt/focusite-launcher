@@ -72,7 +72,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
           >
             <div className="space-y-3">
               <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-br from-brand to-brand-dark shadow-xl shadow-brand/20 border border-white/20">
-                <ShieldCheck className="h-9 w-9 text-white" />
+                <ShieldCheck className="h-9 w-9 text-on-solid" />
               </div>
 
               <div className="space-y-1">
@@ -102,7 +102,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                 <Button
                   size="lg"
                   onClick={startLoginFlow}
-                  className="w-full gap-2.5 bg-gradient-to-r from-brand to-brand-dark hover:from-brand-hover hover:to-brand-dark font-semibold text-white shadow-lg shadow-brand/25"
+                  className="w-full gap-2.5 bg-gradient-to-r from-brand to-brand-dark hover:from-brand-hover hover:to-brand-dark font-semibold text-on-solid shadow-lg shadow-brand/25"
                 >
                   <KeyRound className="h-4 w-4" />
                   <span>{t.auth.loginButton}</span>
@@ -149,8 +149,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
               <CardContent className="space-y-4">
                 {errorMessage ? (
                   <div className="space-y-4 py-2">
-                    <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-950/30 p-3.5 text-xs text-red-200">
-                      <AlertCircle className="h-5 w-5 shrink-0 text-red-400" />
+                    <div className="flex items-start gap-3 rounded-xl border border-danger-500/30 bg-danger-950/30 p-3.5 text-xs text-danger-200">
+                      <AlertCircle className="h-5 w-5 shrink-0 text-danger-400" />
                       <div className="space-y-1">
                         <p className="font-semibold">
                           {errorCategory === "missing_config"
@@ -159,7 +159,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                             ? t.auth.codeTimeout
                             : t.auth.connFailed}
                         </p>
-                        <p className="leading-relaxed text-red-300/90">{errorMessage}</p>
+                        <p className="leading-relaxed text-danger-300/90">{errorMessage}</p>
                       </div>
                     </div>
 
@@ -171,7 +171,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                         size="sm"
                         onClick={startLoginFlow}
                         disabled={isStarting}
-                        className="gap-1.5 bg-brand hover:bg-brand-hover text-white"
+                        className="gap-1.5 bg-brand hover:bg-brand-hover text-on-solid"
                       >
                         <RefreshCw className={`h-3.5 w-3.5 ${isStarting ? "animate-spin" : ""}`} />
                         {errorCategory === "expired"
@@ -203,7 +203,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                         <div className="space-y-2 text-center">
                           <span className="text-xs text-slate-400">{t.auth.yourCode}</span>
                           <div className="flex items-center justify-center gap-2">
-                            <span className="font-mono text-2xl font-black tracking-widest text-brand-light bg-black/60 px-4 py-2 rounded-xl border border-brand-light/40 shadow-inner">
+                            <span className="font-mono text-2xl font-black tracking-widest text-brand-light bg-scrim/60 px-4 py-2 rounded-xl border border-brand-light/40 shadow-inner">
                               {deviceInfo.user_code}
                             </span>
                             <Button
@@ -213,7 +213,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                               className="h-10 w-10 border-white/10 bg-white/5 hover:bg-white/10"
                             >
                               {isCopied ? (
-                                <Check className="h-4 w-4 text-emerald-400" />
+                                <Check className="h-4 w-4 text-success-400" />
                               ) : (
                                 <Copy className="h-4 w-4 text-slate-300" />
                               )}
@@ -227,7 +227,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                             <Button
                               size="sm"
                               onClick={handleOpenBrowser}
-                              className="gap-1.5 h-8 bg-brand hover:bg-brand-hover text-white text-xs font-semibold shadow-md shadow-brand/20"
+                              className="gap-1.5 h-8 bg-brand hover:bg-brand-hover text-on-solid text-xs font-semibold shadow-md shadow-brand/20"
                             >
                               <span>{t.auth.openPage}</span>
                               <ExternalLink className="h-3 w-3" />

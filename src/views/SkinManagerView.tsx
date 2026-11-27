@@ -343,7 +343,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
         {/* 頂部標題列 */}
         <div className="flex items-center justify-between border-b border-white/10 px-8 py-3.5 bg-slate-950/60 backdrop-blur-md shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-brand to-brand-dark text-white shadow-md shadow-brand/25 border border-white/15">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-brand to-brand-dark text-on-solid shadow-md shadow-brand/25 border border-white/15">
               <Shirt className="h-4 w-4" />
             </div>
             <div>
@@ -363,11 +363,11 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
           {/* 左側欄 (固定寬度 310px，純 Flex 佈局，高度緊貼視窗永不溢出) */}
           <div className="flex flex-col gap-3 shrink-0 w-[310px] h-full min-h-0 overflow-hidden justify-between">
             {/* 3D 玩家模型視圖主卡片 (自適應彈性高度，佔滿垂直剩餘空間) */}
-            <div className="relative flex flex-col items-center justify-between flex-1 min-h-[220px] w-full rounded-2xl border border-white/10 bg-gradient-to-b from-white/5 to-black/40 p-3 backdrop-blur-md shadow-xl overflow-hidden">
+            <div className="relative flex flex-col items-center justify-between flex-1 min-h-[220px] w-full rounded-2xl border border-white/10 bg-gradient-to-b from-white/5 to-scrim/40 p-3 backdrop-blur-md shadow-xl overflow-hidden">
               <div className="flex items-center justify-between w-full shrink-0 mb-1">
                 <div className="flex items-center gap-1.5">
                   <span className="flex h-2 w-2 rounded-full bg-brand-light animate-pulse" />
-                  <span className="text-3xs font-mono font-medium text-slate-400">
+                  <span className="text-3xs font-mono font-medium text-slate-300">
                     3D LIVE PREVIEW
                   </span>
                 </div>
@@ -389,7 +389,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
 
               {/* 底部拖曳說明與保存/重設操作列 (固定高度，不造成卡片外擴) */}
               <div className="w-full shrink-0 mt-1">
-                <p className="text-3xs text-slate-400 text-center pb-1">
+                <p className="text-3xs text-slate-300 text-center pb-1">
                   {t.skin.dragHint}
                 </p>
 
@@ -417,7 +417,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                         onClick={handleSave}
                         disabled={isSaving || !isDirty}
                         tabIndex={isDirty ? 0 : -1}
-                        className="flex-1 text-xs h-7.5 rounded-lg bg-brand hover:bg-brand-hover text-white font-semibold shadow-md shadow-brand/30"
+                        className="flex-1 text-xs h-7.5 rounded-lg bg-brand hover:bg-brand-hover text-on-solid font-semibold shadow-md shadow-brand/30"
                       >
                         <Save className="h-3 w-3 mr-1" />
                         {isSaving ? t.skin.saving : t.skin.saveChanges}
@@ -443,7 +443,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                         type="button"
                         onClick={() => setAnimation(btn.id)}
                         className={`relative flex-1 py-1 text-xs font-semibold transition-colors duration-150 ${
-                          isActive ? "text-white" : "text-slate-400 hover:text-slate-200"
+                          isActive ? "text-on-solid" : "text-slate-400 hover:text-slate-200"
                         }`}
                       >
                         <span className="relative z-10 flex items-center justify-center gap-1 text-2xs">
@@ -649,7 +649,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                     <button
                                       type="button"
                                       onClick={(e) => handleDeleteSkin(skin.filename, e)}
-                                      className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors self-start"
+                                      className="p-1 rounded text-slate-400 hover:text-danger-400 hover:bg-danger-500/10 transition-colors self-start"
                                       aria-label={t.skin.deleteFromLocker}
                                     >
                                       <Trash2 className="h-3 w-3" />
@@ -907,7 +907,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                               <Sparkles className="h-7 w-7 text-slate-400 mx-auto" />
                               {!hasValidToken ? (
                                 <>
-                                  <p className="text-xs font-bold text-amber-400">
+                                  <p className="text-xs font-bold text-warning-400">
                                     {t.skin.tokenExpired}
                                   </p>
                                   <p className="text-2xs text-slate-400 max-w-md mx-auto leading-relaxed">
@@ -918,7 +918,7 @@ export const SkinManagerView: React.FC<SkinManagerViewProps> = ({
                                       <Button
                                         type="button"
                                         onClick={onOpenLoginModal}
-                                        className="h-8 px-4 text-xs bg-brand hover:bg-brand-hover text-white font-semibold rounded-lg shadow-md shadow-brand/30"
+                                        className="h-8 px-4 text-xs bg-brand hover:bg-brand-hover text-on-solid font-semibold rounded-lg shadow-md shadow-brand/30"
                                       >
                                         {t.skin.signInToSync}
                                       </Button>

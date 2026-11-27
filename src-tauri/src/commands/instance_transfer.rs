@@ -15,7 +15,7 @@ use focusite_modpacks::ModpackError;
 
 use super::import_support::{ensure_free_space, JobSession, CANCELLED_MESSAGE, EXPORT_PROGRESS_EVENT};
 use super::instance::{
-    convert_disk_config_to_summary, get_instances_dir, is_instance_busy, new_disk_config, read_instance_config,
+    convert_disk_config_to_summary, get_instances_dir, is_instance_busy, new_disk_config, new_instance_config, read_instance_config,
     unique_folder_name, update_instance_config, validate_safe_id, write_instance_config, InstanceDiskConfig,
     InstanceSummaryDto, INSTANCE_CONFIG_FILE,
 };
@@ -141,13 +141,15 @@ pub fn overlay_settings(dst: &mut InstanceDiskConfig, src: &InstanceDiskConfig) 
     dst.group = src.group.clone();
     dst.custom_jvm_args = src.custom_jvm_args.clone();
     dst.environment_vars = src.environment_vars.clone();
+    dst.custom_game_args = src.custom_game_args.clone();
 }
 
 /// Names of the settings in `cfg` that differ from a new instance's defaults, for the import summary.
 pub fn describe_settings(cfg: &InstanceDiskConfig) -> Vec<String> {
     let base = new_disk_config("", "", "", "", None);
     let mut out = Vec::new();
-    if cfg.jvm_args != base.jvm_args || cfg.custom_jvm_args.as_ref().is_some_and(|a| !a.is_empty()) {
+    let has_extra = |args: &Option<Vec<String>>| args.as_ref().is_some_and(|a| !a.is_empty());
+    if cfg.jvm_args != base.jvm_args || has_extra(&cfg.custom_jvm_args) || has_extra(&cfg.custom_game_args) {
         out.push("jvm".to_string());
     }
     if cfg.min_memory_mb != base.min_memory_mb || cfg.max_memory_mb != base.max_memory_mb {
@@ -172,6 +174,7 @@ fn read_zip_config(zip: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>) -> Result<
     let file = zip.by_name(INSTANCE_CONFIG_FILE).map_err(|_| "E_EXPORT_NO_CONFIG".to_string())?;
     let mut text = String::new();
     file.take(16 * 1024 * 1024).read_to_string(&mut text).map_err(|e| format!("E_INSTANCE_CONFIG_UNREADABLE: {}", e))?;
+    super::check_schema(&text, INSTANCE_CONFIG_FILE)?;
     let cfg: InstanceDiskConfig = serde_json::from_str(&text).map_err(|_| "E_EXPORT_CONFIG_INVALID".to_string())?;
     if cfg.version.trim().is_empty() {
         return Err("E_EXPORT_NO_MC_VERSION".into());
@@ -246,7 +249,7 @@ pub async fn import_focusite_zip(
         .map_err(|e| if session.is_cancelled() { CANCELLED_MESSAGE.to_string() } else { format!("E_EXPORT_UNPACK_FAILED: {}", e) })?;
 
         // Identity and play statistics are new; everything the user tuned carries over.
-        let mut cfg = new_disk_config(&instance_id, &name, &src_cfg.version, &src_cfg.loader, src_cfg.loader_version.clone());
+        let mut cfg = new_instance_config(&instance_id, &name, &src_cfg.version, &src_cfg.loader, src_cfg.loader_version.clone());
         overlay_settings(&mut cfg, &src_cfg);
         cfg.is_favorite = false;
         let mut imported = vec!["overrides".to_string()];
@@ -468,12 +471,13 @@ fn write_export(
     cfg.environment_vars = None;
     cfg.jvm_args = scrub_user_args(&cfg.jvm_args);
     cfg.custom_jvm_args = cfg.custom_jvm_args.as_deref().map(scrub_user_args);
+    cfg.custom_game_args = cfg.custom_game_args.as_deref().map(scrub_user_args);
     cfg.background_source = BACKGROUND_EXTS
         .iter()
         .map(|e| format!("background.{e}"))
         .find(|n| inst_dir.join(n).is_file());
     zip.start_file(INSTANCE_CONFIG_FILE, deflate).map_err(werr)?;
-    zip.write_all(serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?.as_bytes()).map_err(ioerr)?;
+    zip.write_all(super::to_versioned_json(&cfg).map_err(|e| e.to_string())?.as_bytes()).map_err(ioerr)?;
     let icon = inst_dir.join("icon.png");
     if icon.is_file() {
         zip.start_file("icon.png", stored).map_err(werr)?;

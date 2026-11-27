@@ -218,7 +218,7 @@ export const MissingModsPanel: React.FC<MissingModsPanelProps> = ({
             size="sm"
             disabled={!isReady}
             onClick={onFinish}
-            className="bg-brand hover:bg-brand-light disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold h-8 px-4"
+            className="bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-on-solid text-xs font-semibold h-8 px-4"
           >
             {t.importPack.finish}
           </Button>

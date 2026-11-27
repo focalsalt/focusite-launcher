@@ -236,7 +236,7 @@ function MainApp() {
             className="relative flex flex-1 overflow-hidden"
           >
         {/* Background Ambient Glow (Focusite Emerald & Grass Green) */}
-        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+        <div className="fc-glow pointer-events-none absolute inset-0 z-0 overflow-hidden">
           <div className="absolute -top-[15%] -left-[10%] h-[450px] w-[450px] rounded-full bg-brand/15 blur-[130px]" />
           <div className="absolute -bottom-[15%] -right-[10%] h-[450px] w-[450px] rounded-full bg-brand-dark/20 blur-[130px]" />
         </div>

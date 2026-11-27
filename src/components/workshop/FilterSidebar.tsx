@@ -131,7 +131,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
                   type="button"
                   onClick={() => onEnv(v)}
                   className={`rounded-lg px-1 py-1.5 text-2xs font-semibold transition-colors ${
-                    env === v ? "bg-brand text-white" : "text-slate-400 hover:bg-white/10 hover:text-white"
+                    env === v ? "bg-brand text-on-solid" : "text-slate-400 hover:bg-white/10 hover:text-white"
                   }`}
                 >
                   {label}

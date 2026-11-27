@@ -1,27 +1,37 @@
 @import "tailwindcss";
 @import "./styles/theme-tokens.css";
 
-/* index.html pins the "dark" class, so there is a single palette. */
+/* The active theme pack decides the palette; `--fc-color-scheme` tells native controls which it is. */
 :root {
+  color-scheme: var(--fc-color-scheme);
   --background: var(--fc-bg-canvas);
   --foreground: var(--fc-neutral-50);
   --border: var(--fc-neutral-800);
 }
 
-* {
-  border-color: var(--border);
+/* The default only: in the base layer, so border color utilities can override it. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 /* The one keyboard focus ring. Inset, so it lies over the element without changing its look or being
    clipped; unlayered, so `outline-none` utilities cannot hide it. */
 :where(a, button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--fc-highlight) 40%, var(--fc-neutral-50));
+  outline: 2px solid color-mix(in srgb, var(--fc-highlight) 20%, var(--fc-neutral-50));
   outline-offset: -2px;
 }
 
-body {
+/* Overrides the dark colors index.html paints before the stylesheet loads. */
+html,
+body,
+#root {
   background-color: var(--background);
   color: var(--foreground);
+}
+
+body {
   user-select: none;
   overflow: hidden;
   font-feature-settings: "rlig" 1, "calt" 1;
@@ -54,7 +64,7 @@ body {
 }
 
 .scrollbar-stable-overlay::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--fc-ink) 12%, transparent);
   border-radius: 9999px;
 }
 

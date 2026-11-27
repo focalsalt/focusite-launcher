@@ -94,7 +94,7 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onCreateInstan
                   size="sm"
                   variant={language === code ? "default" : "outline"}
                   onClick={() => setLanguage(code)}
-                  className={`h-8 text-xs ${language === code ? "bg-brand text-white hover:bg-brand-light" : "border-white/10 text-slate-300"}`}
+                  className={`h-8 text-xs ${language === code ? "bg-brand text-on-solid hover:bg-brand-hover" : "border-white/10 text-slate-300"}`}
                 >
                   {label}
                 </Button>
@@ -122,7 +122,7 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onCreateInstan
             <Button type="button" variant="ghost" size="sm" onClick={() => finish()} className="text-xs text-slate-400 hover:text-white">
               {t.onboarding.skip}
             </Button>
-            <Button type="button" size="sm" onClick={() => setStage("tour")} className="bg-brand text-xs font-semibold text-white hover:bg-brand-light">
+            <Button type="button" size="sm" onClick={() => setStage("tour")} className="bg-brand text-xs font-semibold text-on-solid hover:bg-brand-hover">
               {t.onboarding.next}
             </Button>
           </div>
@@ -145,7 +145,7 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onCreateInstan
             <DialogDescription>{t.onboarding.startDesc}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Button type="button" onClick={() => finish(onCreateInstance)} className="w-full justify-start gap-2 bg-brand text-xs font-semibold text-white hover:bg-brand-light">
+            <Button type="button" onClick={() => finish(onCreateInstance)} className="w-full justify-start gap-2 bg-brand text-xs font-semibold text-on-solid hover:bg-brand-hover">
               <Plus className="h-4 w-4" />
               {t.onboarding.createInstance}
             </Button>
@@ -235,7 +235,7 @@ const TourStep: React.FC<TourStepProps> = ({ index, onBack, onNext, onSkip }) =>
             <Button type="button" variant="outline" size="sm" onClick={onBack} className="h-7 border-white/10 text-xs text-slate-200">
               {t.onboarding.back}
             </Button>
-            <Button type="button" size="sm" onClick={onNext} className="h-7 bg-brand text-xs font-semibold text-white hover:bg-brand-light">
+            <Button type="button" size="sm" onClick={onNext} className="h-7 bg-brand text-xs font-semibold text-on-solid hover:bg-brand-hover">
               {t.onboarding.next}
             </Button>
           </div>

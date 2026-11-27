@@ -40,6 +40,7 @@ pub mod launch;
 pub mod launcher_import;
 pub mod logs;
 pub mod manifest;
+pub mod mod_side;
 pub mod modpack;
 pub mod news;
 pub mod p2p;
@@ -84,6 +85,38 @@ pub fn ctx<E: std::fmt::Display>(prefix: &'static str) -> impl Fn(E) -> String {
 
 /// Writes `bytes` to a sibling temp file and renames it over `path`, so a crash never leaves a
 /// truncated file behind.
+/// Version of the launcher's own file formats (instance config, settings, theme packs, export archives).
+/// Raise it only for a change an older launcher would misread. See docs/formats.md.
+pub const SCHEMA_VERSION: u32 = 1;
+
+/// Rejects a file written by a newer launcher. A file without `schemaVersion` is version 1; content
+/// that is not JSON passes so the caller's parser reports it.
+pub fn check_schema(json: &str, file: &str) -> Result<(), String> {
+    #[derive(serde::Deserialize)]
+    struct Header {
+        #[serde(rename = "schemaVersion")]
+        schema_version: Option<u32>,
+    }
+    match serde_json::from_str::<Header>(json) {
+        Ok(Header { schema_version: Some(found) }) if found > SCHEMA_VERSION => {
+            Err(format!("E_SCHEMA_TOO_NEW: {file} (v{found})"))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Pretty JSON of `value` with the current `schemaVersion` as its first field.
+pub fn to_versioned_json<T: serde::Serialize>(value: &T) -> serde_json::Result<String> {
+    #[derive(serde::Serialize)]
+    struct Versioned<'a, T> {
+        #[serde(rename = "schemaVersion")]
+        schema_version: u32,
+        #[serde(flatten)]
+        value: &'a T,
+    }
+    serde_json::to_string_pretty(&Versioned { schema_version: SCHEMA_VERSION, value })
+}
+
 pub fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut tmp_name = path
         .file_name()

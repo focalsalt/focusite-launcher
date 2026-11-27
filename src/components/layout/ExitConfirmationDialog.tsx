@@ -33,7 +33,7 @@ export const ExitConfirmationDialog: React.FC<ExitConfirmationDialogProps> = ({
       <DialogContent className="max-w-md border-white/10 bg-slate-900 text-slate-100 shadow-2xl">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400 shadow-[0_0_16px_rgba(245,158,11,0.2)]">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-warning-500/30 bg-warning-500/10 text-warning-400 shadow-[0_0_16px_rgba(245,158,11,0.2)]">
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div>
@@ -72,7 +72,7 @@ export const ExitConfirmationDialog: React.FC<ExitConfirmationDialogProps> = ({
               type="button"
               size="sm"
               onClick={onHideToTray}
-              className="w-full bg-brand text-xs font-medium text-white shadow-[0_0_16px_color-mix(in_srgb,var(--fc-primary)_35%,transparent)] hover:bg-brand-light sm:w-auto"
+              className="w-full bg-brand text-xs font-medium text-on-solid shadow-[0_0_16px_color-mix(in_srgb,var(--fc-primary)_35%,transparent)] hover:bg-brand-hover sm:w-auto"
             >
               <Minimize2 className="mr-1.5 h-3.5 w-3.5" />
               {t.exit.minimizeToTray}
@@ -85,7 +85,7 @@ export const ExitConfirmationDialog: React.FC<ExitConfirmationDialogProps> = ({
               size="sm"
               variant="destructive"
               onClick={onForceQuit}
-              className="w-full border border-red-500/30 bg-red-500/15 text-xs text-red-400 hover:bg-red-500/25 sm:w-auto"
+              className="w-full border border-danger-500/30 bg-danger-500/15 text-xs text-danger-300 hover:bg-danger-500/25 sm:w-auto"
             >
               <Power className="mr-1.5 h-3.5 w-3.5" />
               {t.exit.forceQuit}

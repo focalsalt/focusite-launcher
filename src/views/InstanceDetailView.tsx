@@ -347,7 +347,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
         {onGoToInstances && (
           <Button
             onClick={onGoToInstances}
-            className="mt-5 bg-brand hover:bg-brand-light text-white text-xs font-semibold px-4 py-2"
+            className="mt-5 bg-brand hover:bg-brand-hover text-on-solid text-xs font-semibold px-4 py-2"
           >
             {t.inst.backToList}
           </Button>
@@ -360,7 +360,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
 
   // 1. 緊湊頂部 Hero 橫幅
   const heroSection = (
-    <div className="group/hero relative w-full h-44 shrink-0 overflow-hidden border-b border-white/10 bg-slate-950">
+    <div className="fc-dark group/hero relative w-full h-44 shrink-0 overflow-hidden border-b border-white/10 bg-slate-950">
       {/* 背景大圖與漸變遮罩 */}
       {!bgLoadError ? (
         <img
@@ -386,7 +386,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
             variant="outline"
             size="sm"
             onClick={handleSelectCustomBg}
-            className="gap-1.5 text-xs h-8 rounded-lg border-white/15 bg-black/50 backdrop-blur-md hover:bg-white/10 text-slate-200"
+            className="gap-1.5 text-xs h-8 rounded-lg border-white/15 bg-scrim/50 backdrop-blur-md hover:bg-white/10 text-on-solid"
           >
             <ImageIcon className="h-3.5 w-3.5 text-slate-300" />
             <span>{t.inst.changeBg}</span>
@@ -399,7 +399,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
               variant="outline"
               size="sm"
               onClick={handleResetBg}
-              className="text-xs h-8 px-2.5 rounded-lg border-white/15 bg-black/50 backdrop-blur-md hover:bg-white/10 text-slate-300"
+              className="text-xs h-8 px-2.5 rounded-lg border-white/15 bg-scrim/50 backdrop-blur-md hover:bg-white/10 text-on-solid"
               aria-label={t.inst.resetBgAttr}
             >
               <RotateCcw className="h-3.5 w-3.5" />
@@ -415,7 +415,11 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
           <Tip label={t.inst.changeIconAttr}>
             <div
               onClick={() => setIsIconModalOpen(true)}
-              className="group relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-brand to-brand-dark text-white shadow-xl shadow-brand/30 border border-white/20 overflow-hidden cursor-pointer hover:border-brand-light/80 transition-all"
+              className={`group relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-on-solid overflow-hidden cursor-pointer transition-all ${
+                instance.hasIcon && instance.iconPath
+                  ? ""
+                  : "bg-gradient-to-tr from-brand to-brand-dark shadow-xl shadow-brand/30 border border-white/20 hover:border-brand-light/80"
+              }`}
             >
               {instance.hasIcon && instance.iconPath ? (
                 <img
@@ -527,7 +531,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
               type="button"
               size="sm"
               disabled
-              className="gap-2 bg-gradient-to-r from-brand to-brand-dark opacity-80 cursor-wait text-white font-bold px-4 h-8 rounded-lg shadow-lg"
+              className="gap-2 bg-gradient-to-r from-brand to-brand-dark opacity-80 cursor-wait text-on-solid font-bold px-4 h-8 rounded-lg shadow-lg"
             >
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
               <span>{t.inst.launching}</span>
@@ -537,7 +541,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
               type="button"
               size="sm"
               onClick={() => onLaunch(instance.id)}
-              className="gap-2 bg-gradient-to-r from-brand to-brand-dark hover:from-brand-hover hover:to-brand-dark text-white font-bold px-5 h-8 rounded-lg shadow-lg shadow-brand/30"
+              className="gap-2 bg-gradient-to-r from-brand to-brand-dark hover:from-brand-hover hover:to-brand-dark text-on-solid font-bold px-5 h-8 rounded-lg shadow-lg shadow-brand/30"
             >
               <Play className="h-3.5 w-3.5 fill-current" />
               <span>{t.inst.launchNow}</span>

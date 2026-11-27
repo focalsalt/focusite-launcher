@@ -36,7 +36,7 @@ export const LocationConsentDialog: React.FC<LocationConsentDialogProps> = ({ op
           >
             {t.location.deny}
           </Button>
-          <Button type="button" size="sm" onClick={() => onAnswer(true)} className="bg-brand text-xs font-medium text-white hover:bg-brand-light">
+          <Button type="button" size="sm" onClick={() => onAnswer(true)} className="bg-brand text-xs font-medium text-on-solid hover:bg-brand-hover">
             {t.location.allow}
           </Button>
         </DialogFooter>

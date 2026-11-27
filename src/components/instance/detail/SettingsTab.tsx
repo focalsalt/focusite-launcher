@@ -9,10 +9,12 @@ import { Input } from "@/components/ui/input";
 import { instanceService } from "@/services/instanceService";
 import type { MinecraftInstance } from "@/types/navigation";
 import type { JavaInstallationDto } from "@/services/instanceService";
-import { tabContentVariants } from "./shared";
+import { SectionHeading, tabContentVariants } from "./shared";
+import { LaunchOptionsSections } from "./LaunchOptionsSections";
 import { toast } from "@/lib/toast";
 import { toUserMessage } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n";
+import { splitArgs } from "@/lib/launchOptions";
 import { Tip } from "@/components/ui/tooltip";
 
 interface SettingsTabProps {
@@ -29,21 +31,6 @@ interface SettingsTabProps {
   tabDirection: number;
   ref?: React.Ref<HTMLDivElement>;
 }
-
-/** Heading row shared by every section of this tab. */
-const SectionHeading: React.FC<{ icon: React.ReactNode; title: string; description?: string }> = ({
-  icon,
-  title,
-  description,
-}) => (
-  <div className="space-y-1">
-    <div className="flex items-center gap-2">
-      {icon}
-      <h3 className="text-sm font-bold text-white">{title}</h3>
-    </div>
-    {description && <p className="text-xs text-slate-400">{description}</p>}
-  </div>
-);
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
   instance,
@@ -122,10 +109,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   };
 
   const saveJvmArgs = async () => {
-    const parsed = customJvmArgsInput
-      .split(/\s+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const parsed = splitArgs(customJvmArgsInput);
     try {
       const updated = await instanceService.updateInstanceSettings(instance.id, {
         customJvmArgs: parsed,
@@ -177,7 +161,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       {/* 2. Java runtime: pick an executable path */}
       <section className="space-y-3">
         <SectionHeading
-          icon={<Coffee className="h-4 w-4 text-amber-400" />}
+          icon={<Coffee className="h-4 w-4 text-warning-400" />}
           title={t.instSettings.javaTitle}
           description={t.instSettings.javaDesc}
         />
@@ -263,12 +247,16 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <Button
             size="sm"
             onClick={saveJvmArgs}
-            className="h-9 shrink-0 bg-brand px-4 text-xs text-white hover:bg-brand-light"
+            className="h-9 shrink-0 bg-brand px-4 text-xs text-on-solid hover:bg-brand-hover"
           >
             {t.common.save}
           </Button>
         </div>
       </section>
+
+      {divider}
+
+      <LaunchOptionsSections instance={instance} onInstanceUpdated={onInstanceUpdated} />
 
       {divider}
 
@@ -304,7 +292,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <Button
             size="sm"
             onClick={saveWindowSize}
-            className="h-9 shrink-0 bg-brand px-4 text-xs text-white hover:bg-brand-light"
+            className="h-9 shrink-0 bg-brand px-4 text-xs text-on-solid hover:bg-brand-hover"
           >
             {t.common.save}
           </Button>
@@ -333,10 +321,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       {divider}
 
       {/* 5. Danger zone */}
-      <section className="space-y-4 rounded-2xl border border-rose-500/20 bg-rose-950/10 p-5">
+      <section className="space-y-4 rounded-2xl border border-danger-500/20 bg-danger-950/10 p-5">
         <div className="flex items-center gap-2">
-          <Trash2 className="h-4 w-4 text-rose-500" />
-          <h3 className="text-sm font-bold text-rose-300">{t.instSettings.dangerZone}</h3>
+          <Trash2 className="h-4 w-4 text-danger-500" />
+          <h3 className="text-sm font-bold text-danger-300">{t.instSettings.dangerZone}</h3>
         </div>
         <p className="text-xs leading-relaxed text-slate-400">{t.instSettings.dangerDesc}</p>
         <Button

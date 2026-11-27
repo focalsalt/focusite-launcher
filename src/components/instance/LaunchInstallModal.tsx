@@ -96,7 +96,7 @@ export const LaunchInstallModal: React.FC<LaunchInstallModalProps> = ({
                   isCurrent
                     ? "bg-brand/20 border-brand-light text-white"
                     : isFinished
-                      ? "bg-white/[0.04] border-white/10 text-emerald-400"
+                      ? "bg-white/[0.04] border-white/10 text-success-400"
                       : "bg-white/[0.01] border-white/5 text-slate-400"
                 }`}
               >

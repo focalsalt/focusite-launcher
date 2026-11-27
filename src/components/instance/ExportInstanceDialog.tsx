@@ -270,7 +270,7 @@ export const ExportInstanceDialog: React.FC<ExportInstanceDialogProps> = ({ isOp
           <p className="text-2xs text-slate-400">{t.exportInst.always}</p>
           <p className="text-2xs text-slate-400">{t.exportInst.selected(selected.size, formatBytes(selectedSize))}</p>
           {selectedSize > IMPORT_CONFIRM_BYTES && (
-            <p className="flex items-start gap-1.5 text-2xs text-amber-300">
+            <p className="flex items-start gap-1.5 text-2xs text-warning-300">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               {selectedSize > IMPORT_HARD_BYTES ? t.exportInst.tooLargeHard : t.exportInst.tooLarge}
             </p>

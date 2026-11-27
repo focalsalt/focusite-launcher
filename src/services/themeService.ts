@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
+import { accentTokens } from "@/lib/accent";
 
 /** A theme pack from `<app data>\themes`: only `--fc-*` design tokens, no CSS. */
 export interface ThemePack {
@@ -14,6 +15,8 @@ export interface ThemePack {
 interface ActiveTheme {
   id: string;
   tokens: Record<string, string>;
+  /** The user's accent color, painted over the pack. */
+  accent?: string;
 }
 
 /** Id of the built-in theme; its tokens are the defaults in theme-tokens.css. */
@@ -43,6 +46,14 @@ function applyTokens(tokens: Record<string, string>): void {
     style.setProperty(key, value);
     appliedKeys.push(key);
   }
+  document.documentElement.dataset.scheme = tokens["--fc-color-scheme"] === "light" ? "light" : "dark";
+}
+
+/** Pack tokens with the accent on top; shades derived from the primary color follow the accent. */
+function effectiveTokens({ tokens, accent }: ActiveTheme): Record<string, string> {
+  if (!accent) return tokens;
+  const { "--fc-primary-hover": _hover, "--fc-primary-dark": _dark, ...base } = tokens;
+  return { ...base, ...accentTokens(accent, tokens["--fc-bg-canvas"]) };
 }
 
 function readCached(): ActiveTheme | null {
@@ -69,6 +80,13 @@ function readCached(): ActiveTheme | null {
   return null;
 }
 
+/** Remembers, paints and tells the other windows. */
+function activate(active: ActiveTheme): void {
+  writeCached(active);
+  applyTokens(effectiveTokens(active));
+  emit("focusite:theme-updated", active).catch(() => {});
+}
+
 function writeCached(active: ActiveTheme): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(active));
@@ -83,24 +101,38 @@ export const themeService = {
   /** Paints the remembered theme synchronously; call before the first render to avoid a flash. */
   applyCachedTheme: (): void => {
     const cached = readCached();
-    if (cached) applyTokens(cached.tokens);
+    if (cached) applyTokens(effectiveTokens(cached));
   },
 
   listThemes: (): Promise<ThemePack[]> => invoke<ThemePack[]>("list_themes"),
 
+  /** Switching packs drops the accent; re-applying the same pack keeps it. */
   applyTheme: (pack: ThemePack): void => {
-    const active: ActiveTheme = { id: pack.id, tokens: pack.tokens };
-    writeCached(active);
-    applyTokens(active.tokens);
-    emit("focusite:theme-updated", active).catch(() => {});
+    const cached = readCached();
+    activate({ id: pack.id, tokens: pack.tokens, accent: cached?.id === pack.id ? cached.accent : undefined });
+  },
+
+  getAccent: (): string | undefined => readCached()?.accent,
+
+  /** `undefined` returns to the pack's own colors. */
+  setAccent: (accent: string | undefined): void => {
+    activate({ ...(readCached() ?? { id: DEFAULT_THEME_ID, tokens: {} }), accent });
+  },
+
+  /** Writes what is on screen (pack plus accent) to a pack file that can be shared. */
+  exportTheme: (destPath: string, name: string): Promise<void> => {
+    const style = getComputedStyle(document.documentElement);
+    const base = Object.fromEntries(
+      ["--fc-primary", "--fc-highlight", "--fc-bg-canvas"].map((key) => [key, style.getPropertyValue(key).trim()]),
+    );
+    const cached = readCached();
+    const tokens = { ...base, ...(cached ? effectiveTokens(cached) : {}) };
+    return invoke("export_theme_pack", { destPath, jsonContent: JSON.stringify({ name, tokens }) });
   },
 
   /** Back to the built-in defaults (the stylesheet values), whatever is on disk. */
   resetToDefault: (): void => {
-    const active: ActiveTheme = { id: DEFAULT_THEME_ID, tokens: {} };
-    writeCached(active);
-    applyTokens(active.tokens);
-    emit("focusite:theme-updated", active).catch(() => {});
+    activate({ id: DEFAULT_THEME_ID, tokens: {} });
   },
 
   /** Validates and saves a pack file into the themes folder. */
@@ -128,7 +160,7 @@ export const themeService = {
     const unlistenPromise = listen<ActiveTheme>("focusite:theme-updated", (event) => {
       if (!event.payload) return;
       writeCached(event.payload);
-      applyTokens(event.payload.tokens);
+      applyTokens(effectiveTokens(event.payload));
     });
 
     // Ctrl+Shift+R: emergency reset to the built-in theme.

@@ -20,7 +20,7 @@ use super::import_support::{
     ensure_free_space, is_retryable, retry_delay, JobSession, CANCELLED_MESSAGE, IMPORT_PROGRESS_EVENT, MAX_RETRIES,
 };
 use super::instance::{
-    get_instances_dir, new_disk_config, unique_folder_name, validate_safe_filename, validate_safe_id,
+    get_instances_dir, new_instance_config, unique_folder_name, validate_safe_filename, validate_safe_id,
     write_instance_config, InstanceDiskConfig,
 };
 use super::settings::load_settings_from_disk;
@@ -622,7 +622,7 @@ async fn import_mrpack_internal(
         })
         .map_err(|e| unpack_error(session, "E_PACK_UNPACK_FAILED", e))?;
 
-        let mut cfg = new_disk_config(&instance_id, &name, &mc_version, &loader, loader_version);
+        let mut cfg = new_instance_config(&instance_id, &name, &mc_version, &loader, loader_version);
         cfg.description = index.summary.clone();
         let mut imported = vec!["overrides".to_string()];
         if set_pack_icon(archive_bytes, &inst_dir, &mut cfg) {
@@ -800,7 +800,7 @@ async fn import_curseforge_internal(
         })
         .map_err(|e| unpack_error(session, "E_PACK_UNPACK_FAILED", e))?;
 
-        let mut cfg = new_disk_config(&instance_id, &name, &mc_version, &loader, loader_version);
+        let mut cfg = new_instance_config(&instance_id, &name, &mc_version, &loader, loader_version);
         cfg.description = Some(tr!("由 CurseForge 模組包「{}」導入", "Imported from the CurseForge modpack {}", manifest.name));
         let mut imported = vec!["overrides".to_string()];
         // The author's recommended memory becomes the instance's maximum, never below the default.

@@ -65,7 +65,7 @@ export const PartyView: React.FC<PartyViewProps> = ({ account }) => {
   };
 
   return (
-    <div className="relative h-full w-full">
+    <div className="fc-dark relative h-full w-full">
       {/* Bleeds over the page padding (p-6 in App) so the scene reaches the content area's edges. */}
       <div className="absolute -inset-6 overflow-hidden">
         <CampScene members={members} time={time} weather={weather} cloud={cloud} playIntro={playIntro} glowId={glowId} onHoverMember={(id, x, y) => setHover(id ? { id, x, y } : null)} onPickMember={pick} onReady={() => setSceneReady(true)} onProgress={setProgress} className="absolute inset-0 h-full w-full" />

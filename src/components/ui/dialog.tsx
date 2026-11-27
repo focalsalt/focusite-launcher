@@ -51,7 +51,7 @@ export const Dialog: React.FC<DialogProps> = ({
                 onOpenChange(false);
               }
             }}
-            className="fixed inset-x-0 bottom-0 top-9 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-x-0 bottom-0 top-9 bg-scrim/60 backdrop-blur-sm"
           />
 
           {/* Modal Content with Motion Zoom & Spring */}

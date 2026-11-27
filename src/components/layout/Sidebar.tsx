@@ -277,7 +277,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }`}
                 >
                   <div className="relative shrink-0">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 overflow-hidden text-brand-light">
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden text-brand-light ${
+                      inst.hasIcon && inst.iconPath ? "" : "border border-white/10 bg-white/5"
+                    }`}>
                       {inst.hasIcon && inst.iconPath ? (
                         <img
                           src={toAssetSrc(inst.iconPath, inst.iconUpdatedAt)}
@@ -285,7 +287,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           className="h-full w-full object-cover"
                         />
                       ) : inst.needsSetup ? (
-                        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-warning-400" />
                       ) : (
                         <Box
                           className={`h-4 w-4 shrink-0 transition-colors ${isSelected ? "text-brand-light" : "text-slate-400"

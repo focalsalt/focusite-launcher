@@ -28,7 +28,7 @@ export const LoginSteps: React.FC<{ step: string }> = ({ step }) => {
             <li key={s} className={`flex items-center gap-2.5 ${done || active ? "text-slate-100" : "text-slate-400"}`}>
               <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                 {done ? (
-                  <Check className="h-4 w-4 text-emerald-400" />
+                  <Check className="h-4 w-4 text-success-400" />
                 ) : active ? (
                   <Loader2 className="h-4 w-4 animate-spin text-brand-light" />
                 ) : (

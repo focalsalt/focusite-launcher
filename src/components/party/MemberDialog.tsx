@@ -97,12 +97,12 @@ export const MemberDialog: React.FC<MemberDialogProps> = ({ memberId, onClose })
                 <p>{plan.instanceId ? t.party.useExisting : t.party.willCreate(share.spec.instanceName)}</p>
                 {plan.install.length > 0 && <p>{t.party.willDownload(plan.install.length)}</p>}
                 {plan.manual.length > 0 && (
-                  <p className="text-amber-300">{t.party.manualMods(member?.name ?? "", plan.manual.map((m) => m.filename).join(", "))}</p>
+                  <p className="text-warning-300">{t.party.manualMods(member?.name ?? "", plan.manual.map((m) => m.filename).join(", "))}</p>
                 )}
               </div>
             )}
-            {planError && <p className="text-xs text-rose-300">{t.party.planFailed(planError)}</p>}
-            {running && <p className="text-xs text-emerald-300">{stepText[step]}</p>}
+            {planError && <p className="text-xs text-danger-300">{t.party.planFailed(planError)}</p>}
+            {running && <p className="text-xs text-success-300">{stepText[step]}</p>}
           </div>
         )}
         <DialogFooter className="gap-2">

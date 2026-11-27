@@ -52,7 +52,7 @@ export const InstanceSetupPanel: React.FC<InstanceSetupPanelProps> = ({ instance
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-5 p-8 select-none">
       <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-warning-500/30 bg-warning-500/10 text-warning-400">
           <AlertTriangle className="h-5 w-5" />
         </div>
         <div className="space-y-1">
@@ -89,7 +89,7 @@ export const InstanceSetupPanel: React.FC<InstanceSetupPanelProps> = ({ instance
           type="button"
           onClick={handleSave}
           disabled={!canSave}
-          className="bg-brand text-xs font-semibold text-white hover:bg-brand-light"
+          className="bg-brand text-xs font-semibold text-on-solid hover:bg-brand-hover"
         >
           {t.inst.setupConfirm}
         </Button>

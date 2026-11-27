@@ -217,13 +217,13 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                       <span className="text-xs font-bold text-white tracking-wide">
                         {groupName}
                       </span>
-                      <Badge variant="outline" className="text-3xs py-0 px-1.5 border-white/10 text-white/50">
+                      <Badge variant="outline" className="text-3xs py-0 px-1.5 border-white/10 text-slate-400">
                         {groupItems.length}
                       </Badge>
                     </div>
 
                     <motion.div
-                      className="text-white/40"
+                      className="text-slate-400"
                       animate={{ rotate: isCollapsed ? 0 : 180 }}
                       transition={{ duration: 0.2 }}
                     >
@@ -252,7 +252,9 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
               <CardHeader className="p-5 pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-slate-800 to-slate-700 border border-white/10 text-brand-light group-hover:scale-105 transition-transform shadow-inner overflow-hidden">
+                    <div className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-brand-light group-hover:scale-105 transition-transform overflow-hidden ${
+                      inst.hasIcon && inst.iconPath ? "" : "bg-gradient-to-tr from-slate-800 to-slate-700 border border-white/10 shadow-inner"
+                    }`}>
                       {inst.hasIcon && inst.iconPath ? (
                         <img
                           src={toAssetSrc(inst.iconPath, inst.iconUpdatedAt)}
@@ -324,7 +326,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                         e.stopPropagation();
                         onKillInstance?.(inst.id);
                       }}
-                      className="flex-1 gap-1.5 bg-danger-600 hover:bg-danger-700 text-white text-xs font-semibold h-8 rounded-lg shadow-sm shadow-danger-900/30"
+                      className="flex-1 gap-1.5 bg-danger-600 hover:bg-danger-700 text-on-solid text-xs font-semibold h-8 rounded-lg shadow-sm shadow-danger-900/30"
                     >
                       <Square className="h-3 w-3 fill-current" />
                       <span>
@@ -338,7 +340,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                         e.stopPropagation();
                         onLaunchInstance(inst.id);
                       }}
-                      className="flex-1 gap-1.5 bg-brand hover:bg-brand-hover text-white text-xs font-semibold h-8 rounded-lg shadow-sm shadow-brand/25"
+                      className="flex-1 gap-1.5 bg-brand hover:bg-brand-hover text-on-solid text-xs font-semibold h-8 rounded-lg shadow-sm shadow-brand/25"
                     >
                       <Play className="h-3.5 w-3.5 fill-current" />
                       <span>{t.instances.launchNow}</span>
@@ -444,7 +446,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
               <Button type="button" variant="outline" size="sm" onClick={() => setGroupDialogOpen(false)} className="text-xs">
                 {t.common.cancel}
               </Button>
-              <Button type="submit" size="sm" disabled={isCreatingGroup} className="bg-brand hover:bg-brand-light text-white text-xs font-semibold">
+              <Button type="submit" size="sm" disabled={isCreatingGroup} className="bg-brand hover:bg-brand-hover text-on-solid text-xs font-semibold">
                 {isCreatingGroup ? t.instances.groupCreating : t.instances.groupCreate}
               </Button>
             </div>
@@ -498,7 +500,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                 type="submit"
                 size="sm"
                 disabled={isDuplicating}
-                className="bg-brand hover:bg-brand-light text-white text-xs font-semibold"
+                className="bg-brand hover:bg-brand-hover text-on-solid text-xs font-semibold"
               >
                 {isDuplicating ? t.inst.duplicating : t.inst.confirmDuplicate}
               </Button>
@@ -558,7 +560,7 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
                   setIsDeleting(false);
                 }
               }}
-              className="bg-danger-600 hover:bg-danger-700 text-white text-xs font-semibold"
+              className="bg-danger-600 hover:bg-danger-700 text-on-solid text-xs font-semibold"
             >
               {isDeleting ? t.inst.deleting : t.instances.confirmDeleteBtn}
             </Button>

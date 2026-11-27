@@ -5,7 +5,7 @@
 
 use super::import_support::{ensure_free_space, JobSession};
 use super::instance::{
-    get_instances_dir, new_disk_config, read_instance_config, unique_folder_name, write_instance_config,
+    get_instances_dir, new_disk_config, new_instance_config, read_instance_config, unique_folder_name, write_instance_config,
     InstanceDiskConfig, INSTANCE_CONFIG_FILE,
 };
 use super::instance_transfer::{describe_settings, overlay_settings, read_limited, store_background_bytes};
@@ -480,7 +480,7 @@ fn import_into(
     session.check()?;
 
     let result = copy_game_files(&found, &inst_dir.join("minecraft"), session, total).and_then(|_| {
-        let mut cfg = new_disk_config(&folder, &name, &found.version, &found.loader, found.loader_version.clone());
+        let mut cfg = new_instance_config(&folder, &name, &found.version, &found.loader, found.loader_version.clone());
         let mut imported = apply_settings(&found, &mut cfg);
         imported.extend(copy_assets(&found, &inst_dir, &mut cfg));
         write_instance_config(&inst_dir, &cfg)?;

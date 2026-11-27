@@ -11,6 +11,20 @@ export interface ModFileInfo {
   enabled: boolean;
 }
 
+export type ModSide = "client" | "server" | "both" | "unknown";
+
+export interface ModSideInfo {
+  filename: string;
+  side: ModSide;
+  /** Null when the side is unknown. */
+  source: "jar" | "modrinth" | null;
+}
+
+export interface ModSides {
+  mods: ModSideInfo[];
+  modrinthFailed: boolean;
+}
+
 export interface ScreenshotFileInfo {
   name: string;
   path: string;
@@ -268,6 +282,14 @@ export const instanceService = {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   },
 
+  /** Which side each jar in the mods folder belongs to; may ask Modrinth, so it is slower than listing. */
+  async getModSides(instanceId: string): Promise<ModSides> {
+    if (isTauri()) {
+      return await invoke<ModSides>("get_mod_sides", { instanceId });
+    }
+    return { mods: [], modrinthFailed: false };
+  },
+
   /**
    * Scans and returns all mods in the instance's mods directory.
    */
@@ -380,6 +402,7 @@ export const instanceService = {
       group?: string;
       customJvmArgs?: string[];
       environmentVars?: Record<string, string>;
+      customGameArgs?: string[];
     }
   ): Promise<MinecraftInstance> {
     if (isTauri()) {
@@ -395,6 +418,7 @@ export const instanceService = {
         group: settings.group !== undefined ? settings.group : null,
         customJvmArgs: settings.customJvmArgs ?? null,
         environmentVars: settings.environmentVars ?? null,
+        customGameArgs: settings.customGameArgs ?? null,
       });
     }
 
@@ -413,6 +437,7 @@ export const instanceService = {
       group: settings.group !== undefined ? settings.group : target.group,
       customJvmArgs: settings.customJvmArgs ?? target.customJvmArgs,
       environmentVars: settings.environmentVars ?? target.environmentVars,
+      customGameArgs: settings.customGameArgs ?? target.customGameArgs,
     };
     const nextList = current.map((it) => (it.id === instanceId ? updated : it));
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(nextList));

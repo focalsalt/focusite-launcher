@@ -643,11 +643,13 @@ async fn start_instance(
         },
     };
 
-    let args = if is_legacy_forge(&instance_config) {
+    let mut args = if is_legacy_forge(&instance_config) {
         legacy_forge_arguments(&instance_config, &context, &client_jar, &game_dir, &versions_dir)
     } else {
         manifest_arguments(&instance_config, &context, &client_jar, &app_data, &libraries_dir, &versions_dir)?
     };
+
+    args.extend(instance_config.custom_game_args.iter().flatten().cloned());
 
     // 6. Spawn child process
     let mut child = ProcessLauncher::spawn_direct_with_env(

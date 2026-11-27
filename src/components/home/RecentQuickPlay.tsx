@@ -136,9 +136,9 @@ export const RecentQuickPlay: React.FC<RecentQuickPlayProps> = ({ instances, ref
                   onClick={() => onPlay(it.instanceId, type, it.target)}
                   disabled={isBusy(it.instanceId)}
                   aria-label={t.home.joinNow}
-                  className="h-8 w-8 shrink-0 bg-brand text-white hover:bg-brand-light"
+                  className="h-8 w-8 shrink-0 bg-brand text-on-solid hover:bg-brand-hover"
                 >
-                  <Play className="h-3.5 w-3.5 fill-white" />
+                  <Play className="h-3.5 w-3.5 fill-current" />
                 </Button>
               </Tip>
             </motion.div>
