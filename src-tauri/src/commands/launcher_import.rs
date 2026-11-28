@@ -100,9 +100,9 @@ fn prism_icon(dir: &Path, icon_key: Option<&str>) -> Option<PathBuf> {
 
 fn detect_prism(dir: &Path) -> Result<Detected, String> {
     let pack: Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("mmc-pack.json")).map_err(|e| format!("E_IMPORT_PACK_JSON_UNREADABLE: {e}"))?,
+        &std::fs::read_to_string(dir.join("mmc-pack.json")).map_err(super::ctx("E_IMPORT_PACK_JSON_UNREADABLE"))?,
     )
-    .map_err(|e| format!("E_IMPORT_PACK_JSON_INVALID: {e}"))?;
+    .map_err(super::ctx("E_IMPORT_PACK_JSON_INVALID"))?;
 
     let mut version = None;
     let (mut loader, mut loader_version) = ("Vanilla".to_string(), None);
@@ -174,9 +174,9 @@ fn split_forge_version(v: &str) -> Option<(&str, &str)> {
 fn detect_pcl(dir: &Path) -> Result<Detected, String> {
     let name = folder_name(dir);
     let json: Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.join(format!("{name}.json"))).map_err(|e| format!("E_IMPORT_VERSION_JSON_UNREADABLE: {e}"))?,
+        &std::fs::read_to_string(dir.join(format!("{name}.json"))).map_err(super::ctx("E_IMPORT_VERSION_JSON_UNREADABLE"))?,
     )
-    .map_err(|e| format!("E_IMPORT_VERSION_JSON_INVALID: {e}"))?;
+    .map_err(super::ctx("E_IMPORT_VERSION_JSON_INVALID"))?;
 
     let mut mc_version = json["inheritsFrom"]
         .as_str()
@@ -296,7 +296,7 @@ fn scan_tree(path: &Path, files: &mut u64, bytes: &mut u64) {
 
 fn measure(found: &Detected) -> Result<(u64, u64), String> {
     let (mut files, mut bytes) = (0, 0);
-    let rd = std::fs::read_dir(&found.game_dir).map_err(|e| format!("E_IMPORT_SOURCE_UNREADABLE: {e}"))?;
+    let rd = std::fs::read_dir(&found.game_dir).map_err(super::ctx("E_IMPORT_SOURCE_UNREADABLE"))?;
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
         if !wanted(found, &name) {
@@ -338,18 +338,18 @@ impl CopyProgress<'_> {
 }
 
 fn copy_tree(src: &Path, dst: &Path, p: &mut CopyProgress) -> Result<(), String> {
-    std::fs::create_dir_all(dst).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
-    for entry in std::fs::read_dir(src).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))? {
-        let entry = entry.map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
+    std::fs::create_dir_all(dst).map_err(super::ctx("E_IMPORT_COPY_FAILED"))?;
+    for entry in std::fs::read_dir(src).map_err(super::ctx("E_IMPORT_COPY_FAILED"))? {
+        let entry = entry.map_err(super::ctx("E_IMPORT_COPY_FAILED"))?;
         p.session.check()?;
         let to = dst.join(entry.file_name());
-        let kind = entry.file_type().map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
+        let kind = entry.file_type().map_err(super::ctx("E_IMPORT_COPY_FAILED"))?;
         if kind.is_symlink() {
             tracing::warn!("Skipping symlink during import: {}", entry.path().display());
         } else if kind.is_dir() {
             copy_tree(&entry.path(), &to, p)?;
         } else {
-            let size = std::fs::copy(entry.path(), &to).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
+            let size = std::fs::copy(entry.path(), &to).map_err(super::ctx("E_IMPORT_COPY_FAILED"))?;
             p.file_done(&entry.file_name().to_string_lossy(), size);
         }
     }
@@ -357,7 +357,7 @@ fn copy_tree(src: &Path, dst: &Path, p: &mut CopyProgress) -> Result<(), String>
 }
 
 fn copy_game_files(found: &Detected, dst: &Path, session: &JobSession, total: (u64, u64)) -> Result<(), String> {
-    std::fs::create_dir_all(dst).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
+    std::fs::create_dir_all(dst).map_err(super::ctx("E_IMPORT_COPY_FAILED"))?;
     let mut p = CopyProgress {
         session,
         total_files: total.0,
@@ -368,21 +368,21 @@ fn copy_game_files(found: &Detected, dst: &Path, session: &JobSession, total: (u
         last_emit: Instant::now(),
     };
     session.emit("copy", "", 0, total.1);
-    for entry in std::fs::read_dir(&found.game_dir).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))? {
-        let entry = entry.map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
+    for entry in std::fs::read_dir(&found.game_dir).map_err(super::ctx("E_IMPORT_COPY_FAILED"))? {
+        let entry = entry.map_err(super::ctx("E_IMPORT_COPY_FAILED"))?;
         session.check()?;
         let name = entry.file_name().to_string_lossy().to_string();
         if !wanted(found, &name) {
             continue;
         }
         let to = dst.join(&name);
-        let kind = entry.file_type().map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
+        let kind = entry.file_type().map_err(super::ctx("E_IMPORT_COPY_FAILED"))?;
         if kind.is_symlink() {
             tracing::warn!("Skipping symlink during import: {}", entry.path().display());
         } else if kind.is_dir() {
             copy_tree(&entry.path(), &to, &mut p)?;
         } else {
-            let size = std::fs::copy(entry.path(), to).map_err(|e| format!("E_IMPORT_COPY_FAILED: {e}"))?;
+            let size = std::fs::copy(entry.path(), to).map_err(super::ctx("E_IMPORT_COPY_FAILED"))?;
             p.file_done(&name, size);
         }
     }

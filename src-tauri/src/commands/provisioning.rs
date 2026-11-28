@@ -77,7 +77,7 @@ async fn run_forge_installer(
     let profiles = app_data.join("launcher_profiles.json");
     if !profiles.is_file() {
         super::atomic_write(&profiles, br#"{"profiles":{},"version":3}"#)
-            .map_err(|e| format!("E_LOADER_INSTALL_FAILED: {}", e))?;
+            .map_err(super::ctx("E_LOADER_INSTALL_FAILED"))?;
     }
 
     // java.exe (not javaw.exe) so the installer's output is captured.
@@ -273,13 +273,13 @@ pub async fn ensure_instance_provisioned(
 
     let manifest = if version_json_path.is_file() {
         let content = std::fs::read_to_string(&version_json_path)
-            .map_err(|e| format!("E_VERSION_FILE_BROKEN: {}", e))?;
+            .map_err(super::ctx("E_VERSION_FILE_BROKEN"))?;
         serde_json::from_str::<VersionManifest>(&content)
-            .map_err(|e| format!("E_VERSION_FILE_BROKEN: {}", e))?
+            .map_err(super::ctx("E_VERSION_FILE_BROKEN"))?
     } else {
         // Fetch from Mojang Version Manifest V2
         std::fs::create_dir_all(&version_folder)
-            .map_err(|e| format!("E_VERSION_FILE_WRITE_FAILED: {}", e))?;
+            .map_err(super::ctx("E_VERSION_FILE_WRITE_FAILED"))?;
 
         let manifest_root_url = MirrorManager::rewrite_url(
             "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
@@ -288,7 +288,7 @@ pub async fn ensure_instance_provisioned(
 
         let v2 = VersionManifestV2::fetch_remote(&manifest_root_url)
             .await
-            .map_err(|e| format!("E_VERSION_LIST_FAILED: {}", e))?;
+            .map_err(super::ctx("E_VERSION_LIST_FAILED"))?;
 
         let entry = v2
             .versions
@@ -299,13 +299,13 @@ pub async fn ensure_instance_provisioned(
         let detail_url = MirrorManager::rewrite_url(&entry.url, provider);
         let detail = VersionManifest::fetch_remote(&detail_url)
             .await
-            .map_err(|e| format!("E_VERSION_LIST_FAILED: {}", e))?;
+            .map_err(super::ctx("E_VERSION_LIST_FAILED"))?;
 
         let serialized = serde_json::to_string_pretty(&detail)
-            .map_err(|e| format!("E_VERSION_FILE_WRITE_FAILED: {}", e))?;
+            .map_err(super::ctx("E_VERSION_FILE_WRITE_FAILED"))?;
         // Atomic, so an interrupted write never leaves a half file that blocks every later launch.
         super::atomic_write(&version_json_path, serialized.as_bytes())
-            .map_err(|e| format!("E_VERSION_FILE_WRITE_FAILED: {}", e))?;
+            .map_err(super::ctx("E_VERSION_FILE_WRITE_FAILED"))?;
 
         detail
     };
@@ -340,7 +340,7 @@ pub async fn ensure_instance_provisioned(
                         &versions_dir,
                     )
                     .await
-                    .map_err(|e| format!("E_LOADER_INSTALL_FAILED: {}", e))?,
+                    .map_err(super::ctx("E_LOADER_INSTALL_FAILED"))?,
                 }
             } else {
                 manifest
@@ -373,7 +373,7 @@ pub async fn ensure_instance_provisioned(
             let in_cas = cas.exists(&client_dl.sha1);
             if in_cas {
                 cas.link_to_instance(&client_dl.sha1, &client_jar_path)
-                    .map_err(|e| format!("E_CACHE_FAILED: {}", e))?;
+                    .map_err(super::ctx("E_CACHE_FAILED"))?;
             } else {
                 let temp_jar = std::env::temp_dir().join(format!("fc_client_{}_{}.jar", version_id, instance_id));
                 let target_url = MirrorManager::rewrite_url(&client_dl.url, provider);
@@ -387,13 +387,13 @@ pub async fn ensure_instance_provisioned(
                         &format!("client-{}", version_id),
                     )
                     .await
-                    .map_err(|e| format!("E_CLIENT_DOWNLOAD_FAILED: {}", e))?;
+                    .map_err(super::ctx("E_CLIENT_DOWNLOAD_FAILED"))?;
 
                 cas.store_file(&temp_jar, Some(&client_dl.sha1))
-                    .map_err(|e| format!("E_CACHE_FAILED: {}", e))?;
+                    .map_err(super::ctx("E_CACHE_FAILED"))?;
 
                 cas.link_to_instance(&client_dl.sha1, &client_jar_path)
-                    .map_err(|e| format!("E_CACHE_FAILED: {}", e))?;
+                    .map_err(super::ctx("E_CACHE_FAILED"))?;
 
                 let _ = tokio::fs::remove_file(&temp_jar).await;
             }
@@ -418,7 +418,7 @@ pub async fn ensure_instance_provisioned(
             let content = std::fs::read_to_string(&profile_path)
                 .map_err(|e| format!("E_LOADER_NO_PROFILE: {} {}", profile_path.display(), e))?;
             let profile: VersionManifest = serde_json::from_str(&content)
-                .map_err(|e| format!("E_VERSION_FILE_BROKEN: {}", e))?;
+                .map_err(super::ctx("E_VERSION_FILE_BROKEN"))?;
             manifest = if profile.inherits_from.is_some() { profile.merge_parent(&manifest) } else { profile };
         }
     }
@@ -524,7 +524,7 @@ pub async fn ensure_instance_provisioned(
 
         download_with_progress(&downloader, app, instance_id, "libraries", &tr!("正在下載核心依賴庫", "Downloading libraries"), lib_tasks)
             .await
-            .map_err(|e| format!("E_LIBRARIES_DOWNLOAD_FAILED: {}", e))?;
+            .map_err(super::ctx("E_LIBRARIES_DOWNLOAD_FAILED"))?;
     }
 
     // Extract natives to instance natives dir
@@ -546,7 +546,7 @@ pub async fn ensure_instance_provisioned(
     if let Some(ref index_ref) = manifest.asset_index {
         let index_dir = assets_dir.join("indexes");
         std::fs::create_dir_all(&index_dir)
-            .map_err(|e| format!("E_ASSETS_DOWNLOAD_FAILED: {}", e))?;
+            .map_err(super::ctx("E_ASSETS_DOWNLOAD_FAILED"))?;
 
         let index_file_path = index_dir.join(format!("{}.json", index_ref.id));
         if !index_file_path.is_file() {
@@ -569,12 +569,12 @@ pub async fn ensure_instance_provisioned(
                     &format!("asset-index-{}", index_ref.id),
                 )
                 .await
-                .map_err(|e| format!("E_ASSETS_DOWNLOAD_FAILED: {}", e))?;
+                .map_err(super::ctx("E_ASSETS_DOWNLOAD_FAILED"))?;
         }
 
         // Parse index objects
         let index_content = std::fs::read_to_string(&index_file_path)
-            .map_err(|e| format!("E_ASSETS_DOWNLOAD_FAILED: {}", e))?;
+            .map_err(super::ctx("E_ASSETS_DOWNLOAD_FAILED"))?;
         let asset_index_obj = serde_json::from_str::<AssetIndexFile>(&index_content)
             .map_err(|e| {
                 let _ = std::fs::remove_file(&index_file_path);
@@ -620,7 +620,7 @@ pub async fn ensure_instance_provisioned(
 
             download_with_progress(&downloader, app, instance_id, "assets", &tr!("正在下載遊戲資源檔案", "Downloading game assets"), asset_tasks)
                 .await
-                .map_err(|e| format!("E_ASSETS_DOWNLOAD_FAILED: {}", e))?;
+                .map_err(super::ctx("E_ASSETS_DOWNLOAD_FAILED"))?;
         }
     }
 
@@ -687,7 +687,7 @@ async fn ensure_java(
 
             let jre_items = fetch_mojang_runtime_download_list(component, runtime_os)
                 .await
-                .map_err(|e| format!("E_JAVA_DOWNLOAD_FAILED: {}", e))?;
+                .map_err(super::ctx("E_JAVA_DOWNLOAD_FAILED"))?;
 
             let comp_dir = runtime_dir.join(component);
             let mut jre_tasks = Vec::new();
@@ -709,11 +709,11 @@ async fn ensure_java(
             if !jre_tasks.is_empty() {
                 download_with_progress(downloader, app, instance_id, "java", &tr!("正在下載 Mojang JRE", "Downloading the Mojang JRE"), jre_tasks)
                     .await
-                    .map_err(|e| format!("E_JAVA_DOWNLOAD_FAILED: {}", e))?;
+                    .map_err(super::ctx("E_JAVA_DOWNLOAD_FAILED"))?;
             }
 
             resolve_or_locate_java(required_major, None)
-                .map_err(|e| format!("E_JAVA_DOWNLOAD_FAILED: {}", e))?
+                .map_err(super::ctx("E_JAVA_DOWNLOAD_FAILED"))?
         }
     };
 

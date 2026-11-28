@@ -41,6 +41,7 @@ import { REPLAY_ONBOARDING_EVENT } from "@/components/onboarding/OnboardingGuide
 import { toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { useAppVersion } from "@/lib/useAppVersion";
+import { cn } from "@/lib/utils";
 
 const subTabVariants = slideVariants("x", 16);
 
@@ -230,9 +231,10 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
               variant={language === code ? "default" : "outline"}
               size="sm"
               onClick={() => setLanguage(code)}
-              className={`h-8 text-xs ${
-                language === code ? "bg-brand hover:bg-brand-hover text-on-solid" : "border-white/10 text-slate-300"
-              }`}
+              className={cn(
+                "h-8 text-xs",
+                language === code ? "bg-brand hover:bg-brand-hover text-on-solid" : "border-white/10 text-slate-300",
+              )}
             >
               {label}
             </Button>
@@ -344,7 +346,7 @@ export const SettingsView: React.FC<{ subNav: SettingsSubNav; direction?: number
             </span>
           </div>
           <Button size="sm" variant="outline" onClick={handleCheckUpdates} disabled={isCheckingUpdate || isInstallingUpdate} className="h-8 gap-1.5 border-white/10 text-xs text-slate-200 hover:text-white">
-            <RefreshCw className={`h-3.5 w-3.5 ${isCheckingUpdate ? "animate-spin" : ""}`} />
+            <RefreshCw className={cn("h-3.5 w-3.5", isCheckingUpdate && "animate-spin")} />
             <span>{isCheckingUpdate ? t.settings.checkingUpdates : t.settings.checkUpdates}</span>
           </Button>
         </div>

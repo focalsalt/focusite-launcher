@@ -8,6 +8,7 @@ import type { MinecraftInstance, PackFileInfo, VersionCapabilities } from "@/typ
 import { FramelessEmptyState, tabContentVariants, PackItem } from "./shared";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
+import { cn } from "@/lib/utils";
 
 interface PacksTabProps {
   instance: MinecraftInstance;
@@ -91,10 +92,10 @@ export const PacksTab: React.FC<PacksTabProps> = ({ instance, caps, resourcepack
                           type="button"
                           ref={pill.register("packs")}
                           onClick={() => handleResourceShaderChange("packs")}
-                          className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${resourceShaderTab === "packs"
-                            ? "text-on-solid"
-                            : "text-slate-400 hover:text-slate-200"
-                            }`}
+                          className={cn(
+                            "relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors",
+                            resourceShaderTab === "packs" ? "text-on-solid" : "text-slate-400 hover:text-slate-200",
+                          )}
                         >
                           <span className="relative z-10 flex items-center gap-1.5">
                             <Palette className="h-3.5 w-3.5" />
@@ -106,10 +107,10 @@ export const PacksTab: React.FC<PacksTabProps> = ({ instance, caps, resourcepack
                           type="button"
                           ref={pill.register("shaders")}
                           onClick={() => handleResourceShaderChange("shaders")}
-                          className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${resourceShaderTab === "shaders"
-                            ? "text-on-solid"
-                            : "text-slate-400 hover:text-slate-200"
-                            }`}
+                          className={cn(
+                            "relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors",
+                            resourceShaderTab === "shaders" ? "text-on-solid" : "text-slate-400 hover:text-slate-200",
+                          )}
                         >
                           <span className="relative z-10 flex items-center gap-1.5">
                             <Layers className="h-3.5 w-3.5" />

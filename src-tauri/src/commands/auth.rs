@@ -60,11 +60,11 @@ fn load_account_store() -> AccountStoreFile {
 fn save_account_store(store: &AccountStoreFile) -> Result<(), String> {
     let path = get_accounts_file_path();
     let json = serde_json::to_string_pretty(store)
-        .map_err(|e| format!("E_ACCOUNT_SAVE_FAILED: {}", e))?;
+        .map_err(super::ctx("E_ACCOUNT_SAVE_FAILED"))?;
     let encrypted = focusite_auth::dpapi::encrypt_account_data(&json)
-        .map_err(|e| format!("E_ACCOUNT_SAVE_FAILED: {}", e))?;
+        .map_err(super::ctx("E_ACCOUNT_SAVE_FAILED"))?;
     super::atomic_write(&path, &encrypted)
-        .map_err(|e| format!("E_ACCOUNT_SAVE_FAILED: {}", e))?;
+        .map_err(super::ctx("E_ACCOUNT_SAVE_FAILED"))?;
     Ok(())
 }
 
@@ -100,7 +100,7 @@ pub async fn auth_start_device_code() -> Result<DeviceCodeResponse, String> {
     let client_id = oauth::get_microsoft_client_id().map_err(|_| MISSING_CLIENT_ID.to_string())?;
     oauth::start_device_code(super::http(), &client_id)
         .await
-        .map_err(|e| format!("E_DEVICE_LOGIN_FAILED: {}", e))
+        .map_err(super::ctx("E_DEVICE_LOGIN_FAILED"))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,7 +122,7 @@ pub async fn auth_poll_device_code(app: tauri::AppHandle, device_code: String) -
     let client = super::http();
     let (status, maybe_token) = oauth::poll_device_code_once(client, &client_id, &device_code)
         .await
-        .map_err(|e| format!("E_AUTH_POLL_FAILED: {}", e))?;
+        .map_err(super::ctx("E_AUTH_POLL_FAILED"))?;
 
     let token_resp = match status {
         oauth::DeviceCodePollStatus::Pending => return Ok(DevicePollResult::waiting("pending", None)),
@@ -141,7 +141,7 @@ pub async fn auth_poll_device_code(app: tauri::AppHandle, device_code: String) -
     emit_step("microsoft");
     let (mc_auth, profile) = xbox::login_chain_with_progress(client, &token_resp.access_token, emit_step)
         .await
-        .map_err(|e| format!("E_MINECRAFT_LOGIN_FAILED: {}", e))?;
+        .map_err(super::ctx("E_MINECRAFT_LOGIN_FAILED"))?;
     emit_step("saving");
 
     if let Err(e) = focusite_auth::keyring_store::CredentialStore::save_credentials(
@@ -188,7 +188,7 @@ pub async fn auth_list_accounts() -> Result<Vec<UserAccountDto>, String> {
         Ok(store.accounts)
     })
     .await
-    .map_err(|e| format!("E_BACKGROUND_TASK_FAILED: {}", e))?
+    .map_err(super::ctx("E_BACKGROUND_TASK_FAILED"))?
 }
 
 #[tauri::command]
@@ -259,7 +259,7 @@ pub(super) async fn silent_refresh(
 pub async fn auth_refresh_profile(id: String) -> Result<UserAccountDto, String> {
     let client = super::http();
     let maybe_creds = focusite_auth::keyring_store::CredentialStore::get_credentials(&id)
-        .map_err(|e| format!("E_CREDENTIAL_READ_FAILED: {}", e))?;
+        .map_err(super::ctx("E_CREDENTIAL_READ_FAILED"))?;
     let had_creds = maybe_creds.is_some();
 
     // 1. The cached Minecraft token; when it has expired, a silent refresh with the Microsoft refresh token.
@@ -335,7 +335,7 @@ pub fn auth_verify_offline_launch(id: String) -> Result<bool, String> {
 
     // Check if token exists in Keyring
     let has_stored_token = focusite_auth::keyring_store::CredentialStore::get_token(&id)
-        .map_err(|e| format!("E_CREDENTIAL_STORE_FAILED: {}", e))?
+        .map_err(super::ctx("E_CREDENTIAL_STORE_FAILED"))?
         .is_some();
 
     // Verify offline entitlement gate
@@ -344,7 +344,7 @@ pub fn auth_verify_offline_launch(id: String) -> Result<bool, String> {
         true,
         has_stored_token,
     )
-    .map_err(|e| format!("E_OFFLINE_CHECK_FAILED: {}", e))?;
+    .map_err(super::ctx("E_OFFLINE_CHECK_FAILED"))?;
 
     Ok(true)
 }

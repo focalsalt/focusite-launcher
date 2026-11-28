@@ -75,12 +75,12 @@ pub async fn blocking<T: Send + 'static>(
 ) -> Result<T, String> {
     tokio::task::spawn_blocking(work)
         .await
-        .map_err(|e| format!("E_BACKGROUND_TASK_FAILED: {}", e))?
+        .map_err(ctx("E_BACKGROUND_TASK_FAILED"))?
 }
 
-/// Builds a `map_err` adapter that prefixes a short Chinese action description to the cause.
+/// Builds a `map_err` adapter that prefixes an `E_*` error code to the cause.
 pub fn ctx<E: std::fmt::Display>(prefix: &'static str) -> impl Fn(E) -> String {
-    move |e| format!("{}：{}", prefix, e)
+    move |e| format!("{}: {}", prefix, e)
 }
 
 /// Version of the launcher's own file formats (instance config, settings, theme packs, export archives).

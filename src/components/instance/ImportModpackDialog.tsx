@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ask as askDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
@@ -28,16 +28,21 @@ import {
   newJobId,
   listenJobProgress,
   IMPORT_PROGRESS_EVENT,
-  MissingModItem,
-  ModpackImportResult,
-  PackInspection,
-  JobProgress,
 } from "@/services/modpackService";
+import {
+  formReducer,
+  initialForm,
+  initialInspection,
+  initialJob,
+  inspectionReducer,
+  jobReducer,
+} from "@/lib/importPackReducers";
+import { filtersReducer, initialFilters } from "@/lib/workshopReducers";
 import { TransferProgress, type TransferStage } from "./TransferProgress";
 import { MissingModsPanel } from "./MissingModsPanel";
 import { formatBytes } from "@/lib/formatBytes";
 import { workshopService, WorkshopProjectSummary, WorkshopCategory } from "@/services/workshopService";
-import { FilterSidebar, Sort } from "@/components/workshop/FilterSidebar";
+import { FilterSidebar } from "@/components/workshop/FilterSidebar";
 import { ProjectDetailPanel } from "@/components/workshop/ProjectDetailPanel";
 import { useProjectDetail } from "@/components/workshop/useProjectDetail";
 import { useVersionManifest } from "./VersionLoaderFields";
@@ -46,6 +51,7 @@ import { toast } from "@/lib/toast";
 import { ProjectRow } from "@/components/workshop/ProjectRow";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useI18n } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 interface ImportModpackDialogProps {
   isOpen: boolean;
@@ -59,28 +65,19 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
   onImportSuccess,
 }) => {
   const { t } = useI18n();
-  const [packFilePath, setPackFilePath] = useState<string>("");
-  const [source, setSource] = useState<"local" | "online">("local");
+  const [form, dispatchForm] = useReducer(formReducer, initialForm);
+  const { source, packFilePath, customName, activeProject, selectedProject, selectedVersion } = form;
   const [onlineQuery, setOnlineQuery] = useState<string>("");
   const [onlineResults, setOnlineResults] = useState<WorkshopProjectSummary[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
-  const [selectedProject, setSelectedProject] = useState<WorkshopProjectSummary | null>(null);
-  const [customName, setCustomName] = useState<string>("");
-  const [isImporting, setIsImporting] = useState<boolean>(false);
   // Set synchronously so a double click cannot start two imports before the state update lands.
   const importingRef = useRef<boolean>(false);
   const importIdRef = useRef<string>("");
-  const [progress, setProgress] = useState<JobProgress | null>(null);
-  const [cancelling, setCancelling] = useState<boolean>(false);
-  const [inspection, setInspection] = useState<PackInspection | null>(null);
-  const [inspectError, setInspectError] = useState<string>("");
-  const [isInspecting, setIsInspecting] = useState<boolean>(false);
-  const [sort, setSort] = useState<Sort>("relevance");
-  const [gameVersion, setGameVersion] = useState<string>("");
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [job, dispatchJob] = useReducer(jobReducer, initialJob);
+  const { isImporting, progress, cancelling, result: importResult, missingMods } = job;
+  const [{ inspection, error: inspectError, isInspecting }, dispatchInspection] = useReducer(inspectionReducer, initialInspection);
+  const [{ sort, gameVersion, picked }, dispatchFilter] = useReducer(filtersReducer, initialFilters);
   const [categories, setCategories] = useState<WorkshopCategory[]>([]);
-  const [activeProject, setActiveProject] = useState<WorkshopProjectSummary | null>(null);
-  const [selectedVersion, setSelectedVersion] = useState<{ id: string; label: string } | null>(null);
   const { manifest } = useVersionManifest(isOpen);
   const mcVersions = useMemo(
     () => (manifest?.versions ?? []).filter((v) => v.type === "release").map((v) => v.id),
@@ -95,36 +92,21 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
     (v) => v.filename.endsWith(".mrpack"),
   );
   const currentVersion = versions.find((v) => v.id === versionId);
-  const [nameTouched, setNameTouched] = useState<boolean>(false);
-
-  // 待補齊狀態
-  const [importResult, setImportResult] = useState<ModpackImportResult | null>(null);
-  const [missingMods, setMissingMods] = useState<MissingModItem[]>([]);
 
   // Describe the chosen file or folder before anything is imported, so problems show up early.
   useEffect(() => {
     const path = packFilePath.trim();
     if (source !== "local" || !path) {
-      setInspection(null);
-      setInspectError("");
+      dispatchInspection({ type: "clear" });
       return;
     }
     let cancelled = false;
-    setIsInspecting(true);
+    dispatchInspection({ type: "started" });
     const timer = window.setTimeout(() => {
       modpackService
         .inspectModpackFile(path, customName.trim() || undefined)
-        .then((info) => {
-          if (cancelled) return;
-          setInspection(info);
-          setInspectError("");
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          setInspection(null);
-          setInspectError(toUserMessage(err));
-        })
-        .finally(() => !cancelled && setIsInspecting(false));
+        .then((info) => !cancelled && dispatchInspection({ type: "done", inspection: info }))
+        .catch((err) => !cancelled && dispatchInspection({ type: "failed", error: toUserMessage(err) }));
     }, 350);
     return () => {
       cancelled = true;
@@ -146,12 +128,8 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
         ],
       });
       if (selected && typeof selected === "string") {
-        setPackFilePath(selected);
-        if (!nameTouched) {
-          const filename = selected.split(/[\\/]/).pop() || "";
-          const baseName = filename.replace(/\.(mrpack|zip)$/i, "");
-          if (baseName) setCustomName(baseName);
-        }
+        const filename = selected.split(/[\\/]/).pop() || "";
+        dispatchForm({ type: "browsed", path: selected, suggestedName: filename.replace(/\.(mrpack|zip)$/i, "") });
       }
     } catch (err) {
       console.error("Open file dialog error:", err);
@@ -164,11 +142,8 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
     try {
       const selected = await openFileDialog({ directory: true, multiple: false });
       if (selected && typeof selected === "string") {
-        setPackFilePath(selected);
-        if (!nameTouched) {
-          const folder = selected.split(/[\\/]/).filter(Boolean).pop() || "";
-          if (folder) setCustomName(folder);
-        }
+        const folder = selected.split(/[\\/]/).filter(Boolean).pop() || "";
+        dispatchForm({ type: "browsed", path: selected, suggestedName: folder });
       }
     } catch (err) {
       console.error("Open folder dialog error:", err);
@@ -206,22 +181,18 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
       .catch((err) => toast(toUserMessage(err), "error"));
   }, [isOpen, source, categories.length]);
 
-  const toggleCategory = (name: string) =>
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
+  const toggleCategory = (name: string) => dispatchFilter({ type: "toggleCategory", name });
 
   const pickVersion = () => {
     if (!activeProject || !currentVersion) {
       toast(t.workshopWin.pickVersionFirst, "error");
       return;
     }
-    setSelectedProject(activeProject);
-    setSelectedVersion({ id: currentVersion.id, label: currentVersion.version_number });
-    if (!nameTouched) setCustomName(activeProject.title);
+    dispatchForm({
+      type: "pick",
+      project: activeProject,
+      version: { id: currentVersion.id, label: currentVersion.version_number },
+    });
   };
 
   const isPicked = !!activeProject && selectedProject?.id === activeProject.id && selectedVersion?.id === versionId;
@@ -261,18 +232,17 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
     importingRef.current = true;
     const importId = newJobId();
     importIdRef.current = importId;
-    setProgress(null);
-    setCancelling(false);
-    setIsImporting(true);
-    const unlisten = await listenJobProgress(IMPORT_PROGRESS_EVENT, importId, setProgress);
+    dispatchJob({ type: "started" });
+    const unlisten = await listenJobProgress(IMPORT_PROGRESS_EVENT, importId, (progress) =>
+      dispatchJob({ type: "progress", progress }),
+    );
     try {
       const res =
         source === "online" && selectedProject
           ? await modpackService.importModrinthModpack(selectedProject.id, customName.trim() || undefined, selectedVersion?.id, importId)
           : await modpackService.importModpack(packFilePath.trim(), customName.trim() || undefined, importId, large);
 
-      setImportResult(res);
-      setMissingMods(res.missingMods);
+      dispatchJob({ type: "succeeded", result: res });
 
       if (res.isCompleted) {
         const taken = res.imported.map((k) => t.importPack.importedItems[k as keyof typeof t.importPack.importedItems] ?? k);
@@ -287,13 +257,12 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
     } finally {
       unlisten();
       importingRef.current = false;
-      setIsImporting(false);
-      setCancelling(false);
+      dispatchJob({ type: "finished" });
     }
   };
 
   const handleCancelImport = async () => {
-    setCancelling(true);
+    dispatchJob({ type: "cancelRequested" });
     await modpackService.cancelJob(importIdRef.current);
   };
 
@@ -308,17 +277,9 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
     if (importingRef.current) return;
     // The instance already exists on disk once the missing-mods view shows.
     if (importResult && missingMods.length > 0) toast(t.importPack.missingClosed(missingMods.length), "info", 6000);
-    setInspection(null);
-    setInspectError("");
-    setPackFilePath("");
-    setCustomName("");
-    setSelectedProject(null);
-    setSource("local");
-    setNameTouched(false);
-    setActiveProject(null);
-    setSelectedVersion(null);
-    setImportResult(null);
-    setMissingMods([]);
+    dispatchInspection({ type: "clear" });
+    dispatchForm({ type: "reset" });
+    dispatchJob({ type: "reset" });
     onClose();
   };
 
@@ -358,7 +319,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
           <MissingModsPanel
             result={importResult}
             missingMods={missingMods}
-            onMissingModsChange={setMissingMods}
+            onMissingModsChange={(mods) => dispatchJob({ type: "missing", mods })}
             onFinish={handleFinish}
           />
         </DialogContent>
@@ -367,11 +328,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
   }
 
   const hasActiveFilters = picked.size > 0 || sort !== "relevance" || gameVersion !== "";
-  const resetFilters = () => {
-    setPicked(new Set());
-    setSort("relevance");
-    setGameVersion("");
-  };
+  const resetFilters = () => dispatchFilter({ type: "reset", gameVersion: "" });
 
   // Import picker: fixed-height layout so the list scrolls and the footer is always reachable.
   return (
@@ -393,7 +350,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
             </div>
             {/* Dropdown so further sources (e.g. CurseForge) can be added later. */}
             <div className="mr-8 w-60 shrink-0">
-              <Select value={source} onValueChange={(v) => setSource(v as "local" | "online")}>
+              <Select value={source} onValueChange={(v) => dispatchForm({ type: "source", source: v as "local" | "online" })}>
                 <SelectTrigger className="h-9">
                   <SelectValue>
                     <span className="flex items-center gap-2">
@@ -429,7 +386,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                   <div className="flex items-center gap-2">
                     <Input id="import-path"
                       value={packFilePath}
-                      onChange={(e) => setPackFilePath(e.target.value)}
+                      onChange={(e) => dispatchForm({ type: "path", path: e.target.value })}
                       placeholder={t.importPack.pathPlaceholder}
                       className="h-9 flex-1 bg-black/30 font-mono"
                     />
@@ -526,9 +483,9 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
               >
                 <FilterSidebar
                   sort={sort}
-                  onSort={setSort}
+                  onSort={(sort) => dispatchFilter({ type: "sort", sort })}
                   gameVersion={gameVersion}
-                  onGameVersion={setGameVersion}
+                  onGameVersion={(gameVersion) => dispatchFilter({ type: "gameVersion", gameVersion })}
                   mcVersions={mcVersions}
                   categories={categories}
                   picked={picked}
@@ -577,7 +534,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                             project={proj}
                             active={activeProject?.id === proj.id}
                             checked={selectedProject?.id === proj.id}
-                            onSelect={setActiveProject}
+                            onSelect={(project) => dispatchForm({ type: "view", project })}
                           />
                         ))}
                       </div>
@@ -596,7 +553,7 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
                       versionId={versionId}
                       onVersionChange={setVersionId}
                       isLoading={isLoadingDetail}
-                      onClose={() => setActiveProject(null)}
+                      onClose={() => dispatchForm({ type: "view", project: null })}
                       action={
                         <Button
                           type="button"
@@ -626,13 +583,12 @@ export const ImportModpackDialog: React.FC<ImportModpackDialogProps> = ({
             <Input
               value={customName}
               onChange={(e) => {
-                setCustomName(e.target.value);
-                setNameTouched(true);
+                dispatchForm({ type: "name", name: e.target.value });
               }}
               placeholder={t.importPack.customNamePlaceholder}
               aria-label={t.importPack.customNameLabel}
               aria-invalid={nameInvalid}
-              className={`h-9 flex-1 bg-black/30 ${nameInvalid ? "border-danger-500/60" : ""}`}
+              className={cn("h-9 flex-1 bg-black/30", nameInvalid && "border-danger-500/60")}
             />
             <Button type="button" variant="glass" size="sm" onClick={resetAll} className="shrink-0">
               {t.common.cancel}

@@ -8,6 +8,7 @@ import { splitArgs } from "@/lib/launchOptions";
 import { toast } from "@/lib/toast";
 import { toUserMessage } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 const FIELD_CLASS = "h-9 border-white/10 bg-black/30 font-mono text-xs";
 
@@ -89,7 +90,10 @@ export const InstanceDefaultsForm: React.FC = () => {
       <div className="space-y-1.5">
         {label("java", t.instSettings.javaTitle)}
         <div className="flex gap-2">
-          <Input {...field("java")} placeholder={t.instSettings.javaPathPlaceholder} className={`${FIELD_CLASS} flex-1`} />
+          <Input {...field("java")} placeholder={t.instSettings.javaPathPlaceholder} className={cn(
+            FIELD_CLASS,
+            "flex-1",
+          )} />
           <Button type="button" variant="outline" size="sm" onClick={browseJava} className="h-9 shrink-0 gap-1.5 text-xs">
             <FolderOpen className="h-3.5 w-3.5" /> {t.inst.browseEllipsis}
           </Button>

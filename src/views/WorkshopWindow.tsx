@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo, useReducer } from "react";
 import { AnimatePresence } from "motion/react";
 import { Search, Plus, Minus, Loader2, FileBox } from "lucide-react";
 import { WindowBar } from "@/components/layout/WindowBar";
@@ -15,9 +15,10 @@ import {
   WorkshopProjectSummary,
   WorkshopCategory,
 } from "@/services/workshopService";
+import { filtersReducer, initialFilters, initialResults, resultsReducer } from "@/lib/workshopReducers";
 import { InstallPlanConfirmDialog } from "@/components/workshop/InstallPlanConfirmDialog";
 import { ProjectRow } from "@/components/workshop/ProjectRow";
-import { FilterSidebar, Sort, Env } from "@/components/workshop/FilterSidebar";
+import { FilterSidebar } from "@/components/workshop/FilterSidebar";
 import { ProjectDetailPanel } from "@/components/workshop/ProjectDetailPanel";
 import { useProjectDetail } from "@/components/workshop/useProjectDetail";
 import { useVersionManifest } from "@/components/instance/VersionLoaderFields";
@@ -61,18 +62,12 @@ export const WorkshopWindow: React.FC = () => {
   // Filters
   const [queryInput, setQueryInput] = useState<string>("");
   const [query, setQuery] = useState<string>("");
-  const [sort, setSort] = useState<Sort>("relevance");
-  const [env, setEnv] = useState<Env | null>(null);
-  const [gameVersion, setGameVersion] = useState<string>("");
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [{ sort, env, gameVersion, picked }, dispatchFilter] = useReducer(filtersReducer, initialFilters);
   const [categories, setCategories] = useState<WorkshopCategory[]>([]);
   const { manifest } = useVersionManifest(true);
 
   // Results
-  const [projects, setProjects] = useState<WorkshopProjectSummary[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
-  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [{ projects, isLoading, isLoadingMore, hasMore }, dispatchResults] = useReducer(resultsReducer, initialResults);
 
   // Detail panel
   const [activeProject, setActiveProject] = useState<WorkshopProjectSummary | null>(null);
@@ -92,7 +87,7 @@ export const WorkshopWindow: React.FC = () => {
         if (!inst) return;
         setInstance(inst);
         // Default the version filter to the instance's own version.
-        if (inst.version !== "Custom") setGameVersion(inst.version);
+        if (inst.version !== "Custom") dispatchFilter({ type: "gameVersion", gameVersion: inst.version });
       })
       .catch((err) => toast(toUserMessage(err), "error"))
       .finally(() => setInstanceReady(true));
@@ -121,8 +116,7 @@ export const WorkshopWindow: React.FC = () => {
   const runSearch = useCallback(
     async (offset: number) => {
       const seq = ++searchSeq.current;
-      if (offset === 0) setIsLoading(true);
-      else setIsLoadingMore(true);
+      dispatchResults({ type: "started", offset });
       try {
         const results = await workshopService.searchProjects(
           query,
@@ -134,15 +128,11 @@ export const WorkshopWindow: React.FC = () => {
           { categories: [...picked], environment: env ?? undefined, sort },
         );
         if (seq !== searchSeq.current) return;
-        setProjects((prev) => (offset === 0 ? results : [...prev, ...results]));
-        setHasMore(results.length === PAGE_SIZE);
+        dispatchResults({ type: "loaded", offset, results, pageSize: PAGE_SIZE });
       } catch (err) {
-        if (seq === searchSeq.current) toast(toUserMessage(err, t.workshopWin.searchFailed), "error");
-      } finally {
-        if (seq === searchSeq.current) {
-          setIsLoading(false);
-          setIsLoadingMore(false);
-        }
+        if (seq !== searchSeq.current) return;
+        dispatchResults({ type: "failed" });
+        toast(toUserMessage(err, t.workshopWin.searchFailed), "error");
       }
     },
     [query, projectType, gameVersion, loader, picked, env, sort, t],
@@ -205,22 +195,11 @@ export const WorkshopWindow: React.FC = () => {
         ? t.workshop.filterResourcePacks
         : t.workshopWin.typeShader;
 
-  const toggleCategory = (name: string) =>
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
+  const toggleCategory = (name: string) => dispatchFilter({ type: "toggleCategory", name });
 
   const defaultVersion = instance && instance.version !== "Custom" ? instance.version : "";
   const hasActiveFilters = picked.size > 0 || env !== null || sort !== "relevance" || gameVersion !== defaultVersion;
-  const resetFilters = () => {
-    setPicked(new Set());
-    setEnv(null);
-    setSort("relevance");
-    setGameVersion(defaultVersion);
-  };
+  const resetFilters = () => dispatchFilter({ type: "reset", gameVersion: defaultVersion });
 
   return (
     <div className="flex h-screen w-screen flex-col bg-canvas text-slate-100 select-none">
@@ -229,12 +208,12 @@ export const WorkshopWindow: React.FC = () => {
       <div className="flex min-h-0 flex-1">
         <FilterSidebar
           sort={sort}
-          onSort={setSort}
+          onSort={(sort) => dispatchFilter({ type: "sort", sort })}
           gameVersion={gameVersion}
-          onGameVersion={setGameVersion}
+          onGameVersion={(gameVersion) => dispatchFilter({ type: "gameVersion", gameVersion })}
           mcVersions={mcVersions}
           env={env}
-          onEnv={projectType === "mod" ? setEnv : undefined}
+          onEnv={projectType === "mod" ? (env) => dispatchFilter({ type: "env", env }) : undefined}
           categories={categories}
           picked={picked}
           onToggleCategory={toggleCategory}

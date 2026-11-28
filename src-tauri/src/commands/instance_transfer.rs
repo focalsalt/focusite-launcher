@@ -51,24 +51,24 @@ pub fn store_background_bytes(inst_dir: &Path, ext: &str, bytes: &[u8]) -> Resul
     }
     let (w, h) = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
-        .map_err(|e| format!("E_IMAGE_OPEN_FAILED: {}", e))?
+        .map_err(super::ctx("E_IMAGE_OPEN_FAILED"))?
         .into_dimensions()
-        .map_err(|e| format!("E_IMAGE_DECODE_FAILED: {}", e))?;
+        .map_err(super::ctx("E_IMAGE_DECODE_FAILED"))?;
     if w == 0 || h == 0 || w > MAX_BACKGROUND_SIDE || h > MAX_BACKGROUND_SIDE {
         return Err("E_BACKGROUND_DIMENSIONS".into());
     }
     remove_backgrounds(inst_dir);
     let name = format!("background.{ext}");
-    super::atomic_write(&inst_dir.join(&name), bytes).map_err(|e| format!("E_BACKGROUND_SAVE_FAILED: {}", e))?;
+    super::atomic_write(&inst_dir.join(&name), bytes).map_err(super::ctx("E_BACKGROUND_SAVE_FAILED"))?;
     Ok(name)
 }
 
 pub fn read_limited(path: &Path, max: u64) -> Result<Vec<u8>, String> {
-    let size = fs::metadata(path).map_err(|e| format!("E_IMAGE_OPEN_FAILED: {}", e))?.len();
+    let size = fs::metadata(path).map_err(super::ctx("E_IMAGE_OPEN_FAILED"))?.len();
     if size > max {
         return Err("E_BACKGROUND_TOO_LARGE".into());
     }
-    fs::read(path).map_err(|e| format!("E_IMAGE_OPEN_FAILED: {}", e))
+    fs::read(path).map_err(super::ctx("E_IMAGE_OPEN_FAILED"))
 }
 
 /// Copies a user-chosen image into the instance folder and records it as the instance's background.
@@ -173,7 +173,7 @@ pub fn describe_settings(cfg: &InstanceDiskConfig) -> Vec<String> {
 fn read_zip_config(zip: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>) -> Result<InstanceDiskConfig, String> {
     let file = zip.by_name(INSTANCE_CONFIG_FILE).map_err(|_| "E_EXPORT_NO_CONFIG".to_string())?;
     let mut text = String::new();
-    file.take(16 * 1024 * 1024).read_to_string(&mut text).map_err(|e| format!("E_INSTANCE_CONFIG_UNREADABLE: {}", e))?;
+    file.take(16 * 1024 * 1024).read_to_string(&mut text).map_err(super::ctx("E_INSTANCE_CONFIG_UNREADABLE"))?;
     super::check_schema(&text, INSTANCE_CONFIG_FILE)?;
     let cfg: InstanceDiskConfig = serde_json::from_str(&text).map_err(|_| "E_EXPORT_CONFIG_INVALID".to_string())?;
     if cfg.version.trim().is_empty() {
@@ -188,7 +188,7 @@ fn read_zip_config(zip: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>) -> Result<
 }
 
 pub fn inspect_focusite_zip(bytes: &[u8], custom_name: Option<String>) -> Result<PackInspection, String> {
-    let mut zip = open_zip(bytes).map_err(|e| format!("E_EXPORT_UNREADABLE: {}", e))?;
+    let mut zip = open_zip(bytes).map_err(super::ctx("E_EXPORT_UNREADABLE"))?;
     let cfg = read_zip_config(&mut zip)?;
     let file_count = zip
         .file_names()
@@ -224,10 +224,10 @@ pub async fn import_focusite_zip(
 ) -> Result<ModpackImportResult, String> {
     session.emit("read", "", 0, 0);
     let src_cfg = {
-        let mut zip = open_zip(bytes).map_err(|e| format!("E_EXPORT_UNREADABLE: {}", e))?;
+        let mut zip = open_zip(bytes).map_err(super::ctx("E_EXPORT_UNREADABLE"))?;
         read_zip_config(&mut zip)?
     };
-    let unpacked = archive_unpacked_size(bytes).map_err(|e| format!("E_EXPORT_UNREADABLE: {}", e))?;
+    let unpacked = archive_unpacked_size(bytes).map_err(super::ctx("E_EXPORT_UNREADABLE"))?;
     ensure_free_space(&get_instances_dir(), unpacked / 10 * 11)?;
     session.check()?;
 
@@ -350,7 +350,7 @@ pub async fn list_export_entries(instance_id: String, sub_path: Option<String>) 
         if is_in_one_level(&sub) {
             return Err("E_FOLDER_ONE_LEVEL".into());
         }
-        let rd = fs::read_dir(&dir).map_err(|e| format!("E_INSTANCE_FOLDER_UNREADABLE: {}", e))?;
+        let rd = fs::read_dir(&dir).map_err(super::ctx("E_INSTANCE_FOLDER_UNREADABLE"))?;
         let mut out: Vec<ExportEntry> = rd
             .flatten()
             .filter_map(|e| {
@@ -456,7 +456,7 @@ fn write_export(
     total: u64,
     tmp: &Path,
 ) -> Result<(), String> {
-    let out = fs::File::create(tmp).map_err(|e| format!("E_EXPORT_CREATE_FAILED: {}", e))?;
+    let out = fs::File::create(tmp).map_err(super::ctx("E_EXPORT_CREATE_FAILED"))?;
     let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(out));
     let deflate = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     let stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
@@ -514,7 +514,7 @@ fn write_export(
     }
     // Finishing writes the central directory and flushes to disk, which can take a moment on a big archive.
     session.emit_full("pack", "", total, total, 0, None);
-    zip.finish().map_err(werr)?.into_inner().map_err(|e| format!("E_EXPORT_WRITE_FAILED: {}", e))?.sync_all().map_err(ioerr)?;
+    zip.finish().map_err(werr)?.into_inner().map_err(super::ctx("E_EXPORT_WRITE_FAILED"))?.sync_all().map_err(ioerr)?;
     Ok(())
 }
 
@@ -569,7 +569,7 @@ pub async fn export_instance(
         let tmp = parent.join(format!(".{}.tmp", uuid::Uuid::new_v4()));
         let result = write_export(&session, &inst_dir, &cfg, &files, total, &tmp).and_then(|_| {
             session.check()?;
-            fs::rename(&tmp, &dest).map_err(|e| format!("E_EXPORT_FINISH_FAILED: {}", e))
+            fs::rename(&tmp, &dest).map_err(super::ctx("E_EXPORT_FINISH_FAILED"))
         });
         if result.is_err() {
             let _ = fs::remove_file(&tmp);

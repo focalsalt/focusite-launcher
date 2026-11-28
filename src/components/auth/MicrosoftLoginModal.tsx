@@ -12,6 +12,7 @@ import { UserAccount } from "@/types/navigation";
 import { useI18n } from "@/i18n";
 import { useDeviceCodeLogin } from "./useDeviceCodeLogin";
 import { LoginSteps } from "./LoginSteps";
+import { cn } from "@/lib/utils";
 
 interface MicrosoftLoginModalProps {
   isOpen: boolean;
@@ -91,7 +92,7 @@ export const MicrosoftLoginModal: React.FC<MicrosoftLoginModalProps> = ({
                 disabled={isStarting}
                 className="gap-1.5 bg-brand hover:bg-brand-hover text-on-solid"
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${isStarting ? "animate-spin" : ""}`} />
+                <RefreshCw className={cn("h-3.5 w-3.5", isStarting && "animate-spin")} />
                 {errorCategory === "expired"
                   ? t.auth.refetchCode
                   : errorCategory === "missing_config"

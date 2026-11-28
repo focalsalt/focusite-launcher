@@ -10,6 +10,7 @@ import { FramelessEmptyState, tabContentVariants, ModItem } from "./shared";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 import { useModSides } from "@/lib/useModSides";
+import { cn } from "@/lib/utils";
 
 interface ModsTabProps {
   instance: MinecraftInstance;
@@ -67,10 +68,10 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                           type="button"
                           ref={pill.register("mods")}
                           onClick={() => setLegacyModTab("mods")}
-                          className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${legacyModTab === "mods"
-                            ? "text-on-solid"
-                            : "text-slate-400 hover:text-slate-200"
-                            }`}
+                          className={cn(
+                            "relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors",
+                            legacyModTab === "mods" ? "text-on-solid" : "text-slate-400 hover:text-slate-200",
+                          )}
                         >
                           <span className="relative z-10 flex items-center gap-1.5">
                             <Package className="h-3.5 w-3.5" />
@@ -82,10 +83,10 @@ export const ModsTab: React.FC<ModsTabProps> = ({ instance, caps, mods, coremods
                           type="button"
                           ref={pill.register("coremods")}
                           onClick={() => setLegacyModTab("coremods")}
-                          className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${legacyModTab === "coremods"
-                            ? "text-on-solid"
-                            : "text-slate-400 hover:text-slate-200"
-                            }`}
+                          className={cn(
+                            "relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors",
+                            legacyModTab === "coremods" ? "text-on-solid" : "text-slate-400 hover:text-slate-200",
+                          )}
                         >
                           <span className="relative z-10 flex items-center gap-1.5">
                             <Package className="h-3.5 w-3.5" />

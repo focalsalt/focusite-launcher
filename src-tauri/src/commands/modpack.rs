@@ -195,9 +195,9 @@ fn inspect_archive(bytes: &[u8], is_mrpack: bool, custom_name: Option<String>) -
     if archive_has(bytes, super::instance::INSTANCE_CONFIG_FILE) {
         return super::instance_transfer::inspect_focusite_zip(bytes, custom_name);
     }
-    let unpacked = archive_unpacked_size(bytes).map_err(|e| format!("E_PACK_UNREADABLE: {}", e))?;
+    let unpacked = archive_unpacked_size(bytes).map_err(super::ctx("E_PACK_UNREADABLE"))?;
     if is_mrpack {
-        let index = read_mrpack_index(bytes).map_err(|e| format!("E_PACK_PARSE_FAILED: {}", e))?;
+        let index = read_mrpack_index(bytes).map_err(super::ctx("E_PACK_PARSE_FAILED"))?;
         let version = index.dependencies.get("minecraft").cloned().ok_or("E_PACK_NO_MC_VERSION")?;
         let (loader, loader_version) = mrpack_loader(&index.dependencies);
         let name = custom_name.unwrap_or_else(|| index.name.clone());
@@ -219,7 +219,7 @@ fn inspect_archive(bytes: &[u8], is_mrpack: bool, custom_name: Option<String>) -
             ..Default::default()
         });
     }
-    let (manifest, _) = read_curseforge_manifest(bytes).map_err(|e| format!("E_PACK_PARSE_FAILED: {}", e))?;
+    let (manifest, _) = read_curseforge_manifest(bytes).map_err(super::ctx("E_PACK_PARSE_FAILED"))?;
     let (loader, loader_version) = curseforge_loader_of(&manifest);
     let name = custom_name.unwrap_or_else(|| manifest.name.clone());
     let mut imported = vec!["overrides".to_string()];
@@ -588,7 +588,7 @@ async fn import_mrpack_internal(
     custom_name: Option<String>,
 ) -> Result<ModpackImportResult, String> {
     session.emit("read", "", 0, 0);
-    let index = read_mrpack_index(archive_bytes).map_err(|e| format!("E_PACK_PARSE_FAILED: {}", e))?;
+    let index = read_mrpack_index(archive_bytes).map_err(super::ctx("E_PACK_PARSE_FAILED"))?;
 
     let mc_version = index
         .dependencies
@@ -604,7 +604,7 @@ async fn import_mrpack_internal(
         .filter(|f| f.env.as_ref().and_then(|e| e.client.as_deref()) != Some("unsupported"))
         .map(|f| f.file_size)
         .sum();
-    let unpacked = archive_unpacked_size(archive_bytes).map_err(|e| format!("E_PACK_UNREADABLE: {}", e))?;
+    let unpacked = archive_unpacked_size(archive_bytes).map_err(super::ctx("E_PACK_UNREADABLE"))?;
     ensure_free_space(&get_instances_dir(), (download + unpacked) / 10 * 12)?;
     session.check()?;
 
@@ -777,12 +777,12 @@ async fn import_curseforge_internal(
 ) -> Result<ModpackImportResult, String> {
     session.emit("read", "", 0, 0);
     let (manifest, modlist_map) =
-        read_curseforge_manifest(archive_bytes).map_err(|e| format!("E_PACK_PARSE_FAILED: {}", e))?;
+        read_curseforge_manifest(archive_bytes).map_err(super::ctx("E_PACK_PARSE_FAILED"))?;
 
     let mc_version = manifest.minecraft.version.clone();
     let (loader, loader_version) = curseforge_loader_of(&manifest);
 
-    let unpacked = archive_unpacked_size(archive_bytes).map_err(|e| format!("E_PACK_UNREADABLE: {}", e))?;
+    let unpacked = archive_unpacked_size(archive_bytes).map_err(super::ctx("E_PACK_UNREADABLE"))?;
     let estimate = unpacked + manifest.files.len() as u64 * 4 * 1024 * 1024;
     ensure_free_space(&get_instances_dir(), estimate / 10 * 12)?;
     session.check()?;
@@ -932,7 +932,7 @@ pub async fn rescan_instance_missing_mods(
         remaining
     })
     .await
-    .map_err(|e| format!("E_BACKGROUND_TASK_FAILED: {}", e))
+    .map_err(super::ctx("E_BACKGROUND_TASK_FAILED"))
 }
 
 #[tauri::command]
@@ -1034,7 +1034,7 @@ mod tests {
         let job: JobFn = Arc::new(move || {
             let c = c.clone();
             Box::pin(async move {
-                if c.fetch_add(1, Ordering::SeqCst) < 2 { Err("E_CONNECTION：boom".to_string()) } else { Ok(()) }
+                if c.fetch_add(1, Ordering::SeqCst) < 2 { Err("E_CONNECTION: boom".to_string()) } else { Ok(()) }
             })
         });
         let hard: JobFn = Arc::new(|| Box::pin(async { Err("伺服器回應錯誤：HTTP status client error (404)".to_string()) }));

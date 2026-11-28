@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { preloadSkinManagerView, preloadMicrosoftLoginModal } from "@/lib/startupOrchestrator";
 import { useI18n } from "@/i18n";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { cn } from "@/lib/utils";
 
 interface AccountDropdownProps {
   accounts: UserAccount[];
@@ -106,11 +107,10 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
           <div className="relative shrink-0">
             <PlayerAvatar username={activeAccount.username} size={32} />
             <span
-              className={`absolute bottom-0 right-0 h-2.5 w-2.5 translate-x-px translate-y-px rounded-full border-2 border-slate-900 ${
-                isVerified
-                  ? "bg-success-400"
-                  : "bg-warning-400"
-              }`}
+              className={cn(
+                "absolute bottom-0 right-0 h-2.5 w-2.5 translate-x-px translate-y-px rounded-full border-2 border-slate-900",
+                isVerified ? "bg-success-400" : "bg-warning-400",
+              )}
             />
           </div>
 
@@ -140,9 +140,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
         </div>
 
         <ChevronDown
-          className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${
-            isOpen ? "rotate-180 text-brand-light" : ""
-          }`}
+          className={cn("h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200", isOpen && "rotate-180")}
         />
       </button>
 
@@ -187,14 +185,13 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({
                             onSelectAccount(acc.id);
                             setIsOpen(false);
                           }}
-                          className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs transition-colors ${
-                            isSelected
-                              ? "bg-brand/20 text-brand-light font-medium"
-                              : "text-slate-300 hover:bg-white/10"
-                          }`}
+                          className={cn(
+                            "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs transition-colors",
+                            isSelected ? "bg-brand/20 text-brand-light font-medium" : "text-slate-300 hover:bg-white/10",
+                          )}
                         >
                           <div className="flex items-center gap-2 truncate">
-                            <PlayerAvatar username={acc.username} size={20} className="rounded" />
+                            <PlayerAvatar username={acc.username} size={20} />
                             <span className="truncate">{acc.username}</span>
                           </div>
                           {isSelected && (

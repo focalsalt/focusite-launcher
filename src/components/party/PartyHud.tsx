@@ -9,6 +9,7 @@ import { MC_FONT_FAMILY } from "./CampScene";
 import { useI18n } from "@/i18n";
 import { type ChatLine, isPartyId, partyService, useParty } from "@/services/partyService";
 import { getAutoShare, setAutoShare } from "@/services/worldShare";
+import { cn } from "@/lib/utils";
 
 /** Vanilla HUD text: Minecraft font, white, with the #3f3f3f drop shadow one font pixel down-right. */
 const HUD_FONT = { fontFamily: MC_FONT_FAMILY, textShadow: "2px 2px 0 #3f3f3f" } as const;
@@ -24,7 +25,7 @@ export const PartyIdBadge: React.FC = () => {
   const id = party.partyId;
   const copy = () => void navigator.clipboard.writeText(id).then(() => toast(id, "success", 1500));
   return (
-    <div className={`${CARD} flex items-center gap-2 px-3 py-1.5 text-xs`}>
+    <div className={cn(CARD, "flex items-center gap-2 px-3 py-1.5 text-xs")}>
       <span className="text-slate-400">{t.party.partyId}</span>
       <span className="font-mono text-sm font-bold tracking-widest text-brand-light">{id}</span>
       <Tip label={t.party.copyPartyId}>
@@ -57,7 +58,7 @@ export const PartyPanel: React.FC = () => {
       if (isPartyId(id)) void partyService.join(id);
     };
     return (
-      <div className={`${CARD} w-60 space-y-2 p-3`}>
+      <div className={cn(CARD, "w-60 space-y-2 p-3")}>
         <h3 className="text-sm font-semibold">{t.party.settingsTitle}</h3>
         <p className="text-xs text-slate-400">{t.party.noParty}</p>
         <form onSubmit={join} className="flex gap-1.5">
@@ -77,7 +78,7 @@ export const PartyPanel: React.FC = () => {
   }
 
   return (
-    <div className={`${CARD} w-60 space-y-2.5 p-3`}>
+    <div className={cn(CARD, "w-60 space-y-2.5 p-3")}>
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">{t.party.settingsTitle}</h3>
         {party.members.length > 1 && (

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as skinview3d from "skinview3d";
 import { toHttps } from "@/lib/assetUrl";
+import { cn } from "@/lib/utils";
 
 export interface Skin3DViewerProps {
   skinUrl?: string;
@@ -246,7 +247,7 @@ export const Skin3DViewer: React.FC<Skin3DViewerProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`relative flex items-center justify-center overflow-hidden rounded-2xl select-none ${className}`}
+      className={cn("relative flex items-center justify-center overflow-hidden rounded-2xl select-none", className)}
       style={
         responsive
           ? { width: "100%", height: "100%" }

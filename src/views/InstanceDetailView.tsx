@@ -4,7 +4,7 @@ import { InstanceSetupPanel } from "@/components/instance/InstanceSetupPanel";
 import { RenameInstanceDialog } from "@/components/instance/detail/RenameInstanceDialog";
 import { DeleteInstanceDialog } from "@/components/instance/detail/DeleteInstanceDialog";
 import { InstanceIconDialog } from "@/components/instance/detail/InstanceIconDialog";
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useReducer } from "react";
 import { AnimatePresence } from "motion/react";
 import {
   FolderOpen,
@@ -48,6 +48,9 @@ import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 import { Tip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { tabReducer } from "@/lib/tabReducer";
+import { instanceSettingsReducer, toSettingsDraft } from "@/lib/instanceSettingsReducer";
 
 
 // 水平分頁空間索引映射 (六大子分頁)
@@ -76,6 +79,8 @@ interface InstanceDetailViewProps {
   onInstanceUpdated?: (updated: MinecraftInstance) => void;
 }
 
+const RESOURCE_TAB_ORDER = { packs: 0, shaders: 1 };
+
 export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
   instance,
   onLaunch,
@@ -95,20 +100,23 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
     modsTabMode: "modernsinglelist",
   };
 
-  const [activeSubTab, setActiveSubTab] =
-    useState<InstanceDetailSubNav>("screenshots");
-  const [tabDirection, setTabDirection] = useState<number>(1);
-  const tabLine = useSlidingIndicator(activeSubTab);
-  const [resourceShaderTab, setResourceShaderTab] = useState<"packs" | "shaders">("packs");
-  const [resourceShaderDir, setResourceShaderDir] = useState<number>(1);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
-  const [maxRam, setMaxRam] = useState<number>(instance?.maxMemoryMb ?? 4096);
-  const [minRam, setMinRam] = useState<number>(instance?.minMemoryMb ?? 1024);
-  const [systemJavas, setSystemJavas] = useState<JavaInstallationDto[]>([]);
-  const [selectedJavaPath, setSelectedJavaPath] = useState<string>(instance?.javaPath ?? "");
-  const [showLogOnLaunch, setShowLogOnLaunch] = useState<boolean>(
-    instance?.showLogOnLaunch ?? false
+  const [{ tab: activeSubTab, direction: tabDirection }, dispatchSubTab] = useReducer(
+    tabReducer<InstanceDetailSubNav>,
+    { tab: "screenshots", direction: 1 },
   );
+  const tabLine = useSlidingIndicator(activeSubTab);
+  const [{ tab: resourceShaderTab, direction: resourceShaderDir }, dispatchResourceTab] = useReducer(
+    tabReducer<"packs" | "shaders">,
+    { tab: "packs", direction: 1 },
+  );
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
+  const [{ maxRam, javaPath: selectedJavaPath, showLogOnLaunch }, dispatchSettings] = useReducer(
+    instanceSettingsReducer,
+    instance,
+    toSettingsDraft,
+  );
+  const minRam = instance?.minMemoryMb ?? 1024;
+  const [systemJavas, setSystemJavas] = useState<JavaInstallationDto[]>([]);
 
   const [isIconModalOpen, setIsIconModalOpen] = useState<boolean>(false);
 
@@ -116,12 +124,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
   const [isChangeVersionOpen, setIsChangeVersionOpen] = useState<boolean>(false);
 
   useEffect(() => {
-    if (instance) {
-      setShowLogOnLaunch(instance.showLogOnLaunch ?? false);
-      setMaxRam(instance.maxMemoryMb ?? 4096);
-      setMinRam(instance.minMemoryMb ?? 1024);
-      setSelectedJavaPath(instance.javaPath ?? "");
-    }
+    if (instance) dispatchSettings({ type: "sync", instance });
   }, [
     instance?.id,
     instance?.showLogOnLaunch,
@@ -136,7 +139,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
 
   const handleToggleShowLog = async (checked: boolean) => {
     if (!instance) return;
-    setShowLogOnLaunch(checked);
+    dispatchSettings({ type: "change", changes: { showLogOnLaunch: checked } });
     try {
       const updated = await instanceService.updateInstanceSettings(instance.id, {
         showLogOnLaunch: checked,
@@ -151,7 +154,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
 
   const handleRamChange = async (val: number) => {
     if (!instance) return;
-    setMaxRam(val);
+    dispatchSettings({ type: "change", changes: { maxRam: val } });
     try {
       const updated = await instanceService.updateInstanceSettings(instance.id, {
         maxMemoryMb: val,
@@ -167,7 +170,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
 
   const handleJavaChange = async (path: string) => {
     if (!instance) return;
-    setSelectedJavaPath(path);
+    dispatchSettings({ type: "change", changes: { javaPath: path } });
     const finalJava = path.trim() === "" ? null : path.trim();
     try {
       const updated = await instanceService.updateInstanceSettings(instance.id, {
@@ -185,17 +188,11 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
 
   // 處理水平物理方向的子分頁切換
   const handleSelectSubTab = (newTab: InstanceDetailSubNav) => {
-    if (newTab === activeSubTab) return;
-    const dir = SUB_TAB_ORDER[newTab] > SUB_TAB_ORDER[activeSubTab] ? 1 : -1;
-    setTabDirection(dir);
-    setActiveSubTab(newTab);
+    dispatchSubTab({ to: newTab, order: SUB_TAB_ORDER });
   };
 
   const handleResourceShaderChange = (tab: "packs" | "shaders") => {
-    if (tab === resourceShaderTab) return;
-    const dir = tab === "shaders" ? 1 : -1;
-    setResourceShaderDir(dir);
-    setResourceShaderTab(tab);
+    dispatchResourceTab({ to: tab, order: RESOURCE_TAB_ORDER });
   };
 
   // 真實磁碟模組、核心模組、材質包、光影包、存檔與截圖：依實例快取，第二次開啟不再顯示 Skeleton
@@ -328,7 +325,7 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
 
   useEffect(() => {
     if (navTabs.length > 0 && !navTabs.some((t) => t.id === activeSubTab)) {
-      setActiveSubTab(navTabs[0].id);
+      dispatchSubTab({ to: navTabs[0].id });
     }
   }, [navTabs, activeSubTab]);
 
@@ -415,11 +412,10 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
           <Tip label={t.inst.changeIconAttr}>
             <div
               onClick={() => setIsIconModalOpen(true)}
-              className={`group relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-on-solid overflow-hidden cursor-pointer transition-all ${
-                instance.hasIcon && instance.iconPath
-                  ? ""
-                  : "bg-gradient-to-tr from-brand to-brand-dark shadow-xl shadow-brand/30 border border-white/20 hover:border-brand-light/80"
-              }`}
+              className={cn(
+                "group relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-on-solid overflow-hidden cursor-pointer transition-all",
+                instance.hasIcon && instance.iconPath ? "" : "bg-gradient-to-tr from-brand to-brand-dark shadow-xl shadow-brand/30 border border-white/20 hover:border-brand-light/80",
+              )}
             >
               {instance.hasIcon && instance.iconPath ? (
                 <img
@@ -565,10 +561,10 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
               ref={tabLine.register(tab.id)}
               type="button"
               onClick={() => handleSelectSubTab(tab.id)}
-              className={`relative flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold transition-colors ${isActive
-                ? "text-brand-light"
-                : "text-slate-400 hover:text-slate-200"
-                }`}
+              className={cn(
+                "relative flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold transition-colors",
+                isActive ? "text-brand-light" : "text-slate-400 hover:text-slate-200",
+              )}
             >
               {tab.icon}
               <span>{tab.label}</span>
@@ -603,12 +599,12 @@ export const InstanceDetailView: React.FC<InstanceDetailViewProps> = ({
       viewportClassName={noScroll ? "p-0 overflow-hidden" : "p-0"}
       fadeEdges={!noScroll}
     >
-      <div className={`flex flex-col w-full select-none ${noScroll ? "h-full" : "min-h-full pb-12"}`}>
+      <div className={cn("flex flex-col w-full select-none", noScroll ? "h-full" : "min-h-full pb-12")}>
         {heroSection}
         {tabNavSection}
 
         {/* 子分頁無框扁平內容 (雙向水平物理動態轉場，完全移除外層卡片邊框) */}
-        <div className={`relative w-full p-6 space-y-6 overflow-hidden ${noScroll ? "flex-1 min-h-0" : ""}`}>
+        <div className={cn("relative w-full p-6 space-y-6 overflow-hidden", noScroll && "flex-1 min-h-0")}>
           <AnimatePresence mode="popLayout" custom={tabDirection}>
             {listLoading && <TabSkeleton key="skeleton" />}
             {/* 1. 遊戲截圖分頁 */}

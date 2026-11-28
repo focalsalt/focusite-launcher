@@ -16,6 +16,7 @@ import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
 import { useLastValue } from "@/lib/useExitMount";
 import { Tip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 /** Datapacks exist since 1.13; unknown formats (snapshots, custom) are assumed to support them. */
 function supportsDatapacks(version: string): boolean {
@@ -158,11 +159,10 @@ export const WorldsTab: React.FC<WorldsTabProps> = ({ instance, worlds, onLaunch
                                 </h4>
                                 <Badge
                                   variant="outline"
-                                  className={`text-3xs py-0 px-1.5 ${
-                                    world.is_hardcore
-                                      ? "border-danger-500/40 text-danger-400"
-                                      : "border-success-500/30 text-success-400"
-                                  }`}
+                                  className={cn(
+                                    "text-3xs py-0 px-1.5",
+                                    world.is_hardcore ? "border-danger-500/40 text-danger-400" : "border-success-500/30 text-success-400",
+                                  )}
                                 >
                                   {gameModeText}
                                 </Badge>

@@ -11,6 +11,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { useI18n } from "@/i18n";
 import { useParty } from "@/services/partyService";
 import type { Friend, FriendAction, FriendRequest, PresenceStatus } from "@/services/friendsService";
+import { cn } from "@/lib/utils";
 
 interface FriendsDrawerProps {
   open: boolean;
@@ -118,9 +119,10 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
     <button
       type="button"
       onClick={() => setTab(id)}
-      className={`flex flex-1 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
-        tab === id ? "border-brand-light text-white" : "border-transparent text-slate-400 hover:text-slate-200"
-      }`}
+      className={cn(
+        "flex flex-1 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition-colors",
+        tab === id ? "border-brand-light text-white" : "border-transparent text-slate-400 hover:text-slate-200",
+      )}
     >
       {label}
       {count ? (
@@ -225,7 +227,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-slate-100">{f.name}</p>
                     {sharePresence && (
-                      <p className={`text-2xs ${isOnline(f.status) ? "text-success-400" : "text-slate-400"}`}>
+                      <p className={cn("text-2xs", isOnline(f.status) ? "text-success-400" : "text-slate-400")}>
                         {statusText(f.status)}
                       </p>
                     )}
@@ -237,7 +239,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                         disabled={party.status === "connecting"}
                         onClick={() => onInvite(f)}
                         aria-label={t.party.invite}
-                        className={`${ICON_BUTTON} opacity-0 focus-visible:opacity-100 group-hover:opacity-100`}
+                        className={cn(ICON_BUTTON, "opacity-0 focus-visible:opacity-100 group-hover:opacity-100")}
                       >
                         <Send className="h-3.5 w-3.5" />
                       </button>
@@ -249,7 +251,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                       disabled={busy}
                       onClick={() => setRemoving(f)}
                       aria-label={t.party.removeFriend}
-                      className={`${ICON_BUTTON} opacity-0 focus-visible:opacity-100 group-hover:opacity-100`}
+                      className={cn(ICON_BUTTON, "opacity-0 focus-visible:opacity-100 group-hover:opacity-100")}
                     >
                       <UserMinus className="h-3.5 w-3.5" />
                     </button>
@@ -279,7 +281,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                         disabled={busy}
                         onClick={() => void onAct({ kind: "add", profileId: r.profileId })}
                         aria-label={t.party.accept}
-                        className={`${ICON_BUTTON} text-success-400`}
+                        className={cn(ICON_BUTTON, "text-success-400")}
                       >
                         <Check className="h-4 w-4" />
                       </button>
@@ -290,7 +292,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({
                         disabled={busy}
                         onClick={() => void onAct({ kind: "remove", profileId: r.profileId })}
                         aria-label={t.party.decline}
-                        className={`${ICON_BUTTON} text-danger-300`}
+                        className={ICON_BUTTON}
                       >
                         <X className="h-4 w-4" />
                       </button>

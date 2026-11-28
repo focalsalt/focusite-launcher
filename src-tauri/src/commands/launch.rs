@@ -502,7 +502,7 @@ async fn start_instance(
             let _ = std::fs::rename(&legacy_dir, &game_dir);
         } else {
             std::fs::create_dir_all(&game_dir)
-                .map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}", e))?;
+                .map_err(super::ctx("E_FOLDER_CREATE_FAILED"))?;
         }
     }
 
@@ -599,7 +599,7 @@ async fn start_instance(
     let (auth_player, auth_uuid_val, auth_token, auth_user_type) = if let Some(ref acc_id) = account_id {
         super::auth::ensure_valid_minecraft_token(Some(acc_id))
             .await
-            .map_err(|e| format!("E_AUTH_FAILED: {}", e))?
+            .map_err(super::ctx("E_AUTH_FAILED"))?
     } else {
         match super::auth::ensure_valid_minecraft_token(None).await {
             Ok(creds) => creds,
@@ -658,7 +658,7 @@ async fn start_instance(
         &args,
         instance_config.environment_vars.as_ref(),
     )
-    .map_err(|e| format!("E_SPAWN_FAILED: {}", e))?;
+    .map_err(super::ctx("E_SPAWN_FAILED"))?;
 
     let pid = child.id().ok_or_else(|| "E_SPAWN_NO_PID".to_string())?;
 

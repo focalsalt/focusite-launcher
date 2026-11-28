@@ -174,9 +174,9 @@ fn validate_instances_dir(raw: &str) -> Result<PathBuf, String> {
         return Err("E_FOLDER_NOT_ABSOLUTE".into());
     }
     reject_unsafe_instances_dir(&path)?;
-    std::fs::create_dir_all(&path).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {e}"))?;
+    std::fs::create_dir_all(&path).map_err(super::ctx("E_FOLDER_CREATE_FAILED"))?;
     let probe = path.join(".focusite_write_test");
-    std::fs::write(&probe, b"").map_err(|e| format!("E_FOLDER_NOT_WRITABLE: {e}"))?;
+    std::fs::write(&probe, b"").map_err(super::ctx("E_FOLDER_NOT_WRITABLE"))?;
     let _ = std::fs::remove_file(probe);
     Ok(path)
 }
@@ -251,10 +251,10 @@ fn save_disk_settings_internal(path: &std::path::Path, disk_settings: &DiskSetti
         super::check_schema(&existing, "settings.json")?;
     }
     let json = super::to_versioned_json(disk_settings)
-        .map_err(|e| format!("E_SETTINGS_SAVE_FAILED: {}", e))?;
+        .map_err(super::ctx("E_SETTINGS_SAVE_FAILED"))?;
 
     super::atomic_write(path, json.as_bytes())
-        .map_err(|e| format!("E_SETTINGS_SAVE_FAILED: {}", e))
+        .map_err(super::ctx("E_SETTINGS_SAVE_FAILED"))
 }
 
 pub fn save_settings_to_disk(settings: &LauncherSettings) -> Result<(), String> {
@@ -290,7 +290,7 @@ pub async fn update_launcher_settings(
         update_settings_blocking(enable_bmclapi_mirror, curseforge_api_key, sound_enabled, instances_dir, location_enabled, instance_defaults)
     })
     .await
-    .map_err(|e| format!("E_SETTINGS_UPDATE_FAILED: {e}"))?;
+    .map_err(super::ctx("E_SETTINGS_UPDATE_FAILED"))?;
     if changes_dir {
         allow_asset_dirs(&app);
     }
@@ -334,7 +334,7 @@ fn update_settings_blocking(
             current.curseforge_api_key = None;
         } else {
             CredentialStore::save_token(CURSEFORGE_KEY_ACCOUNT, &trimmed)
-                .map_err(|e| format!("E_API_KEY_SAVE_FAILED: {}", e))?;
+                .map_err(super::ctx("E_API_KEY_SAVE_FAILED"))?;
             current.curseforge_api_key = Some(trimmed);
         }
     }
@@ -395,7 +395,7 @@ fn move_instances(old: &std::path::Path, new: &std::path::Path) -> Result<(), St
     if !old.is_dir() {
         return Ok(());
     }
-    std::fs::create_dir_all(new).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {e}"))?;
+    std::fs::create_dir_all(new).map_err(super::ctx("E_FOLDER_CREATE_FAILED"))?;
     let (old_c, new_c) = (
         std::fs::canonicalize(old).map_err(|e| e.to_string())?,
         std::fs::canonicalize(new).map_err(|e| e.to_string())?,
@@ -408,7 +408,7 @@ fn move_instances(old: &std::path::Path, new: &std::path::Path) -> Result<(), St
     }
 
     let entries: Vec<_> = std::fs::read_dir(old)
-        .map_err(|e| format!("E_INSTANCE_FOLDER_UNREADABLE: {e}"))?
+        .map_err(super::ctx("E_INSTANCE_FOLDER_UNREADABLE"))?
         .flatten()
         .collect();
     for entry in &entries {

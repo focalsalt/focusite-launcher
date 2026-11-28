@@ -90,7 +90,7 @@ fn message(e: FriendsError) -> String {
 
 fn credentials(account_id: &str) -> Result<(String, String), String> {
     let (mc, refresh) = CredentialStore::get_credentials(account_id)
-        .map_err(|e| format!("E_CREDENTIAL_READ_FAILED: {}", e))?
+        .map_err(super::ctx("E_CREDENTIAL_READ_FAILED"))?
         .ok_or("E_SESSION_EXPIRED")?;
     Ok((mc, refresh.ok_or("E_SESSION_EXPIRED")?))
 }

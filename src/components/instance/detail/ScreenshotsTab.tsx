@@ -9,6 +9,7 @@ import type { ScreenshotFileInfo } from "@/services/instanceService";
 import { FramelessEmptyState, tabContentVariants } from "./shared";
 import { useI18n } from "@/i18n";
 import { Tip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 /** Shows a pulsing placeholder until the image has loaded, then fades it in. Only mounted for nearby cards. */
 const ShotImage: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
@@ -22,7 +23,10 @@ const ShotImage: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
         draggable={false}
         onLoad={() => setLoaded(true)}
         onError={() => setLoaded(true)}
-        className={`h-full w-full object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+        className={cn(
+          "h-full w-full object-cover transition-opacity duration-300",
+          loaded ? "opacity-100" : "opacity-0",
+        )}
       />
     </>
   );
@@ -148,10 +152,10 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
                             }}
                             transition={{ type: "spring", stiffness: 380, damping: 34 }}
                             style={{ width: cardW, zIndex: 10 - distance, pointerEvents: distance > 1 ? "none" : "auto" }}
-                            className={`absolute aspect-video cursor-pointer select-none overflow-hidden rounded-2xl border ${isCurrent
-                              ? "border-brand-light/70 shadow-[0_0_36px_color-mix(in_srgb,var(--fc-highlight)_30%,transparent)]"
-                              : "border-white/10"
-                              }`}
+                            className={cn(
+                              "absolute aspect-video cursor-pointer select-none overflow-hidden rounded-2xl border",
+                              isCurrent ? "border-brand-light/70 shadow-[0_0_36px_color-mix(in_srgb,var(--fc-highlight)_30%,transparent)]" : "border-white/10",
+                            )}
                           >
                             <ShotImage src={toAssetSrc(sc.path)} alt={sc.name} />
 
@@ -177,10 +181,10 @@ export const ScreenshotsTab: React.FC<ScreenshotsTabProps> = ({ instance, screen
                         onClick={() => setCurrentScreenshotIdx(idx)}
                         aria-label={t.shots.goTo(idx + 1)}
                         aria-current={idx === currentScreenshotIdx}
-                        className={`transition-all duration-300 ${idx === currentScreenshotIdx
-                          ? "h-1.5 w-6 rounded-full bg-brand-light"
-                          : "h-1.5 w-1.5 rounded-full bg-white/20 hover:bg-white/40"
-                          }`}
+                        className={cn(
+                          "transition-all duration-300",
+                          idx === currentScreenshotIdx ? "h-1.5 w-6 rounded-full bg-brand-light" : "h-1.5 w-1.5 rounded-full bg-white/20 hover:bg-white/40",
+                        )}
                       />
                     ))}
                   </div>

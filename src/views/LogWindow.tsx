@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "react";
 import {
   Terminal,
   Square,
@@ -21,10 +21,15 @@ import {
   InstanceStatusEvent,
   LogFileEntry,
 } from "@/services/instanceService";
+import { diagnosticService } from "@/services/diagnosticService";
 import {
-  diagnosticService,
-  DiagnosticResult,
-} from "@/services/diagnosticService";
+  diagnosisReducer,
+  historyReducer,
+  initialDiagnosis,
+  initialHistory,
+  initialProcess,
+  processReducer,
+} from "@/lib/logWindowReducers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +41,7 @@ import { useI18n } from "@/i18n";
 import { toast } from "@/lib/toast";
 import { Toaster } from "@/components/ui/Toaster";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
+import { cn } from "@/lib/utils";
 
 /** Keeps the newest lines in memory; older ones are dropped. */
 const MAX_LOG_LINES = 10_000;
@@ -79,12 +85,12 @@ const LogRow = React.memo(function LogRow({ log, withMeta }: { log: InstanceLogE
           <span className="text-slate-400 select-none shrink-0 w-16">
             {new Date(log.timestamp).toLocaleTimeString(language)}
           </span>
-          <span className={`text-[9px] px-1 rounded border uppercase select-none shrink-0 ${tagColor}`}>
+          <span className={cn("text-[9px] px-1 rounded border uppercase select-none shrink-0", tagColor)}>
             {log.stream}
           </span>
         </>
       )}
-      <span className={`break-all whitespace-pre-wrap ${streamColor}`}>{log.line}</span>
+      <span className={cn("break-all whitespace-pre-wrap", streamColor)}>{log.line}</span>
     </div>
   );
 });
@@ -92,8 +98,7 @@ const LogRow = React.memo(function LogRow({ log, withMeta }: { log: InstanceLogE
 export const LogWindow: React.FC = () => {
   const { t, language } = useI18n();
   const [logs, setLogs] = useState<InstanceLogEvent[]>([]);
-  const [status, setStatus] = useState<string>("ready");
-  const [activePid, setActivePid] = useState<number | null>(null);
+  const [{ status, activePid, exitCode }, dispatchProcess] = useReducer(processReducer, initialProcess);
   const [activeInstanceId, setActiveInstanceId] = useState<string>(() => {
     try {
       const hash = window.location.hash;
@@ -109,7 +114,6 @@ export const LogWindow: React.FC = () => {
     } catch (_) {}
     return "";
   });
-  const [exitCode, setExitCode] = useState<number | null>(null);
 
   const [filterText, setFilterText] = useState<string>("");
   const [streamFilter, setStreamFilter] = useState<string>("all");
@@ -117,9 +121,8 @@ export const LogWindow: React.FC = () => {
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [copied, setCopied] = useState<boolean>(false);
 
-  const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
-  const [isDiagnosing, setIsDiagnosing] = useState<boolean>(false);
-  const [dismissDiagnosis, setDismissDiagnosis] = useState<boolean>(false);
+  const [diagnosis, dispatchDiagnosis] = useReducer(diagnosisReducer, initialDiagnosis);
+  const { result: diagnosticResult, isDiagnosing, dismissed: dismissDiagnosis } = diagnosis;
   const autoDiagnosedRef = useRef<boolean>(false);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -143,8 +146,7 @@ export const LogWindow: React.FC = () => {
   const isLive = status === "running" || status === "launching";
   const [files, setFiles] = useState<LogFileEntry[]>([]);
   const [source, setSource] = useState<string>("live");
-  const [historyText, setHistoryText] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+  const [{ text: historyText, isLoading: historyLoading }, dispatchHistory] = useReducer(historyReducer, initialHistory);
   // "This session" only exists once the game has been started from here.
   const hasSession = isLive || logs.length > 0;
   const viewingHistory = !isLive && source !== "live";
@@ -168,19 +170,21 @@ export const LogWindow: React.FC = () => {
 
   useEffect(() => {
     if (!viewingHistory) {
-      setHistoryText(null);
+      dispatchHistory({ type: "clear" });
       return;
     }
     const [kind, ...rest] = source.split(":");
     const name = rest.join(":");
     let cancelled = false;
-    setHistoryLoading(true);
-    setHistoryText(null);
+    dispatchHistory({ type: "started" });
     instanceService
       .readInstanceLogFile(activeInstanceId, kind as LogFileEntry["kind"], name)
-      .then((text) => !cancelled && setHistoryText(text))
-      .catch((err) => !cancelled && toast(`${t.logWin.historyFailed}: ${toUserMessage(err)}`, "error"))
-      .finally(() => !cancelled && setHistoryLoading(false));
+      .then((text) => !cancelled && dispatchHistory({ type: "loaded", text }))
+      .catch((err) => {
+        if (cancelled) return;
+        dispatchHistory({ type: "failed" });
+        toast(`${t.logWin.historyFailed}: ${toUserMessage(err)}`, "error");
+      });
     return () => {
       cancelled = true;
     };
@@ -200,16 +204,14 @@ export const LogWindow: React.FC = () => {
 
   const runDiagnosis = async (currentLogs = shownLogs) => {
     if (currentLogs.length === 0) return;
-    setIsDiagnosing(true);
-    setDismissDiagnosis(false);
+    dispatchDiagnosis({ type: "started" });
     try {
       const fullText = currentLogs.map((l) => l.line).join("\n");
       const res = await diagnosticService.diagnoseLogContent(fullText);
-      setDiagnosticResult(res);
+      dispatchDiagnosis({ type: "done", result: res });
     } catch (e) {
       console.error("Failed to run log diagnosis:", e);
-    } finally {
-      setIsDiagnosing(false);
+      dispatchDiagnosis({ type: "failed" });
     }
   };
 
@@ -232,8 +234,7 @@ export const LogWindow: React.FC = () => {
       }).catch((err) => console.error("Failed to load buffered logs:", err));
       instanceService.getInstanceRunningStatus(activeInstanceId).then((proc) => {
         if (proc) {
-          setStatus("running");
-          setActivePid(proc.pid);
+          dispatchProcess({ type: "running", pid: proc.pid });
         }
       }).catch((err) => console.error("Failed to read running status:", err));
     }
@@ -257,29 +258,21 @@ export const LogWindow: React.FC = () => {
       if (activeInstanceId && event.payload.instance_id && event.payload.instance_id !== activeInstanceId) {
         return;
       }
-      setStatus(event.payload.status);
+      dispatchProcess({ type: "statusEvent", event: event.payload });
       if (event.payload.instance_id) {
         setActiveInstanceId(event.payload.instance_id);
       }
-      if (event.payload.pid) {
-        setActivePid(event.payload.pid);
-      }
-      if (event.payload.exit_code !== undefined && event.payload.exit_code !== null) {
-        setExitCode(event.payload.exit_code);
-        if (event.payload.status === "stopped" || event.payload.status === "crashed") {
-          setActivePid(null);
-        }
-        if (event.payload.status === "crashed" && !autoDiagnosedRef.current) {
-          autoDiagnosedRef.current = true;
-          // Defer diagnosis slightly to ensure final stderr lines are buffered
-          setTimeout(() => {
-            flushLogs();
-            setLogs((currentLogs) => {
-              runDiagnosis(currentLogs);
-              return currentLogs;
-            });
-          }, 300);
-        }
+      const exited = event.payload.exit_code !== undefined && event.payload.exit_code !== null;
+      if (exited && event.payload.status === "crashed" && !autoDiagnosedRef.current) {
+        autoDiagnosedRef.current = true;
+        // Defer diagnosis slightly to ensure final stderr lines are buffered
+        setTimeout(() => {
+          flushLogs();
+          setLogs((currentLogs) => {
+            runDiagnosis(currentLogs);
+            return currentLogs;
+          });
+        }, 300);
       }
     });
 
@@ -357,7 +350,7 @@ export const LogWindow: React.FC = () => {
                     key={`${f.kind}:${f.name}`}
                     value={`${f.kind}:${f.name}`}
                     extraRight={
-                      <span className={`text-3xs ${f.kind === "crash" ? "text-danger-400" : "text-slate-400"}`}>
+                      <span className={cn("text-3xs", f.kind === "crash" ? "text-danger-400" : "text-slate-400")}>
                         {f.kind === "crash" ? t.logWin.groupCrash : t.logWin.groupLogs}
                       </span>
                     }
@@ -418,11 +411,10 @@ export const LogWindow: React.FC = () => {
               ref={pill.register(s)}
               type="button"
               onClick={() => setStreamFilter(s)}
-              className={`relative px-3 py-1 rounded-lg font-medium transition-colors ${
-                streamFilter === s
-                  ? "text-on-solid"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
+              className={cn(
+                "relative px-3 py-1 rounded-lg font-medium transition-colors",
+                streamFilter === s ? "text-on-solid" : "text-slate-400 hover:text-slate-200",
+              )}
             >
               <span className="relative z-10">{s.toUpperCase()}</span>
             </button>
@@ -438,7 +430,7 @@ export const LogWindow: React.FC = () => {
             disabled={isDiagnosing || shownLogs.length === 0}
             className="h-8 text-xs gap-1.5 border-success-500/30 bg-success-500/10 text-success-400 hover:bg-success-500/20 hover:text-success-300"
           >
-            <Sparkles className={`h-3.5 w-3.5 ${isDiagnosing ? "animate-spin" : ""}`} />
+            <Sparkles className={cn("h-3.5 w-3.5", isDiagnosing && "animate-spin")} />
             {isDiagnosing ? t.logWin.diagnosing : t.logWin.diagnose}
           </Button>
 
@@ -446,9 +438,10 @@ export const LogWindow: React.FC = () => {
             size="sm"
             variant="outline"
             onClick={() => setAutoScroll(!autoScroll)}
-            className={`h-8 text-xs gap-1.5 border-white/10 ${
-              autoScroll ? "text-brand-light bg-brand-light/10" : "text-slate-400"
-            }`}
+            className={cn(
+              "h-8 text-xs gap-1.5 border-white/10",
+              autoScroll ? "text-brand-light bg-brand-light/10" : "text-slate-400",
+            )}
           >
             <ArrowDownCircle className="h-3.5 w-3.5" />
             {t.logWin.autoScroll}
@@ -526,7 +519,7 @@ export const LogWindow: React.FC = () => {
             </div>
             <button
               type="button"
-              onClick={() => setDismissDiagnosis(true)}
+              onClick={() => dispatchDiagnosis({ type: "dismiss" })}
               aria-label={t.common.close}
               className="text-slate-400 hover:text-white transition-colors p-1"
             >

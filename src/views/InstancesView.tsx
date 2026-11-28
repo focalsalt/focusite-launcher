@@ -29,6 +29,7 @@ import { useI18n } from "@/i18n";
 import { toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { useLastValue } from "@/lib/useExitMount";
+import { cn } from "@/lib/utils";
 
 interface InstancesViewProps {
   instances: MinecraftInstance[];
@@ -252,9 +253,10 @@ export const InstancesView: React.FC<InstancesViewProps> = ({
               <CardHeader className="p-5 pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-brand-light group-hover:scale-105 transition-transform overflow-hidden ${
-                      inst.hasIcon && inst.iconPath ? "" : "bg-gradient-to-tr from-slate-800 to-slate-700 border border-white/10 shadow-inner"
-                    }`}>
+                    <div className={cn(
+                      "relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-brand-light group-hover:scale-105 transition-transform overflow-hidden",
+                      inst.hasIcon && inst.iconPath ? "" : "bg-gradient-to-tr from-slate-800 to-slate-700 border border-white/10 shadow-inner",
+                    )}>
                       {inst.hasIcon && inst.iconPath ? (
                         <img
                           src={toAssetSrc(inst.iconPath, inst.iconUpdatedAt)}

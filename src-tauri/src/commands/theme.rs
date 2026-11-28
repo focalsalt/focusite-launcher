@@ -76,7 +76,7 @@ fn parse_pack(json: &str) -> Result<ThemePack, String> {
         return Err("E_THEME_TOO_LARGE".into());
     }
     super::check_schema(json, "theme pack")?;
-    let pack: ThemePack = serde_json::from_str(json).map_err(|e| format!("E_THEME_INVALID: {e}"))?;
+    let pack: ThemePack = serde_json::from_str(json).map_err(super::ctx("E_THEME_INVALID"))?;
     validate_pack(&pack)?;
     Ok(pack)
 }
@@ -147,7 +147,7 @@ fn slugify(name: &str) -> String {
 #[tauri::command]
 pub fn list_themes() -> Result<Vec<ThemePack>, String> {
     let dir = themes_dir();
-    ensure_default_packs(&dir).map_err(|e| format!("E_THEME_FOLDER_FAILED: {e}"))?;
+    ensure_default_packs(&dir).map_err(super::ctx("E_THEME_FOLDER_FAILED"))?;
     Ok(read_packs(&dir))
 }
 
@@ -156,7 +156,7 @@ pub fn list_themes() -> Result<Vec<ThemePack>, String> {
 pub fn import_theme_pack(json_content: String) -> Result<ThemePack, String> {
     let mut pack = parse_pack(&json_content)?;
     let dir = themes_dir();
-    ensure_default_packs(&dir).map_err(|e| format!("E_THEME_FOLDER_FAILED: {e}"))?;
+    ensure_default_packs(&dir).map_err(super::ctx("E_THEME_FOLDER_FAILED"))?;
 
     let base = slugify(&pack.name);
     let mut id = base.clone();
@@ -167,7 +167,7 @@ pub fn import_theme_pack(json_content: String) -> Result<ThemePack, String> {
     }
     pack.id = id.clone();
     let body = super::to_versioned_json(&pack).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join(format!("{id}{PACK_SUFFIX}")), body).map_err(|e| format!("E_THEME_SAVE_FAILED: {e}"))?;
+    std::fs::write(dir.join(format!("{id}{PACK_SUFFIX}")), body).map_err(super::ctx("E_THEME_SAVE_FAILED"))?;
     Ok(pack)
 }
 
@@ -180,13 +180,13 @@ pub fn export_theme_pack(dest_path: String, json_content: String) -> Result<(), 
         return Err("E_THEME_NOT_JSON".into());
     }
     let body = super::to_versioned_json(&pack).map_err(|e| e.to_string())?;
-    super::atomic_write(&dest, body.as_bytes()).map_err(|e| format!("E_THEME_SAVE_FAILED: {e}"))
+    super::atomic_write(&dest, body.as_bytes()).map_err(super::ctx("E_THEME_SAVE_FAILED"))
 }
 
 #[tauri::command]
 pub fn open_themes_dir() -> Result<(), String> {
     let dir = themes_dir();
-    ensure_default_packs(&dir).map_err(|e| format!("E_THEME_FOLDER_FAILED: {e}"))?;
+    ensure_default_packs(&dir).map_err(super::ctx("E_THEME_FOLDER_FAILED"))?;
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

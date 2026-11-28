@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { InstallPlan, InstallPlanItem } from "@/services/workshopService";
 import { useI18n } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 interface InstallPlanConfirmDialogProps {
   open: boolean;
@@ -225,13 +226,10 @@ export const InstallPlanConfirmDialog: React.FC<InstallPlanConfirmDialogProps> =
                       <div
                         key={opt.version_id}
                         onClick={() => !opt.already_installed && toggleOptional(opt.version_id)}
-                        className={`flex items-center justify-between p-2.5 rounded-lg border text-sm cursor-pointer transition-colors ${
-                          opt.already_installed
-                            ? "bg-white/[0.02] border-white/5 opacity-60 cursor-default"
-                            : isChecked
-                            ? "bg-purple-500/10 border-purple-500/30"
-                            : "bg-white/[0.02] border-white/5 hover:bg-white/[0.04]"
-                        }`}
+                        className={cn(
+                          "flex items-center justify-between p-2.5 rounded-lg border text-sm cursor-pointer transition-colors",
+                          opt.already_installed ? "bg-white/[0.02] border-white/5 opacity-60" : isChecked ? "bg-purple-500/10 border-purple-500/30" : "bg-white/[0.02] border-white/5 hover:bg-white/[0.04]",
+                        )}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <Checkbox

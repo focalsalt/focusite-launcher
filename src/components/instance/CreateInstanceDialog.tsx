@@ -24,6 +24,7 @@ import { LoaderType, MinecraftInstance } from "@/types/navigation";
 import { toUserMessage } from "@/lib/errorMessage";
 import { toast } from "@/lib/toast";
 import { useI18n } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 interface CreateInstanceDialogProps {
   isOpen: boolean;
@@ -336,12 +337,10 @@ export const CreateInstanceDialog: React.FC<CreateInstanceDialogProps> = ({
                         e.preventDefault();
                         jarInputRef.current?.click();
                       }}
-                      className={`flex-1 flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all ${isDraggingJar
-                          ? "border-brand-light bg-brand/10"
-                          : customJar
-                            ? "border-brand-light/60 bg-black/40"
-                            : "border-white/15 bg-black/20 hover:border-white/30 hover:bg-white/5"
-                        }`}
+                      className={cn(
+                        "flex-1 flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all",
+                        isDraggingJar ? "border-brand-light bg-brand/10" : customJar ? "border-brand-light/60 bg-black/40" : "border-white/15 bg-black/20 hover:border-white/30 hover:bg-white/5",
+                      )}
                     >
                       {customJar ? (
                         <div className="flex items-center justify-between w-full px-2">

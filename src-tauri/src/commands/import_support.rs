@@ -190,10 +190,10 @@ mod tests {
 
     #[test]
     fn retry_rules() {
-        assert!(is_retryable("E_CONNECTION：error sending request"));
-        assert!(is_retryable("E_SERVER_RESPONSE：HTTP status server error (503 Service Unavailable)"));
-        assert!(is_retryable("E_FILE_STORE_FAILED：Hash mismatch: expected a, actual b"));
-        assert!(!is_retryable("E_SERVER_RESPONSE：HTTP status client error (404 Not Found)"));
+        assert!(is_retryable("E_CONNECTION: error sending request"));
+        assert!(is_retryable("E_SERVER_RESPONSE: HTTP status server error (503 Service Unavailable)"));
+        assert!(is_retryable("E_FILE_STORE_FAILED: Hash mismatch: expected a, actual b"));
+        assert!(!is_retryable("E_SERVER_RESPONSE: HTTP status client error (404 Not Found)"));
         assert!(!is_retryable("E_DOWNLOAD_UNTRUSTED: evil.example"));
         assert!(!is_retryable("E_PACK_NO_HASH"));
         assert!(!is_retryable("E_PACK_SIZE_MISMATCH"));

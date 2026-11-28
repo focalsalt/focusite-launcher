@@ -16,6 +16,7 @@ import { toUserMessage } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n";
 import { splitArgs } from "@/lib/launchOptions";
 import { Tip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface SettingsTabProps {
   instance: MinecraftInstance;
@@ -212,11 +213,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       key={j.path}
                       type="button"
                       onClick={() => void applyJavaPath(j.path)}
-                      className={`rounded-lg border px-2.5 py-1 text-2xs transition-colors ${
-                        javaPathInput === j.path
-                          ? "border-brand-light bg-brand/15 text-brand-light"
-                          : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
-                      }`}
+                      className={cn(
+                        "rounded-lg border px-2.5 py-1 text-2xs transition-colors",
+                        javaPathInput === j.path ? "border-brand-light bg-brand/15 text-brand-light" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
+                      )}
                     >
                       Java {j.major_version} ({j.vendor}) · {j.is_64_bit ? "64-bit" : "32-bit"}
                     </button>

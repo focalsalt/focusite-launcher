@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Copy, Info, X } from "lucide-react";
 import { dismissToast, subscribeToasts, ToastItem, ToastKind } from "@/lib/toast";
 import { useI18n } from "@/i18n";
 import { SPRING_TOAST } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 
 const STYLES: Record<ToastKind, string> = {
   success: "border-success-500/30 bg-success-950/90 text-success-200",
@@ -38,7 +39,10 @@ export const Toaster: React.FC = () => {
           animate={{ opacity: 1, x: 0, scale: 1 }}
           exit={{ opacity: 0, x: 48, scale: 0.96 }}
           transition={SPRING_TOAST}
-          className={`pointer-events-auto flex items-start gap-2 rounded-xl border px-3 py-2.5 text-xs shadow-2xl backdrop-blur-xl ${STYLES[item.kind]}`}
+          className={cn(
+            "pointer-events-auto flex items-start gap-2 rounded-xl border px-3 py-2.5 text-xs shadow-2xl backdrop-blur-xl",
+            STYLES[item.kind],
+          )}
         >
           {ICONS[item.kind]}
           <span className="flex-1 leading-relaxed">{item.message}</span>

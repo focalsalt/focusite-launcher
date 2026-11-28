@@ -74,7 +74,7 @@ pub async fn news_fetch_archive_page(page: u32) -> Result<NewsArchivePage, Strin
         ])
         .send()
         .await
-        .map_err(|e| format!("E_NEWS_CONNECTION_FAILED: {}", e))?;
+        .map_err(super::ctx("E_NEWS_CONNECTION_FAILED"))?;
 
     if !resp.status().is_success() {
         return Err(format!("E_NEWS_SERVER_ERROR: {}", resp.status()));
@@ -83,7 +83,7 @@ pub async fn news_fetch_archive_page(page: u32) -> Result<NewsArchivePage, Strin
     let envelope: SearchEnvelope = resp
         .json()
         .await
-        .map_err(|e| format!("E_NEWS_BAD_DATA: {}", e))?;
+        .map_err(super::ctx("E_NEWS_BAD_DATA"))?;
 
     let items: Vec<NewsArchiveItem> = envelope
         .result

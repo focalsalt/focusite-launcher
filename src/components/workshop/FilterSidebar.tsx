@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { WorkshopCategory, WorkshopSearchFilters } from "@/services/workshopService";
 import { formatCategory } from "@/lib/plainMarkdown";
 import { useI18n } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 export type Sort = NonNullable<WorkshopSearchFilters["sort"]>;
 export type Env = NonNullable<WorkshopSearchFilters["environment"]>;
@@ -70,7 +71,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
   }, [categories]);
 
   return (
-    <aside className={`flex w-60 shrink-0 flex-col border-r border-white/10 bg-slate-950/60 ${className ?? ""}`}>
+    <aside className={cn("flex w-60 shrink-0 flex-col border-r border-white/10 bg-slate-950/60", className)}>
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 px-4">
         <span className="text-xs font-bold text-slate-200">{t.workshopWin.filtersTitle}</span>
         {hasActive && (
@@ -130,9 +131,10 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
                   key={label}
                   type="button"
                   onClick={() => onEnv(v)}
-                  className={`rounded-lg px-1 py-1.5 text-2xs font-semibold transition-colors ${
-                    env === v ? "bg-brand text-on-solid" : "text-slate-400 hover:bg-white/10 hover:text-white"
-                  }`}
+                  className={cn(
+                    "rounded-lg px-1 py-1.5 text-2xs font-semibold transition-colors",
+                    env === v ? "bg-brand text-on-solid" : "text-slate-400 hover:bg-white/10 hover:text-white",
+                  )}
                 >
                   {label}
                 </button>

@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { DownloadCloud, CheckCircle2, Cpu, Package, Layers, FileCode } from "lucide-react";
 import { listenSafe } from "@/lib/listenSafe";
 import { useI18n } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 export interface InstanceProvisionProgress {
   instance_id: string;
@@ -92,18 +93,15 @@ export const LaunchInstallModal: React.FC<LaunchInstallModalProps> = ({
             return (
               <div
                 key={s.key}
-                className={`flex flex-col items-center gap-1 p-2 rounded-xl border text-center transition-all ${
-                  isCurrent
-                    ? "bg-brand/20 border-brand-light text-white"
-                    : isFinished
-                      ? "bg-white/[0.04] border-white/10 text-success-400"
-                      : "bg-white/[0.01] border-white/5 text-slate-400"
-                }`}
+                className={cn(
+                  "flex flex-col items-center gap-1 p-2 rounded-xl border text-center transition-all",
+                  isCurrent ? "bg-brand/20 border-brand-light text-white" : isFinished ? "bg-white/[0.04] border-white/10 text-success-400" : "bg-white/[0.01] border-white/5 text-slate-400",
+                )}
               >
                 {isFinished ? (
                   <CheckCircle2 className="h-4 w-4 text-brand-light" />
                 ) : (
-                  <Icon className={`h-4 w-4 ${isCurrent ? "text-brand-light animate-bounce" : ""}`} />
+                  <Icon className={cn("h-4 w-4", isCurrent && "text-brand-light animate-bounce")} />
                 )}
                 <span className="text-3xs font-medium leading-none">{t.install[s.labelKey]}</span>
               </div>

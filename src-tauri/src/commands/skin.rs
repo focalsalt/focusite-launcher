@@ -88,7 +88,7 @@ pub fn skin_save_local(name: String, bytes: Vec<u8>) -> Result<SkinItemDto, Stri
     let target_path = skins_dir.join(&filename);
 
     fs::write(&target_path, &bytes)
-        .map_err(|e| format!("E_SKIN_SAVE_FAILED: {}", e))?;
+        .map_err(super::ctx("E_SKIN_SAVE_FAILED"))?;
 
     Ok(SkinItemDto {
         id: filename.clone(),
@@ -107,7 +107,7 @@ pub fn skin_delete_local(filename: String) -> Result<(), String> {
     }
     let target = skins_dir.join(&filename);
     if target.is_file() {
-        fs::remove_file(target).map_err(|e| format!("E_SKIN_DELETE_FAILED: {}", e))?;
+        fs::remove_file(target).map_err(super::ctx("E_SKIN_DELETE_FAILED"))?;
     }
     Ok(())
 }
@@ -119,7 +119,7 @@ async fn fresh_token(account_id: &str) -> Result<String, String> {
         return Err("E_SESSION_EXPIRED".to_string());
     }
     focusite_auth::keyring_store::CredentialStore::get_credentials(account_id)
-        .map_err(|e| format!("E_CREDENTIAL_READ_FAILED: {}", e))?
+        .map_err(super::ctx("E_CREDENTIAL_READ_FAILED"))?
         .map(|(mc_token, _)| mc_token)
         .ok_or_else(|| "E_SESSION_EXPIRED".to_string())
 }
@@ -139,7 +139,7 @@ pub async fn skin_upload_to_mojang(
     let client = super::http().clone();
     let profile = focusite_auth::xbox::upload_minecraft_skin(&client, &token, &skin_bytes, &variant)
         .await
-        .map_err(|e| format!("E_SKIN_UPLOAD_FAILED: {}", e))?;
+        .map_err(super::ctx("E_SKIN_UPLOAD_FAILED"))?;
 
     // Also cache skin file locally
     let _ = skin_save_local(format!("cloud_{}", profile.name), skin_bytes);
@@ -158,7 +158,7 @@ pub async fn skin_set_active_cape(
     let client = super::http().clone();
     focusite_auth::xbox::set_active_cape(&client, &token, &cape_id)
         .await
-        .map_err(|e| format!("E_CAPE_SET_FAILED: {}", e))?;
+        .map_err(super::ctx("E_CAPE_SET_FAILED"))?;
 
     super::auth::auth_refresh_profile(account_id).await
 }
@@ -172,7 +172,7 @@ pub async fn skin_hide_active_cape(
     let client = super::http().clone();
     focusite_auth::xbox::hide_active_cape(&client, &token)
         .await
-        .map_err(|e| format!("E_CAPE_REMOVE_FAILED: {}", e))?;
+        .map_err(super::ctx("E_CAPE_REMOVE_FAILED"))?;
 
     super::auth::auth_refresh_profile(account_id).await
 }

@@ -1,6 +1,7 @@
 import { zhTW } from "@/i18n/locales/zh-TW";
 import { enUS } from "@/i18n/locales/en-US";
 import React, { useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface PlayerAvatarProps {
   username: string;
@@ -19,7 +20,10 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
   if (loadError || !username || username === zhTW.app.noAccount || username === enUS.app.noAccount) {
     return (
       <div
-        className={`flex items-center justify-center rounded-md bg-gradient-to-tr from-brand to-brand-dark font-bold text-on-solid shadow-sm shrink-0 select-none ${className}`}
+        className={cn(
+          "flex items-center justify-center rounded-md bg-gradient-to-tr from-brand to-brand-dark font-bold text-on-solid shadow-sm shrink-0 select-none",
+          className,
+        )}
         style={{ width: size, height: size, fontSize: size <= 16 ? "8px" : size <= 24 ? "10px" : "12px" }}
       >
         {username ? username.slice(0, 1).toUpperCase() : "?"}
@@ -29,7 +33,7 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-md bg-slate-800 shadow-sm shrink-0 select-none ${className}`}
+      className={cn("relative overflow-hidden rounded-md bg-slate-800 shadow-sm shrink-0 select-none", className)}
       style={{ width: size, height: size }}
     >
       <img

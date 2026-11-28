@@ -22,7 +22,7 @@ fn list_worlds(instance_id: String) -> Result<Vec<WorldSummary>, String> {
         return Err(format!("E_INSTANCE_NOT_FOUND: {}", instance_id));
     }
 
-    list_instance_worlds(&instance_dir).map_err(|e| format!("E_WORLDS_READ_FAILED: {}", e))
+    list_instance_worlds(&instance_dir).map_err(super::ctx("E_WORLDS_READ_FAILED"))
 }
 
 #[command]
@@ -36,7 +36,7 @@ pub fn rename_instance_world_cmd(
         return Err("E_INSTANCE_BUSY".into());
     }
     let instance_dir = get_instances_dir().join(&instance_id);
-    rename_world(&instance_dir, &folder_name, &new_name).map_err(|e| format!("E_WORLD_RENAME_FAILED: {}", e))
+    rename_world(&instance_dir, &folder_name, &new_name).map_err(super::ctx("E_WORLD_RENAME_FAILED"))
 }
 
 #[command]
@@ -50,7 +50,7 @@ fn delete_world_blocking(instance_id: String, folder_name: String) -> Result<(),
         return Err("E_INSTANCE_BUSY".into());
     }
     let instance_dir = get_instances_dir().join(&instance_id);
-    delete_world(&instance_dir, &folder_name).map_err(|e| format!("E_WORLD_DELETE_FAILED: {}", e))
+    delete_world(&instance_dir, &folder_name).map_err(super::ctx("E_WORLD_DELETE_FAILED"))
 }
 
 #[command]
@@ -90,7 +90,7 @@ fn backup_world_blocking(instance_id: String, folder_name: String, target_zip_pa
     }
 
     let instance_dir = get_instances_dir().join(&instance_id);
-    backup_world(&instance_dir, &folder_name, &output_zip).map_err(|e| format!("E_BACKUP_FAILED: {}", e))
+    backup_world(&instance_dir, &folder_name, &output_zip).map_err(super::ctx("E_BACKUP_FAILED"))
 }
 
 #[command]
@@ -99,7 +99,7 @@ pub async fn list_world_datapacks_cmd(instance_id: String, folder_name: String) 
         // Read-only listing is safe while the game is running.
         validate_safe_id(&instance_id)?;
         let instance_dir = get_instances_dir().join(&instance_id);
-        list_world_datapacks(&instance_dir, &folder_name).map_err(|e| format!("E_DATAPACKS_READ_FAILED: {}", e))
+        list_world_datapacks(&instance_dir, &folder_name).map_err(super::ctx("E_DATAPACKS_READ_FAILED"))
     })
     .await
 }
@@ -116,7 +116,7 @@ pub async fn delete_world_datapack_cmd(
             return Err("E_INSTANCE_BUSY".into());
         }
         let instance_dir = get_instances_dir().join(&instance_id);
-        delete_world_datapack(&instance_dir, &folder_name, &pack_name).map_err(|e| format!("E_DATAPACK_DELETE_FAILED: {}", e))
+        delete_world_datapack(&instance_dir, &folder_name, &pack_name).map_err(super::ctx("E_DATAPACK_DELETE_FAILED"))
     })
     .await
 }
@@ -125,7 +125,7 @@ pub async fn delete_world_datapack_cmd(
 pub fn open_world_datapacks_dir_cmd(instance_id: String, folder_name: String) -> Result<(), String> {
     validate_safe_id(&instance_id)?;
     let instance_dir = get_instances_dir().join(&instance_id);
-    let dir = world_datapacks_dir(&instance_dir, &folder_name).map_err(|e| format!("E_DATAPACKS_FOLDER_MISSING: {}", e))?;
+    let dir = world_datapacks_dir(&instance_dir, &folder_name).map_err(super::ctx("E_DATAPACKS_FOLDER_MISSING"))?;
     let _ = std::fs::create_dir_all(&dir);
     #[cfg(windows)]
     {

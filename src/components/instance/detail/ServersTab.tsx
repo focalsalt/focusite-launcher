@@ -12,6 +12,7 @@ import { FramelessEmptyState, tabContentVariants } from "./shared";
 import { useI18n } from "@/i18n";
 import { Tip } from "@/components/ui/tooltip";
 import { localizeBackendText } from "@/lib/errorMessage";
+import { cn } from "@/lib/utils";
 
 /** servers.dat stores the icon as bare base64, while a ping returns a full data URI. Falls back to a placeholder if it can't be decoded. */
 const ServerIcon: React.FC<{ icon?: string; alt: string }> = ({ icon, alt }) => {
@@ -160,13 +161,10 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                                 </span>
                                 <Badge
                                   variant="outline"
-                                  className={`text-2xs font-mono ${
-                                    ping.latency_ms < 80
-                                      ? "border-success-500/40 text-success-400"
-                                      : ping.latency_ms < 180
-                                      ? "border-warning-500/40 text-warning-400"
-                                      : "border-danger-500/40 text-danger-400"
-                                  }`}
+                                  className={cn(
+                                    "text-2xs font-mono",
+                                    ping.latency_ms < 80 ? "border-success-500/40 text-success-400" : ping.latency_ms < 180 ? "border-warning-500/40 text-warning-400" : "border-danger-500/40 text-danger-400",
+                                  )}
                                 >
                                   {ping.latency_ms} ms
                                 </Badge>
@@ -181,7 +179,7 @@ export const ServersTab: React.FC<ServersTabProps> = ({ instance, servers, setSe
                                 disabled={pinging}
                                 className="h-8 border-white/10 text-xs text-slate-300 hover:text-white"
                               >
-                                <Activity className={`w-3.5 h-3.5 mr-1 ${pinging ? "animate-spin" : ""}`} />
+                                <Activity className={cn("w-3.5 h-3.5 mr-1", pinging && "animate-spin")} />
                                 Ping
                               </Button>
                             </Tip>

@@ -44,7 +44,7 @@ pub fn sanitize_safe_package_filename(filename: &str) -> Result<String, String> 
 /// Validates that a download URL uses HTTPS from approved reputable CDN domains. Plain HTTP is refused:
 /// a file without a published hash could otherwise be swapped in transit.
 pub fn validate_download_url(url_str: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(url_str).map_err(|e| format!("E_DOWNLOAD_URL_INVALID: {}", e))?;
+    let parsed = url::Url::parse(url_str).map_err(super::ctx("E_DOWNLOAD_URL_INVALID"))?;
     if parsed.scheme() != "https" {
         return Err("E_DOWNLOAD_NOT_HTTPS".into());
     }
@@ -466,7 +466,7 @@ pub async fn instance_execute_stack_migration(
             &target_loader,
         )
         .await
-        .map_err(|e| format!("E_MIGRATION_PLAN_FAILED: {}", e))?
+        .map_err(super::ctx("E_MIGRATION_PLAN_FAILED"))?
     };
 
     // Atomic preparation: pre-download all upgradable files into temp directory first

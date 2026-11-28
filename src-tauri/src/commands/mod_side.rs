@@ -140,7 +140,7 @@ pub async fn get_mod_sides(instance_id: String) -> Result<ModSidesDto, String> {
         if !mods_dir.exists() {
             return Ok(Vec::new());
         }
-        let entries = std::fs::read_dir(&mods_dir).map_err(|e| format!("E_MODS_READ_FAILED: {}", e))?;
+        let entries = std::fs::read_dir(&mods_dir).map_err(super::ctx("E_MODS_READ_FAILED"))?;
         Ok(entries
             .filter_map(|e| e.ok())
             .filter(|e| e.path().is_file())

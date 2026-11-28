@@ -378,7 +378,7 @@ pub fn read_instance_config(instance_dir: &Path) -> Result<InstanceDiskConfig, S
     if !cfg_path.is_file() {
         return Err("E_INSTANCE_NOT_SETUP".into());
     }
-    let content = fs::read_to_string(&cfg_path).map_err(|e| format!("E_INSTANCE_CONFIG_UNREADABLE: {}", e))?;
+    let content = fs::read_to_string(&cfg_path).map_err(super::ctx("E_INSTANCE_CONFIG_UNREADABLE"))?;
     super::check_schema(&content, INSTANCE_CONFIG_FILE)?;
     serde_json::from_str(&content).map_err(|e| format!("E_INSTANCE_CONFIG_CORRUPT: {}: {}", INSTANCE_CONFIG_FILE, e))
 }
@@ -415,12 +415,12 @@ pub fn list_instances_blocking() -> Result<Vec<InstanceSummaryDto>, String> {
     let base_dir = get_instances_dir();
     if !base_dir.exists() {
         fs::create_dir_all(&base_dir)
-            .map_err(|e| format!("E_INSTANCE_CREATE_FAILED: {}", e))?;
+            .map_err(super::ctx("E_INSTANCE_CREATE_FAILED"))?;
         return Ok(Vec::new());
     }
 
     let entries = fs::read_dir(&base_dir)
-        .map_err(|e| format!("E_INSTANCE_FOLDER_UNREADABLE: {}", e))?;
+        .map_err(super::ctx("E_INSTANCE_FOLDER_UNREADABLE"))?;
 
     let folders: Vec<PathBuf> = entries
         .filter_map(|res| res.ok())
@@ -486,15 +486,15 @@ pub fn validate_custom_jar_name(name: &str) -> Result<String, String> {
 /// Reads the Minecraft version a client jar was built for from its embedded `version.json`
 /// (present in client jars since 1.14).
 pub fn read_jar_mc_version(jar: &Path) -> Result<String, String> {
-    let file = fs::File::open(jar).map_err(|e| format!("E_JAR_OPEN_FAILED: {}", e))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("E_JAR_NOT_ARCHIVE: {}", e))?;
+    let file = fs::File::open(jar).map_err(super::ctx("E_JAR_OPEN_FAILED"))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(super::ctx("E_JAR_NOT_ARCHIVE"))?;
     let mut entry = archive
         .by_name("version.json")
         .map_err(|_| "E_JAR_NO_VERSION_JSON".to_string())?;
     let mut text = String::new();
-    std::io::Read::read_to_string(&mut entry, &mut text).map_err(|e| format!("E_JAR_VERSION_JSON_UNREADABLE: {}", e))?;
+    std::io::Read::read_to_string(&mut entry, &mut text).map_err(super::ctx("E_JAR_VERSION_JSON_UNREADABLE"))?;
     let json: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("E_JAR_VERSION_JSON_INVALID: {}", e))?;
+        serde_json::from_str(&text).map_err(super::ctx("E_JAR_VERSION_JSON_INVALID"))?;
     let id = json
         .get("id")
         .or_else(|| json.get("name"))
@@ -551,7 +551,7 @@ fn save_custom_jar_blocking(instance_id: String, name: String, bytes: Vec<u8>) -
     }
     let dir = inst_dir.join(CUSTOM_JAR_DIR);
     fs::create_dir_all(&dir).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}: {}", CUSTOM_JAR_DIR, e))?;
-    fs::write(dir.join(&name), &bytes).map_err(|e| format!("E_JAR_SAVE_FAILED: {}", e))?;
+    fs::write(dir.join(&name), &bytes).map_err(super::ctx("E_JAR_SAVE_FAILED"))?;
     Ok(name)
 }
 
@@ -614,7 +614,7 @@ pub async fn create_instance(
         if let Some((jar_name, bytes)) = custom_jar {
             let jar_dir = inst_dir.join(CUSTOM_JAR_DIR);
             fs::create_dir_all(&jar_dir).map_err(|e| format!("E_FOLDER_CREATE_FAILED: {}: {}", CUSTOM_JAR_DIR, e))?;
-            fs::write(jar_dir.join(&jar_name), &bytes).map_err(|e| format!("E_JAR_SAVE_FAILED: {}", e))?;
+            fs::write(jar_dir.join(&jar_name), &bytes).map_err(super::ctx("E_JAR_SAVE_FAILED"))?;
             config.loader_version = Some(jar_name);
         }
 
@@ -696,7 +696,7 @@ pub fn rename_instance(
             }
 
             let new_dir = base_dir.join(&target_folder);
-            fs::rename(&current_dir, &new_dir).map_err(|e| format!("E_INSTANCE_RENAME_FAILED: {}", e))?;
+            fs::rename(&current_dir, &new_dir).map_err(super::ctx("E_INSTANCE_RENAME_FAILED"))?;
             config.id = target_folder;
             config.name = new_name;
             write_instance_config(&new_dir, &config)?;
@@ -823,7 +823,7 @@ fn duplicate_instance_blocking(source_id: &str, new_name: Option<String>) -> Res
     let target_folder = unique_folder_name(&base_dir, &clone_name)?;
     let dst_dir = base_dir.join(&target_folder);
     // `create_dir` (not `_all`) claims the name; it fails if another copy took it a moment ago.
-    fs::create_dir(&dst_dir).map_err(|e| format!("E_INSTANCE_CREATE_FAILED: {}", e))?;
+    fs::create_dir(&dst_dir).map_err(super::ctx("E_INSTANCE_CREATE_FAILED"))?;
 
     let copied = copy_dir_recursive_with_hardlink(&src_dir, &dst_dir).and_then(|_| {
         config.id = target_folder.clone();
@@ -893,7 +893,7 @@ pub async fn delete_instance(app_handle: AppHandle, id: String) -> Result<(), St
     let inst_dir = get_instances_dir().join(&id);
     super::blocking(move || {
         if inst_dir.exists() {
-            fs::remove_dir_all(inst_dir).map_err(|e| format!("E_INSTANCE_DELETE_FAILED: {}", e))?;
+            fs::remove_dir_all(inst_dir).map_err(super::ctx("E_INSTANCE_DELETE_FAILED"))?;
         }
         Ok(())
     })
@@ -924,15 +924,15 @@ fn set_instance_icon_from_file_blocking(
     }
 
     let img = image::ImageReader::open(src)
-        .map_err(|e| format!("E_IMAGE_OPEN_FAILED: {}", e))?
+        .map_err(super::ctx("E_IMAGE_OPEN_FAILED"))?
         .decode()
-        .map_err(|e| format!("E_IMAGE_DECODE_FAILED: {}", e))?;
+        .map_err(super::ctx("E_IMAGE_DECODE_FAILED"))?;
 
     let resized = img.resize_to_fill(256, 256, image::imageops::FilterType::Lanczos3);
     let target_icon = inst_dir.join("icon.png");
     resized
         .save(&target_icon)
-        .map_err(|e| format!("E_ICON_SAVE_FAILED: {}", e))?;
+        .map_err(super::ctx("E_ICON_SAVE_FAILED"))?;
 
     let config = update_instance_config(&inst_dir, |c| {
         c.icon_source = Some("custom".into());
@@ -962,10 +962,10 @@ pub fn set_instance_preset_icon(
             return Err("E_ICON_TOO_LARGE".into());
         }
         let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
-            .map_err(|e| format!("E_IMAGE_DECODE_FAILED: {}", e))?;
+            .map_err(super::ctx("E_IMAGE_DECODE_FAILED"))?;
         img.resize_exact(256, 256, image::imageops::FilterType::Nearest)
             .save(&target_icon)
-            .map_err(|e| format!("E_ICON_SAVE_FAILED: {}", e))?;
+            .map_err(super::ctx("E_ICON_SAVE_FAILED"))?;
         let config = update_instance_config(&inst_dir, |c| {
             c.icon_source = Some(format!("preset:{}", preset_key));
             c.icon_updated_at = Some(chrono::Utc::now().timestamp_millis());
@@ -1012,7 +1012,7 @@ pub fn set_instance_preset_icon(
     }
     imgbuf
         .save(&target_icon)
-        .map_err(|e| format!("E_ICON_SAVE_FAILED: {}", e))?;
+        .map_err(super::ctx("E_ICON_SAVE_FAILED"))?;
 
     let config = update_instance_config(&inst_dir, |c| {
         c.icon_source = Some(format!("preset:{}", preset_key));
@@ -1105,7 +1105,7 @@ fn toggle_folder_mod_state(mods_dir: &Path, filename: &str, enabled: bool) -> Re
     };
 
     let target_path = mods_dir.join(&target_name);
-    fs::rename(current_path, target_path).map_err(|e| format!("E_MOD_TOGGLE_FAILED: {}", e))?;
+    fs::rename(current_path, target_path).map_err(super::ctx("E_MOD_TOGGLE_FAILED"))?;
     Ok(())
 }
 
@@ -1114,7 +1114,7 @@ fn scan_folder_mods(mods_dir: &Path) -> Result<Vec<ModFileDto>, String> {
         return Ok(Vec::new());
     }
 
-    let entries = fs::read_dir(mods_dir).map_err(|e| format!("E_MODS_READ_FAILED: {}", e))?;
+    let entries = fs::read_dir(mods_dir).map_err(super::ctx("E_MODS_READ_FAILED"))?;
     let mut mods = Vec::new();
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
@@ -1183,7 +1183,7 @@ fn scan_pack_folder(folder_path: &Path) -> Result<Vec<PackFileDto>, String> {
         return Ok(Vec::new());
     }
 
-    let entries = fs::read_dir(folder_path).map_err(|e| format!("E_RESOURCES_READ_FAILED: {}", e))?;
+    let entries = fs::read_dir(folder_path).map_err(super::ctx("E_RESOURCES_READ_FAILED"))?;
     let mut packs = Vec::new();
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
@@ -1257,7 +1257,7 @@ pub fn list_instance_screenshots(instance_id: String) -> Result<Vec<ScreenshotFi
     }
 
     let entries = fs::read_dir(&screenshots_dir)
-        .map_err(|e| format!("E_SCREENSHOTS_READ_FAILED: {}", e))?;
+        .map_err(super::ctx("E_SCREENSHOTS_READ_FAILED"))?;
 
     let mut screenshots = Vec::new();
     for entry in entries.filter_map(|e| e.ok()) {

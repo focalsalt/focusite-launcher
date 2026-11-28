@@ -10,6 +10,7 @@ import {
 } from "@/types/navigation";
 import { useI18n } from "@/i18n";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
+import { cn } from "@/lib/utils";
 
 interface DynamicTitlebarProps {
   currentView: MainView;
@@ -160,9 +161,10 @@ function SubNav<T extends string>({
           ref={pill.register(item.id)}
           type="button"
           onClick={() => onChange(item.id)}
-          className={`relative rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-            active === item.id ? "text-on-solid" : "text-slate-400 hover:text-slate-200"
-          }`}
+          className={cn(
+            "relative rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+            active === item.id ? "text-on-solid" : "text-slate-400 hover:text-slate-200",
+          )}
         >
           {item.label}
         </button>

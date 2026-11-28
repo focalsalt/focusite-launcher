@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { skinThumbnailService, ThumbnailOptions } from "@/services/skinThumbnailService";
 import { useI18n } from "@/i18n";
 import { Tip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 export interface SkinThumbnailProps extends ThumbnailOptions {
   className?: string;
@@ -68,14 +69,17 @@ export const SkinThumbnail: React.FC<SkinThumbnailProps> = ({
   }, [skinUrl, capeUrl, model, backEquipment, rotationY]);
 
   if (loading) {
-    return <Skeleton className={`w-full h-full rounded-lg ${className}`} />;
+    return <Skeleton className={cn("w-full h-full rounded-lg", className)} />;
   }
 
   if (hasError || !dataUrl) {
     return (
       <Tip label={t.skin.textureLoadFailed} className="h-full w-full">
         <div
-          className={`flex flex-col items-center justify-center w-full h-full rounded-lg bg-scrim/60 text-on-solid border border-white/5 p-1 ${className}`}
+          className={cn(
+            "flex flex-col items-center justify-center w-full h-full rounded-lg bg-scrim/60 text-on-solid border border-white/5 p-1",
+            className,
+          )}
         >
           <ImageOff className="h-4 w-4 text-slate-600 mb-0.5" />
           <span className="text-[8px] text-slate-400 font-mono">NO TEXTURE</span>
@@ -88,7 +92,7 @@ export const SkinThumbnail: React.FC<SkinThumbnailProps> = ({
     <img
       src={dataUrl}
       alt={alt}
-      className={`w-full h-full object-contain pointer-events-none select-none ${className}`}
+      className={cn("w-full h-full object-contain pointer-events-none select-none", className)}
       loading="lazy"
     />
   );

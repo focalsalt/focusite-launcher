@@ -31,6 +31,6 @@ pub fn diagnose_instance_log(instance_id: String) -> Result<DiagnosticResult, St
         });
     }
 
-    let content = std::fs::read_to_string(&log_file).map_err(|e| format!("E_INSTANCE_LOG_UNREADABLE: {e}"))?;
+    let content = std::fs::read_to_string(&log_file).map_err(super::ctx("E_INSTANCE_LOG_UNREADABLE"))?;
     Ok(DIAGNOSTIC_ENGINE.diagnose_structured(&content, ui_language::is_zh()))
 }

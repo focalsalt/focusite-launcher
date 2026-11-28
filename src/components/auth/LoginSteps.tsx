@@ -1,6 +1,7 @@
 import React from "react";
 import { Check, Loader2 } from "lucide-react";
 import { useI18n } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 /** Order of the backend's `auth-login-step` events. */
 const STEPS = ["microsoft", "xbl", "xsts", "minecraft", "profile", "saving"] as const;
@@ -25,7 +26,10 @@ export const LoginSteps: React.FC<{ step: string }> = ({ step }) => {
           const done = i < current;
           const active = i === current;
           return (
-            <li key={s} className={`flex items-center gap-2.5 ${done || active ? "text-slate-100" : "text-slate-400"}`}>
+            <li key={s} className={cn(
+              "flex items-center gap-2.5",
+              done || active ? "text-slate-100" : "text-slate-400",
+            )}>
               <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                 {done ? (
                   <Check className="h-4 w-4 text-success-400" />

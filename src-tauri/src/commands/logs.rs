@@ -80,18 +80,18 @@ fn read_file(instance_dir: &Path, kind: &str, name: &str) -> Result<String, Stri
     if !path.is_file() {
         return Err("E_FILE_NOT_FOUND".into());
     }
-    let raw = fs::File::open(&path).map_err(|e| format!("E_FILE_OPEN_FAILED: {}", e))?;
+    let raw = fs::File::open(&path).map_err(super::ctx("E_FILE_OPEN_FAILED"))?;
     let mut bytes = Vec::new();
     // Cap the unpacked size too, so a hostile archive cannot fill memory.
     if name.to_lowercase().ends_with(".gz") {
         flate2::read::GzDecoder::new(raw)
             .take(64 * 1024 * 1024)
             .read_to_end(&mut bytes)
-            .map_err(|e| format!("E_FILE_DECOMPRESS_FAILED: {}", e))?;
+            .map_err(super::ctx("E_FILE_DECOMPRESS_FAILED"))?;
     } else {
         raw.take(64 * 1024 * 1024)
             .read_to_end(&mut bytes)
-            .map_err(|e| format!("E_LOG_READ_FAILED: {}", e))?;
+            .map_err(super::ctx("E_LOG_READ_FAILED"))?;
     }
     if bytes.len() > MAX_READ_BYTES {
         bytes.drain(..bytes.len() - MAX_READ_BYTES);

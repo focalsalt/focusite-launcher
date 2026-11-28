@@ -33,6 +33,7 @@ import {
 } from "@/lib/startupOrchestrator";
 import { sortForSidebar } from "@/lib/instanceOrder";
 import { useI18n } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 interface SidebarProps {
   currentView: MainView;
@@ -271,15 +272,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onSelectInstance(inst.id);
                     onNavigate("instance-detail");
                   }}
-                  className={`flex h-[52px] w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-white/5 active:bg-white/10 ${isSelected
-                    ? "bg-white/10 text-slate-100 font-semibold"
-                    : "text-slate-400 hover:text-slate-200"
-                    }`}
+                  className={cn(
+                    "flex h-[52px] w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-white/5 active:bg-white/10",
+                    isSelected ? "bg-white/10 text-slate-100 font-semibold" : "text-slate-400 hover:text-slate-200",
+                  )}
                 >
                   <div className="relative shrink-0">
-                    <div className={`flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden text-brand-light ${
-                      inst.hasIcon && inst.iconPath ? "" : "border border-white/10 bg-white/5"
-                    }`}>
+                    <div className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden text-brand-light",
+                      inst.hasIcon && inst.iconPath ? "" : "border border-white/10 bg-white/5",
+                    )}>
                       {inst.hasIcon && inst.iconPath ? (
                         <img
                           src={toAssetSrc(inst.iconPath, inst.iconUpdatedAt)}
@@ -290,8 +292,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <AlertTriangle className="h-4 w-4 shrink-0 text-warning-400" />
                       ) : (
                         <Box
-                          className={`h-4 w-4 shrink-0 transition-colors ${isSelected ? "text-brand-light" : "text-slate-400"
-                            }`}
+                          className={cn(
+                            "h-4 w-4 shrink-0 transition-colors",
+                            isSelected ? "text-brand-light" : "text-slate-400",
+                          )}
                         />
                       )}
                     </div>
@@ -338,10 +342,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => onNavigate("settings")}
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs font-semibold transition-colors hover:bg-white/5 active:bg-white/10 ${currentView === "settings"
-              ? "bg-white/10 text-slate-100"
-              : "text-slate-400 hover:text-slate-200"
-              }`}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs font-semibold transition-colors hover:bg-white/5 active:bg-white/10",
+              currentView === "settings" ? "bg-white/10 text-slate-100" : "text-slate-400 hover:text-slate-200",
+            )}
           >
             <span
               className={
@@ -376,8 +380,10 @@ function SidebarNavItem({
       <button
         type="button"
         onClick={onClick}
-        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs font-semibold transition-colors hover:bg-white/5 active:bg-white/10 ${active ? "bg-white/10 text-slate-100" : "text-slate-400 hover:text-slate-200"
-          }`}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs font-semibold transition-colors hover:bg-white/5 active:bg-white/10",
+          active ? "bg-white/10 text-slate-100" : "text-slate-400 hover:text-slate-200",
+        )}
       >
         <span className={active ? "text-brand-light" : "text-slate-400"}>
           {icon}

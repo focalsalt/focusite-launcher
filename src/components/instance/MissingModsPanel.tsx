@@ -17,6 +17,7 @@ import {
   MissingModItem,
   ModpackImportResult,
 } from "@/services/modpackService";
+import { cn } from "@/lib/utils";
 
 interface MissingModsPanelProps {
   result: ModpackImportResult;
@@ -109,9 +110,10 @@ export const MissingModsPanel: React.FC<MissingModsPanelProps> = ({
           <span className="text-slate-400">{t.importPack.remaining}</span>
           <Badge
             variant={isReady ? "success" : "outline"}
-            className={`text-3xs font-mono font-bold ${
-              !isReady ? "border-warning-500/50 text-warning-400 bg-warning-500/10" : ""
-            }`}
+            className={cn(
+              "text-3xs font-mono font-bold",
+              !isReady && "border-warning-500/50 text-warning-400 bg-warning-500/10",
+            )}
           >
             {t.importPack.itemCount(missingMods.length)}
           </Badge>
@@ -197,7 +199,7 @@ export const MissingModsPanel: React.FC<MissingModsPanelProps> = ({
             disabled={isReady || isRetrying || isRescanning}
             className="gap-1.5 text-xs h-8 border-white/10"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRetrying ? "animate-spin text-brand-light" : ""}`} />
+            <RefreshCw className={cn("h-3.5 w-3.5", isRetrying && "animate-spin text-brand-light")} />
             {isRetrying && progress && progress.total > 0
               ? `${t.importPack.retryDownloads} ${progress.current}/${progress.total}`
               : t.importPack.retryDownloads}
@@ -210,7 +212,7 @@ export const MissingModsPanel: React.FC<MissingModsPanelProps> = ({
             disabled={isRescanning || isRetrying}
             className="gap-1.5 text-xs h-8 border-white/10"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRescanning ? "animate-spin text-brand-light" : ""}`} />
+            <RefreshCw className={cn("h-3.5 w-3.5", isRescanning && "animate-spin text-brand-light")} />
             {t.importPack.rescan}
           </Button>
           <Button

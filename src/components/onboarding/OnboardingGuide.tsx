@@ -8,6 +8,7 @@ import { ThemeSwatches } from "@/components/settings/ThemeSwatches";
 import { themeService, ThemePack } from "@/services/themeService";
 import { useI18n } from "@/i18n";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "focusite_onboarding_done";
 
@@ -94,7 +95,10 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ onCreateInstan
                   size="sm"
                   variant={language === code ? "default" : "outline"}
                   onClick={() => setLanguage(code)}
-                  className={`h-8 text-xs ${language === code ? "bg-brand text-on-solid hover:bg-brand-hover" : "border-white/10 text-slate-300"}`}
+                  className={cn(
+                    "h-8 text-xs",
+                    language === code ? "bg-brand text-on-solid hover:bg-brand-hover" : "border-white/10 text-slate-300",
+                  )}
                 >
                   {label}
                 </Button>
